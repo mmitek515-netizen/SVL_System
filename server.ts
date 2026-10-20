@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 const rawEnvPollKey = (process.env.POLLINATIONS_API_KEY || '').trim();
 const POLLINATIONS_API_KEY = rawEnvPollKey.startsWith('sk_')
   ? rawEnvPollKey
-  : 'sk_yaCkflViHNdUFCUxONFnlwIDb1Bm2ExY';
+  : '';
 const app = express();
 const PORT = 3000;
 const PYTHON_SCRIPT_PATH = path.resolve('svl_kernel.py');
@@ -36,7 +36,7 @@ app.use((err: any, _req: express.Request, res: express.Response, next: express.N
 
 
 // Track API key health globally to avoid repeated failing Pro requests
-let isProKeyHealthy = true;
+let isProKeyHealthy = Boolean(POLLINATIONS_API_KEY);
 let lastFailureTime = 0;
 const PRO_FAILURE_COOLDOWN = 1000 * 60 * 60; // 1 hour cooldown if key fails with 402/401
 
@@ -49,7 +49,7 @@ app.get('/api/pollinations/image', async (req, res) => {
 
   // Logic: Use Pro if it's healthy OR if the cooldown has expired
   const cooldownActive = !isProKeyHealthy && (Date.now() - lastFailureTime < PRO_FAILURE_COOLDOWN);
-  const usePro = isProKeyHealthy && !cooldownActive;
+  const usePro = Boolean(POLLINATIONS_API_KEY) && isProKeyHealthy && !cooldownActive;
   
   const randomSeed = seed || Math.floor(Math.random() * 1000000);
   const cleanPrompt = String(prompt).trim();
