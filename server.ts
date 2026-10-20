@@ -6,6 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
+import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 
 dotenv.config();
@@ -18,6 +19,7 @@ const POLLINATIONS_API_KEY = rawEnvPollKey.startsWith('sk_')
 const app = express();
 const PORT = 3000;
 const PYTHON_SCRIPT_PATH = path.resolve('svl_kernel.py');
+const KERNEL_STORE_PATH = path.resolve(process.env.SVL_KERNEL_STORE_PATH || '.svl_kernel_store.json');
 
 // Configure high body limit (50MB) for file uploads, images, logs, and kernel snapshots
 app.use(express.json({ limit: '50mb' }));
@@ -3727,6 +3729,15 @@ app.post('/api/kernel/agent', async (req, res) => {
 
 // Setup Vite middleware in dev or static files in prod
 async function startServer() {
+  if (!fs.existsSync(KERNEL_STORE_PATH)) {
+    await runPythonKernel([
+      '--action',
+      'save_store',
+      '--store_json',
+      JSON.stringify(INITIAL_DATA_STORE),
+    ]);
+  }
+
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));
     app.get('*', (_req, res) => {
