@@ -254,15 +254,16 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
           e.preventDefault();
           handleSend();
         }}
-        className="p-2 sm:p-3 flex items-center gap-1.5 sm:gap-2"
+        className="p-1.5 sm:p-2.5 flex items-center gap-1.5 sm:gap-2 w-full overflow-hidden"
         style={{ direction: 'ltr', textAlign: 'left' }}
       >
-        <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0 text-[11px] sm:text-xs">
+        <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0 text-[10px] sm:text-xs">
           <span className="hidden sm:inline">root@svl-kernel:~#</span>
           <span className="sm:hidden">root:~#</span>
         </span>
 
-        <div className="flex-1 relative flex items-center">
+        {/* Input - maksymalnie poszerzony i elastyczny z zachowaniem wewnętrznych przycisków */}
+        <div className="flex-1 min-w-0 relative flex items-center">
           <input
             ref={inputRef}
             type="text"
@@ -285,10 +286,10 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
               caretColor: '#34d399',
               userSelect: 'text'
             }}
-            className="w-full bg-slate-950/90 border border-slate-800 rounded px-2.5 pr-20 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono text-sm sm:text-xs h-10 touch-manipulation text-left"
+            className="w-full bg-slate-950/90 border border-slate-800 rounded px-2.5 pr-14 sm:pr-20 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono text-sm sm:text-xs h-9 sm:h-10 touch-manipulation text-left"
           />
 
-          <div className="absolute right-1.5 flex items-center gap-1">
+          <div className="absolute right-1 sm:right-1.5 flex items-center gap-1">
             {cmdText.length > 0 && (
               <button
                 type="button"
@@ -321,7 +322,7 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
         <button
           type="button"
           onClick={onToggleAntiMirror}
-          className={`h-10 px-2 sm:px-2.5 rounded-lg border text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shrink-0 ${
+          className={`h-9 sm:h-10 px-2 sm:px-2.5 rounded-lg border text-[11px] font-bold flex items-center gap-1 cursor-pointer transition shrink-0 ${
             antiMirrorActive
               ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300 hover:bg-emerald-900/80'
               : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-400'
@@ -332,12 +333,14 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
           <span className="hidden lg:inline">{antiMirrorActive ? 'Anty-Lustro: ON' : 'Anty-Lustro: OFF'}</span>
         </button>
 
+        {/* Przycisk Wykonaj przesunięty w prawo, zoptymalizowany dla małych i dużych ekranów */}
         <button
           type="submit"
-          className="h-10 px-3 sm:px-3.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-black transition flex items-center gap-1 cursor-pointer shrink-0 touch-manipulation text-xs shadow-md shadow-emerald-950/40"
+          className="ml-auto h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-black transition flex items-center justify-center gap-1 cursor-pointer shrink-0 touch-manipulation text-xs shadow-md shadow-emerald-950/40"
+          title="Wykonaj polecenie w terminalu"
         >
-          <span className="hidden xs:inline">Wykonaj</span>
-          <CornerDownLeft className="w-4 h-4" />
+          <span className="hidden sm:inline">Wykonaj</span>
+          <CornerDownLeft className="w-3.5 sm:w-4 h-3.5 sm:h-4 shrink-0" />
         </button>
       </form>
     </div>
@@ -755,27 +758,29 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
       className="flex-1 min-h-0 flex flex-col bg-slate-950 font-mono text-xs relative overflow-hidden"
     >
       {/* Quick Action Ribbon */}
-      <div className="bg-slate-900 border-b border-slate-800 px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none text-[11px] shrink-0">
-        <div className="flex items-center gap-1.5 sm:gap-2 text-slate-400 shrink-0">
+      <div className="bg-slate-900 border-b border-slate-800 px-2 sm:px-3 py-1.5 flex items-center justify-between gap-1.5 overflow-x-auto scrollbar-none text-[11px] shrink-0 w-full">
+        <div className="flex items-center gap-1 sm:gap-1.5 text-slate-400 shrink-0">
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
           <span className="hidden xs:inline">Polecenia:</span>
           {dataStore.config?.root_privileges && (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-950/80 border border-red-800/60 text-red-300 font-bold text-[10px]">
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/80 border border-red-800/60 text-red-300 font-bold text-[10px]">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-              ROOT: RING-0 (TRIADA)
+              <span className="hidden sm:inline">ROOT: RING-0 (TRIADA)</span>
+              <span className="sm:hidden">ROOT</span>
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap overflow-x-auto shrink-0">
           {/* Script Generator Button */}
           <button
             onClick={() => setShowScriptModal(true)}
-            className="px-2.5 py-1 rounded bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-slate-950 font-black text-[11px] cursor-pointer flex items-center gap-1.5 shadow-md shadow-emerald-950/50 transition border border-emerald-400/50"
+            className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-slate-950 font-black text-[10px] sm:text-[11px] cursor-pointer flex items-center gap-1 sm:gap-1.5 shadow-md shadow-emerald-950/50 transition border border-emerald-400/50 shrink-0"
             title="Otwórz Alex Script Studio — generator gotowych skryptów Python, Bash, TS i SQL"
           >
             <FileCode2 className="w-3.5 h-3.5" />
-            <span>⚡ Generuj Skrypt (Alex)</span>
+            <span className="hidden sm:inline">⚡ Generuj Skrypt</span>
+            <span className="sm:hidden">Skrypt</span>
           </button>
 
           <input
@@ -787,21 +792,21 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
           />
           <button
             onClick={() => terminalFileInputRef.current?.click()}
-            className="px-2 py-0.5 rounded bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-800/60 text-[10px] cursor-pointer flex items-center gap-1 transition"
+            className="px-1.5 sm:px-2 py-0.5 rounded bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-800/60 text-[10px] cursor-pointer flex items-center gap-1 transition shrink-0"
             title="Wgraj plik lub obraz do bufora Ring-0 i przekaż do analizy Triadzie"
           >
             <Paperclip className="w-3 h-3 text-emerald-400" />
-            <span>Wgraj plik/obraz</span>
+            <span className="hidden xs:inline">Wgraj</span>
           </button>
 
           {quickCmds.map((cmd, i) => (
             <div
               key={i}
-              className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] group transition"
+              className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] sm:text-[11px] group transition shrink-0"
             >
               <button
                 onClick={() => handleExecute(cmd)}
-                className="cursor-pointer hover:text-emerald-300"
+                className="cursor-pointer hover:text-emerald-300 whitespace-nowrap"
               >
                 {cmd}
               </button>
@@ -816,10 +821,10 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
           ))}
 
           {isAddingCmd ? (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               <input
                 type="text"
-                placeholder="np. triad status..."
+                placeholder="polecenie..."
                 value={newCmdText}
                 dir="ltr"
                 autoComplete="off"
@@ -830,7 +835,7 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
                 style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'normal' }}
                 onChange={(e) => setNewCmdText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddCmd()}
-                className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500 w-28 text-left"
+                className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500 w-24 text-left"
                 autoFocus
               />
               <button
@@ -849,16 +854,16 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
           ) : (
             <button
               onClick={() => setIsAddingCmd(true)}
-              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-900/40 text-[10px] cursor-pointer flex items-center gap-1"
+              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-900/40 text-[10px] cursor-pointer flex items-center gap-1 shrink-0"
               title="Dodaj własne szybkie polecenie"
             >
-              + Polecenie
+              +
             </button>
           )}
 
           <button
             onClick={() => handleExecute('clear')}
-            className="px-2 py-0.5 rounded hover:bg-red-950/40 text-slate-400 hover:text-red-400 cursor-pointer ml-2"
+            className="px-1.5 sm:px-2 py-0.5 rounded hover:bg-red-950/40 text-slate-400 hover:text-red-400 cursor-pointer shrink-0"
             title="Wyczyść konsolę"
           >
             <Trash2 className="w-3 h-3" />

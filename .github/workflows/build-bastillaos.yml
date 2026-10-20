@@ -1,0 +1,55 @@
+name: Build BastillaOS Debian Live ISO
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "bastillaos-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bastillaos-iso-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-iso:
+    name: Debian 13 KDE Plasma amd64 ISO
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Validate build scripts
+        run: |
+          bash -n bastillaos/build-iso.sh
+          sh -n bastillaos/live-build/auto/config
+          sh -n bastillaos/live-build/config/hooks/live/9999-bastillaos-security.hook.chroot
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build BastillaOS bootable ISO
+        run: bash bastillaos/build-iso.sh
+
+      - name: Upload bootable ISO and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: BastillaOS-Debian13-KDE-amd64
+          path: |
+            bastillaos/build/BastillaOS-13-amd64.iso
+            bastillaos/build/BastillaOS-13-amd64.iso.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

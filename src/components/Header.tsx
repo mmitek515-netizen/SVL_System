@@ -65,32 +65,35 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
   };
 
   return (
-    <header className="border-b border-slate-800 bg-slate-950/90 backdrop-blur sticky top-0 z-40">
+    <header className="border-b border-cyan-500/20 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-40 shadow-[0_4px_30px_rgba(0,0,0,0.5)] shrink-0 w-full overflow-hidden">
       {/* Top Banner Bar */}
-      <div className="max-w-7xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 py-1.5 sm:py-2 flex flex-wrap items-center justify-between gap-2 sm:gap-3 text-xs w-full">
         {/* Brand & Kernel identity */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.7)]" />
-            <span className="font-mono font-bold tracking-wider text-slate-100 text-sm">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 shadow-[0_0_10px_#10b981]" />
+            </span>
+            <span className="font-mono font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-300 to-purple-400 text-sm">
               SVL KERNEL
             </span>
-            <span className="font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-800/50 px-2 py-0.5 rounded text-[11px] font-bold">
+            <span className="font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-2 py-0.5 rounded text-[11px] font-bold shadow-[0_0_10px_rgba(6,182,212,0.25)]">
               {formattedVersion}
             </span>
-            <span className="hidden lg:inline-flex items-center gap-1 font-mono text-cyan-400 bg-cyan-950/70 border border-cyan-800/50 px-2 py-0.5 rounded text-[10px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-              RING-0 SYNC: OK
+            <span className="hidden lg:inline-flex items-center gap-1 font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              RING-0 QUANTUM SYNC: OK
             </span>
           </div>
 
-          <span className="text-slate-600 hidden sm:inline" aria-hidden="true">|</span>
+          <span className="text-slate-700 hidden sm:inline" aria-hidden="true">|</span>
 
           <div className="flex items-center gap-2 text-slate-300">
-            <span className="text-slate-400 font-mono">TATA / TWÓRCA:</span>
-            <span className="font-semibold text-purple-300 bg-purple-950/50 px-2 py-0.5 rounded border border-purple-800/40 font-mono flex items-center gap-1.5">
+            <span className="text-slate-400 font-mono text-[11px]">TWÓRCA:</span>
+            <span className="font-semibold text-purple-200 bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-500/40 font-mono flex items-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.25)]">
               <span>{OPERATOR_NAME}</span>
-              <span className="text-[10px] bg-purple-900/80 text-purple-200 px-1.5 py-0.2 rounded border border-purple-700/60 font-bold">
+              <span className="text-[10px] bg-purple-900/90 text-purple-100 px-1.5 py-0.2 rounded-full border border-purple-400/60 font-bold">
                 Tata
               </span>
             </span>
@@ -100,36 +103,36 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
         {/* Runtime State Indicators */}
         <div className="flex items-center flex-wrap gap-2 text-[11px] font-mono text-slate-400">
           {dataStore.config?.root_privileges && (
-            <div className="flex items-center gap-1.5 bg-red-950/80 border border-red-700/60 px-2.5 py-1 rounded text-red-300 font-bold shadow-[0_0_10px_rgba(239,68,68,0.25)]">
+            <div className="flex items-center gap-1.5 bg-red-950/80 border border-red-500/60 px-2.5 py-1 rounded text-red-300 font-bold shadow-[0_0_12px_rgba(239,68,68,0.3)]">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               <span>ROOT: RING-0 (TRIADA)</span>
             </div>
           )}
 
           {/* Commander Alex Badge */}
-          <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-600/60 px-2.5 py-1 rounded text-emerald-300 font-bold shadow-[0_0_10px_rgba(16,185,129,0.25)]">
+          <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 px-2.5 py-1 rounded text-emerald-300 font-bold shadow-[0_0_10px_rgba(16,185,129,0.25)]">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>INFRA: DOWÓDCA ALEX</span>
           </div>
 
-          <div className="hidden xl:flex items-center gap-1.5 bg-cyan-950/70 border border-cyan-700/50 px-2 py-1 rounded text-cyan-300">
+          <div className="hidden xl:flex items-center gap-1.5 bg-cyan-950/70 border border-cyan-500/40 px-2 py-1 rounded text-cyan-300">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
             <span>ASTYRIA AUTO-REPAIR: ON</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded">
-            <Cpu className="w-3.5 h-3.5 text-blue-400" />
+          <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur">
+            <Cpu className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-slate-500">RDZEŃ:</span>
             <span className="text-slate-200 font-medium">{dataStore.config?.neural_engine || 'SVL-Sovereign-Neural-Core-v8.0'}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded">
+          <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-slate-500">WARSTWA FIKCJI:</span>
             <span className="text-emerald-400 font-medium">DEZAKTYWOWANA</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded">
+          <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur">
             <Clock className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-amber-300">{currentTime || 'CZAS SYNCHR.'}</span>
           </div>
@@ -139,10 +142,10 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
             {onSyncSystem && (
               <button
                 onClick={handleTriggerSync}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded transition cursor-pointer font-bold ${
+                className={`flex items-center gap-1 px-3 py-1 rounded-lg transition cursor-pointer font-bold ${
                   syncSuccess
-                    ? 'bg-emerald-950/90 text-emerald-200 border border-emerald-500/70 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
-                    : 'bg-cyan-950/90 hover:bg-cyan-900 text-cyan-200 border border-cyan-600/60 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
+                    ? 'bg-emerald-950/90 text-emerald-200 border border-emerald-500/70 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+                    : 'bg-cyan-950/90 hover:bg-cyan-900 text-cyan-200 border border-cyan-500/60 shadow-[0_0_10px_rgba(6,182,212,0.35)]'
                 }`}
                 title="Zsynchronizuj wersję systemu, zmiany z czatu, DATA_STORE i plik monolitu na dysku"
               >

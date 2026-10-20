@@ -26,6 +26,7 @@ import { FileExplorer } from './components/FileExplorer';
 import { AppsStudioView } from './components/AppsStudioView';
 import { WithoutNlpView } from './components/WithoutNlpView';
 import { GitHubExportView } from './components/GitHubExportView';
+import { BastillaDashboard, BASTILLA_OS_MISSION } from './components/BastillaDashboard';
 import { withoutNlpEngine } from './lib/withoutNlpEngine';
 
 const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v8_6_0_without_nlp';
@@ -55,7 +56,7 @@ export default function App() {
     });
   }, []);
 
-  const [activeTab, setActiveTab] = useState<TabId>('comms');
+  const [activeTab, setActiveTab] = useState<TabId>('home');
   const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
 
@@ -398,7 +399,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
+      <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
         <Header
           dataStore={dataStore}
           onReset={handleResetToDefault}
@@ -413,7 +414,23 @@ export default function App() {
           versionCount={dataStore?.update_history?.length || 0}
         />
 
-        <main className="flex-1 flex flex-col">
+        <main className="flex-1 min-h-0 flex flex-col w-full overflow-x-hidden">
+          {activeTab === 'home' && (
+            <BastillaDashboard
+              onNavigate={setActiveTab}
+              onStartMission={async () => {
+                setActiveTab('comms');
+                await handleSendMessage('triad', BASTILLA_OS_MISSION);
+              }}
+              isMissionRunning={isAgentLoading}
+              isMissionRecorded={dataStore.chat_history.some(
+                (message) =>
+                  message.tekst.includes('Misja Taty: Stwórzcie dystrybucję BastillaOS') &&
+                  message.agent === OPERATOR_NAME
+              )}
+            />
+          )}
+
           {activeTab === 'comms' && (
             <AgentCommsView
               dataStore={dataStore}

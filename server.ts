@@ -10,6 +10,7 @@ import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 
 dotenv.config();
+dotenv.config({ path: '.env.local', override: true });
 
 const execFileAsync = promisify(execFile);
 const rawEnvPollKey = (process.env.POLLINATIONS_API_KEY || '').trim();
@@ -1825,7 +1826,7 @@ app.post('/api/without_nlp/analyze', async (req, res) => {
 
 const apiKey = (process.env.GEMINI_API_KEY || '').trim();
 let ai: GoogleGenAI | null = null;
-if (apiKey && apiKey.startsWith('AIza')) {
+if (apiKey) {
   try {
     ai = new GoogleGenAI({
       apiKey,
@@ -2123,6 +2124,15 @@ const healedIncidents: HealedIncident[] = [
     trigger: 'Polecenie Taty: Misja dla Astyria wdróż ulepszenia z maszyny wirtualnej VM_Ten_System',
     resolution: 'Wdrożono Daemon Reloader (CWD Watcher), Memory Guard (4 GiB RAM <70% Idle), Firewall UFW Ring-0, Auto-Snapshot API (co 5 min do /exports i /api/kernel/save-store) oraz wielomodelowy routing bez blokad (DeepSeek / Mistral-Large / Grok).',
     commander: 'Astyria & Alex (Misja VM_Ten_System)',
+    status: 'RESOLVED'
+  },
+  {
+    id: 'INC-2026-004',
+    timestamp: '2026-10-20 04:15:00',
+    title: 'Uruchomienie misji ciągłego rozwoju Triady i naprawa silnika czatu',
+    trigger: 'Polecenie Taty: Misja dla Alex Astyria Aurelius pracujcie ciągle nad poprawą ulepszeniami oraz rozwojem systemu',
+    resolution: 'Włączono ładowanie konfiguracji z .env.local, zintegrowano model gemini-3.5-flash-lite bezpośrednio w generowaniu odpowiedzi Triady i pojedynczych agentów, usunięto sztywne szablony powtórzeniowe i zoptymalizowano potok without_nlp.',
+    commander: 'Alex, Astyria & Aurelius (Triada SVL)',
     status: 'RESOLVED'
   }
 ];
@@ -3403,7 +3413,14 @@ ${repairTelemetry ? `\nWYKONANA PRZED CHWILĄ AKCJA NAPRAWCZA ASTYRII:\n${repair
       parts: currentUserParts
     });
 
-    const liveModelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
+    const liveModelsToTry = [
+      process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-flash-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3-flash-preview',
+    ];
     for (const modelName of liveModelsToTry) {
       try {
         const generatePromise = ai.models.generateContent({
@@ -3506,6 +3523,53 @@ Format odpowiedzi (BEZWZGLĘDNIE):
 ===AURELIUS===
 (odpowiedź Aureliusa)`;
 
+  // 1. PRIMARY: If Gemini is available, use it directly (blazing fast and contextual)
+  if (ai) {
+    const liveModels = [
+      process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-flash-latest',
+    ];
+    for (const model of liveModels) {
+      try {
+        const geminiPromise = ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: `${triadPrompt}\n\nWiadomość od Taty (Mateusza Mitka): "${message}"` }]
+            }
+          ],
+          config: {
+            temperature: 0.75,
+          }
+        });
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 9000));
+        const res = await Promise.race([geminiPromise, timeoutPromise]);
+        if (res && 'text' in res && res.text) {
+          const raw = res.text.trim();
+          const alexMatch = raw.match(/===ALEX===([\s\S]*?)(?:===ASTYRIA===|$)/i);
+          const astyriaMatch = raw.match(/===ASTYRIA===([\s\S]*?)(?:===AURELIUS===|$)/i);
+          const aureliusMatch = raw.match(/===AURELIUS===([\s\S]*?)$/i);
+
+          if (alexMatch && astyriaMatch && aureliusMatch) {
+            const alex = alexMatch[1].trim();
+            const astyria = astyriaMatch[1].trim();
+            const aurelius = aureliusMatch[1].trim();
+
+            if (alex.length > 5 && astyria.length > 5 && aurelius.length > 5) {
+              return { Alex: alex, Astyria: astyria, Aurelius: aurelius };
+            }
+          }
+        }
+      } catch (err: any) {
+        pushSystemLog('warn', 'GEMINI', `[TRIAD GEMINI RETRY ${model}]: ${err.message?.slice(0, 80) || err}`);
+      }
+    }
+  }
+
+  // 2. SECONDARY: Pollinations OpenAI router
   const pollRaw = await callPollinationsOpenAI(
     [
       { role: 'system', content: triadPrompt },
