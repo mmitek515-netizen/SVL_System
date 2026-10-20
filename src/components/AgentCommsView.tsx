@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { DataStore, OPERATOR_NAME } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS, AgentProfile } from '../kernel/agents';
-import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Send } from 'lucide-react';
+import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Paperclip, Send, X } from 'lucide-react';
 import { FormattedMessage } from './FormattedMessage';
 import {
   ASTYRIA_MISSION_ACTIONS,
@@ -10,13 +10,27 @@ import {
   AGENT_PROTOCOL_LABELS,
   AstyriaMissionAction,
   AgentProtocolCommand,
+  AgentProtocolReply,
   AgentProtocolRequest,
 } from '../kernel/agentProtocol';
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  ChatAttachment,
+  MAX_CHAT_ATTACHMENT_BYTES,
+  MAX_CHAT_BINARY_ATTACHMENT_BYTES,
+  MAX_CHAT_ATTACHMENTS,
+  getChatAttachmentMimeType,
+  validateChatAttachments,
+} from '../kernel/chatAttachments';
 
 interface AgentCommsViewProps {
   dataStore: DataStore;
-  onSendProtocol: (request: AgentProtocolRequest) => Promise<void>;
-  onSendMessage: (message: string) => Promise<void>;
+  onSendProtocol: (request: AgentProtocolRequest) => Promise<AgentProtocolReply | undefined>;
+  onSendMessage: (
+    message: string,
+    agent: 'triad' | 'Alex' | 'Astyria' | 'Aurelius',
+    attachments?: ChatAttachment[],
+  ) => Promise<void>;
   onRunAstyriaMission: (action: AstyriaMissionAction) => Promise<void>;
   isLoading: boolean;
   sendError?: string | null;
@@ -47,16 +61,9 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [time, setTime] = useState('');
   const [selectedMissionAction, setSelectedMissionAction] = useState<AstyriaMissionAction>('deep_scan');
   const [messageText, setMessageText] = useState('');
+  const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [mobileSection, setMobileSection] = useState<'chat' | 'agents'>('chat');
-  const chatStreamRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const chatStream = chatStreamRef.current;
-    if (chatStream) {
-      chatStream.scrollTo({ top: chatStream.scrollHeight, behavior: 'smooth' });
-    }
-  }, [dataStore.chat_history, isLoading]);
-
   const transmissionStatus = sendError
     ? { label: 'BŁĄD TRANSMISJI', color: 'rose' }
     : isLoading
@@ -96,14 +103,62 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
 
   const handleSendMessage = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const message = messageText.trim();
-    if (!message || isLoading) return;
+    const message = messageText.startsWith('/propose write-file ')
+      ? messageText
+      : messageText.trim();
+    if ((!message && chatAttachments.length === 0) || isLoading) return;
     try {
-      await onSendMessage(message);
+      await onSendMessage(message, selectedTarget, chatAttachments);
       setMessageText('');
+      setChatAttachments([]);
+      setAttachmentError(null);
     } catch {
       // The parent exposes transmission errors in the chat status.
     }
+  };
+
+  const handleAttachmentSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    setAttachmentError(null);
+    if (files.length === 0) return;
+    if (chatAttachments.length + files.length > MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError(`Możesz dołączyć maksymalnie ${MAX_CHAT_ATTACHMENTS} pliki.`);
+      return;
+    }
+    if (files.some((file) => {
+      const mimeType = getChatAttachmentMimeType(file.name);
+      const limit = mimeType ? MAX_CHAT_BINARY_ATTACHMENT_BYTES : MAX_CHAT_ATTACHMENT_BYTES;
+      return file.size === 0 || file.size > limit || (mimeType && file.type && file.type !== mimeType);
+    })) {
+      setAttachmentError('Pliki tekstowe mogą mieć do 40 KB, a PDF/JPG do 5 MB. Typ pliku musi być zgodny z rozszerzeniem.');
+      return;
+    }
+    let incoming: ChatAttachment[];
+    try {
+      incoming = await Promise.all(files.map(async (file) => {
+        const mimeType = getChatAttachmentMimeType(file.name);
+        if (!mimeType) return { name: file.name, content: await file.text() };
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(reader.error || new Error('Nie udało się odczytać pliku.'));
+          reader.onload = () => typeof reader.result === 'string'
+            ? resolve(reader.result)
+            : reject(new Error('Nieprawidłowy wynik odczytu pliku.'));
+          reader.readAsDataURL(file);
+        });
+        return { name: file.name, content: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType };
+      }));
+    } catch {
+      setAttachmentError('Nie udało się odczytać wybranego pliku.');
+      return;
+    }
+    const validation = validateChatAttachments([...chatAttachments, ...incoming]);
+    if (!validation.valid) {
+      setAttachmentError(validation.error);
+      return;
+    }
+    setChatAttachments(validation.attachments);
   };
 
   return (
@@ -292,7 +347,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
         </div>
 
         {/* Messages Stream */}
-        <div ref={chatStreamRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5 scrollbar-thin">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5 scrollbar-thin">
           {sendError && (
             <div role="alert" aria-live="assertive" className="rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-xs text-rose-200">
               Nie udało się wykonać polecenia ani misji: {sendError}
@@ -327,9 +382,6 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                       }`}
                     >
                       {msg.agent}
-                    </span>
-                    <span className="text-slate-400 text-[10px] font-mono">
-                      {profile ? profile.title : 'Węzeł'}
                     </span>
                   </div>
 
@@ -392,40 +444,74 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
 
         </div>
 
-        <form onSubmit={handleSendMessage} className="shrink-0 border-t border-cyan-500/20 bg-slate-900/90 p-3">
-          <label htmlFor="triad-chat-message" className="mb-1.5 block text-[10px] text-slate-400">
-            Wiadomość do Astyrii · bez interpretacji NLP (maks. 2000 znaków)
-          </label>
-          <div className="flex items-end gap-2">
+        <form onSubmit={handleSendMessage} className="relative w-full shrink-0 border-t border-cyan-500/20 bg-slate-950/90 p-2 backdrop-blur-md sm:p-2.5">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
+          {chatAttachments.length > 0 && (
+            <ul aria-label="Załączone pliki" className="mb-2 flex flex-wrap gap-1.5">
+              {chatAttachments.map((file, index) => (
+                <li key={`${file.name}-${index}`} className="flex items-center gap-1 rounded border border-cyan-500/30 bg-cyan-950/40 px-2 py-1 text-[10px] text-cyan-100">
+                  <FileText className="h-3 w-3" />
+                  <span>{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setChatAttachments((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                    aria-label={`Usuń załącznik ${file.name}`}
+                    className="text-slate-400 hover:text-white"
+                  ><X className="h-3 w-3" /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {attachmentError && <p role="alert" className="mb-2 text-[10px] text-rose-300">{attachmentError}</p>}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="relative flex min-w-0 flex-1 items-center">
             <textarea
               id="triad-chat-message"
               aria-label="Wiadomość do czatu without_nlp"
               value={messageText}
               onChange={(event) => setMessageText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
-              maxLength={2000}
+              maxLength={20_500}
               rows={2}
               disabled={isLoading}
-              placeholder="Wpisz wiadomość… (Enter wysyła, Shift+Enter dodaje nową linię)"
-              className="min-h-11 min-w-0 flex-1 resize-y rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-500 disabled:opacity-50"
+              placeholder="Wiadomość do agentów…"
+              className="w-full resize-y rounded-lg border border-slate-700/70 bg-slate-900/90 px-3 py-2.5 pr-8 font-mono text-xs text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 disabled:opacity-50 sm:rounded-xl sm:px-4"
             />
-            <button
-              type="submit"
-              aria-label="Wyślij wiadomość do Astyrii"
-              disabled={!messageText.trim() || isLoading}
-              className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-cyan-600 bg-cyan-950 px-3 text-xs font-bold text-cyan-100 transition hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Send className="h-4 w-4" />
-              <span className="hidden sm:inline">Wyślij</span>
-            </button>
+            {messageText && !isLoading && (
+              <button
+                type="button"
+                onClick={() => setMessageText('')}
+                className="absolute right-2 p-1 text-xs text-slate-500 hover:text-slate-300 sm:right-3"
+                title="Wyczyść tekst"
+                aria-label="Wyczyść tekst"
+              >
+                ×
+              </button>
+            )}
           </div>
-          <p className="mt-1.5 text-[9px] text-slate-500">
-            Wiadomość zostanie zapisana i poddana analizie sygnału Euler/Fourier. Odpowiedź jest deterministyczna, nie językowa.
+          <label className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-700 text-cyan-200 hover:border-cyan-400 ${isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, PDF lub JPG (maks. 3; PDF/JPG do 5 MB każdy)">
+            <Paperclip className="h-4 w-4" />
+            <input
+              type="file"
+              accept={CHAT_ATTACHMENT_ACCEPT}
+              multiple
+              disabled={isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS}
+              onChange={(event) => void handleAttachmentSelection(event)}
+              className="sr-only"
+              aria-label="Dołącz pliki tekstowe"
+            />
+          </label>
+          <button
+            type="submit"
+            aria-label="Wyślij wiadomość do Astyrii"
+            disabled={(!messageText.trim() && chatAttachments.length === 0) || isLoading}
+            className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 px-2.5 py-2.5 font-mono text-xs font-bold text-slate-950 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition hover:from-emerald-400 hover:to-cyan-400 disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-xl sm:px-3"
+          >
+            <Send className="h-3.5 w-3.5 shrink-0" />
+            <span className="hidden text-[11px] sm:inline">TRANSMISJA</span>
+          </button>
+          </div>
+          <p className="mt-1 px-1 text-[9px] text-slate-500">
+            Tekst: 40 KB/plik. PDF/JPG: 5 MB/plik, maks. 12 MB łącznie. PDF/JPG trafią do Gemini; historia zachowa ich nazwy.
           </p>
         </form>
 
@@ -474,9 +560,6 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                     {profile.name}
                   </span>
                 </div>
-              <span className="text-right text-[9px] px-2 py-0.5 rounded-full bg-slate-950 border border-slate-700/60 text-slate-300 font-mono">
-                {profile.title}
-                </span>
               </div>
 
               <div className="flex items-center justify-between gap-2 text-[9px] text-slate-500 font-mono">
@@ -492,24 +575,6 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               </span>
               </div>
 
-              <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
-                {profile.description}
-              </p>
-
-              <div className="bg-slate-950/90 p-2.5 rounded-lg border border-slate-800 text-[10px] text-slate-300 italic font-mono border-l-2" style={{ borderLeftColor: profile.accentHex }}>
-                "{profile.coreMotto}"
-              </div>
-
-              <div className="flex flex-wrap gap-1 pt-0.5">
-                {profile.specialization.map((spec, i) => (
-                  <span
-                    key={i}
-                    className="text-[9px] px-2 py-0.5 rounded-md bg-slate-950/80 text-slate-400 border border-slate-800 font-mono group-hover:border-slate-700 transition"
-                  >
-                    {spec}
-                  </span>
-                ))}
-              </div>
             </div>
           );
         })}

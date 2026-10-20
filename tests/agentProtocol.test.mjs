@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   buildAgentProtocolReplies,
   hasPersistedAgentProtocolTranscript,
+  parseChatProtocolCommand,
   validateAgentProtocolRequest,
 } from '../src/kernel/agentProtocol.ts';
 
@@ -24,6 +25,27 @@ test('validates the explicit command schema and rejects unknown or invalid value
   assert.equal(validateAgentProtocolRequest({ command: 'SIGNAL_ANALYSIS', agent: 'Alex', payload: { signal: 'x'.repeat(257) } }).valid, false);
 });
 
+test('routes chat protocol shortcuts to deterministic commands', () => {
+  assert.deepEqual(parseChatProtocolCommand('SYSTEM_STATUS'), {
+    command: 'SYSTEM_STATUS',
+    agent: 'triad',
+  });
+  assert.deepEqual(parseChatProtocolCommand('/command data_store_audit', 'Astyria'), {
+    command: 'DATA_STORE_AUDIT',
+    agent: 'Astyria',
+  });
+  assert.deepEqual(parseChatProtocolCommand('/agent Aurelius history'), {
+    command: 'VERSION_TIMELINE',
+    agent: 'Aurelius',
+  });
+  assert.deepEqual(parseChatProtocolCommand('/agent Alex SYSTEM_STATUS'), {
+    command: 'SYSTEM_STATUS',
+    agent: 'Alex',
+  });
+  assert.equal(parseChatProtocolCommand('please check SYSTEM_STATUS'), null);
+  assert.equal(parseChatProtocolCommand('SIGNAL_ANALYSIS'), null);
+});
+
 test('builds kernel-backed structured replies for all triad roles', () => {
   const request = validateAgentProtocolRequest({ command: 'SYSTEM_STATUS', agent: 'triad' }).request;
   const result = buildAgentProtocolReplies(request, store);
@@ -31,8 +53,9 @@ test('builds kernel-backed structured replies for all triad roles', () => {
   assert.deepEqual(Object.keys(result.replies), ['Alex', 'Astyria', 'Aurelius']);
   assert.equal(result.data.version, '9.1.0');
   assert.equal(result.data.updateHistoryCount, 1);
-  assert.notEqual(result.replies.Alex.role, result.replies.Astyria.role);
-  assert.notEqual(result.replies.Astyria.summary, result.replies.Aurelius.summary);
+  for (const reply of Object.values(result.replies)) {
+    assert.deepEqual(Object.keys(reply), ['agent', 'command', 'data']);
+  }
 });
 
 test('returns deterministic audit and version timeline data', () => {

@@ -12,26 +12,47 @@ import {
   Github,
   LayoutGrid,
   MessagesSquare,
+  Paperclip,
   Orbit,
   Radio,
   Send,
   Sparkles,
   Terminal,
+  FileText,
+  X,
 } from 'lucide-react';
 import { TabId } from './Navigation';
 import { DataStore } from '../kernel/svlKernel';
+import { AgentProtocolRequest } from '../kernel/agentProtocol';
+import { GeminiVmStatus } from '../kernel/geminiVm';
 import { FormattedMessage } from './FormattedMessage';
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  ChatAttachment,
+  MAX_CHAT_ATTACHMENT_BYTES,
+  MAX_CHAT_BINARY_ATTACHMENT_BYTES,
+  MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_MESSAGE_LENGTH,
+  getChatAttachmentMimeType,
+  validateChatAttachments,
+} from '../kernel/chatAttachments';
 
 interface BastillaDashboardProps {
   dataStore: DataStore;
   onNavigate: (tab: TabId) => void;
-  onSendMessage: (message: string) => Promise<void>;
+  onSendMessage: (
+    message: string,
+    agent: AgentProtocolRequest['agent'],
+    attachments?: ChatAttachment[],
+  ) => Promise<void>;
+  onProvisionGeminiVm: () => Promise<{ status: string; sshCommand: string }>;
 }
 
 interface BastillaStatus {
   systemVersion: string;
   appCount: number | null;
   continuousMission: boolean | null;
+  geminiVm: GeminiVmStatus | null;
   error: string | null;
 }
 
@@ -61,14 +82,23 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
   dataStore,
   onNavigate,
   onSendMessage,
+  onProvisionGeminiVm,
 }) => {
   const [terminalInput, setTerminalInput] = useState('');
+  const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [selectedChatAgent, setSelectedChatAgent] = useState<AgentProtocolRequest['agent']>('triad');
   const [isTerminalLoading, setIsTerminalLoading] = useState(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [vmApprovalPending, setVmApprovalPending] = useState(false);
+  const [vmProvisioning, setVmProvisioning] = useState(false);
+  const [vmProvisionResult, setVmProvisionResult] = useState<{ status: string; sshCommand: string } | null>(null);
+  const [vmProvisionError, setVmProvisionError] = useState<string | null>(null);
   const [status, setStatus] = useState<BastillaStatus>({
     systemVersion: 'SVL Kernel',
     appCount: null,
     continuousMission: null,
+    geminiVm: null,
     error: null,
   });
 
@@ -76,17 +106,18 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
     let active = true;
     const refreshStatus = async () => {
       try {
-        const [infrastructureResponse, missionResponse, appsResponse] = await Promise.all([
+        const [infrastructureResponse, missionResponse, appsResponse, geminiVmResponse] = await Promise.all([
           fetch('/api/infrastructure/status', { cache: 'no-store' }),
           fetch('/api/astyria/mission-status', { cache: 'no-store' }),
           fetch('/api/apps/list', { cache: 'no-store' }),
+          fetch('/api/vm-gemini-4/status', { cache: 'no-store' }),
         ]);
-        const responses = [infrastructureResponse, missionResponse, appsResponse];
+        const responses = [infrastructureResponse, missionResponse, appsResponse, geminiVmResponse];
         const failedResponse = responses.find((response) => !response.ok);
         if (failedResponse) {
           throw new Error(`Status API: HTTP ${failedResponse.status}`);
         }
-        const [infrastructure, mission, apps] = await Promise.all(
+        const [infrastructure, mission, apps, geminiVm] = await Promise.all(
           responses.map((response) => response.json())
         );
         if (!active) return;
@@ -96,6 +127,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
           continuousMission: typeof mission.continuousMissionEnabled === 'boolean'
             ? mission.continuousMissionEnabled
             : null,
+          geminiVm: geminiVm as GeminiVmStatus,
           error: null,
         });
       } catch (error) {
@@ -118,17 +150,88 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
   const handleTerminalSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const command = terminalInput.trim();
-    if (!command || isTerminalLoading) return;
+    if ((!command && chatAttachments.length === 0) || isTerminalLoading) return;
     setIsTerminalLoading(true);
     setTerminalError(null);
     try {
-      await onSendMessage(command);
+      await onSendMessage(command, selectedChatAgent, chatAttachments);
+      const normalizedCommand = command
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('pl-PL');
+      if (
+        /\b(utworz|stworz|zbuduj|przygotuj)\b/.test(normalizedCommand) &&
+        /\b(vm_gemini_4|maszyne wirtualna|maszyny wirtualnej|maszyny wirtualnej|maszyna wirtualna)\b/.test(normalizedCommand)
+      ) {
+        setVmApprovalPending(true);
+        setVmProvisionResult(null);
+        setVmProvisionError(null);
+      }
       setTerminalInput('');
+      setChatAttachments([]);
+      setAttachmentError(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setTerminalError(message);
     } finally {
       setIsTerminalLoading(false);
+    }
+  };
+
+  const handleAttachmentSelection = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    setAttachmentError(null);
+    if (files.length === 0) return;
+    if (chatAttachments.length + files.length > MAX_CHAT_ATTACHMENTS) {
+      setAttachmentError(`Możesz dołączyć maksymalnie ${MAX_CHAT_ATTACHMENTS} pliki.`);
+      return;
+    }
+    if (files.some((file) => {
+      const mimeType = getChatAttachmentMimeType(file.name);
+      const limit = mimeType ? MAX_CHAT_BINARY_ATTACHMENT_BYTES : MAX_CHAT_ATTACHMENT_BYTES;
+      return file.size === 0 || file.size > limit || Boolean(mimeType && file.type && file.type !== mimeType);
+    })) {
+      setAttachmentError('Pliki tekstowe mogą mieć do 40 KB, a PDF/JPG do 5 MB. Typ pliku musi być zgodny z rozszerzeniem.');
+      return;
+    }
+    try {
+      const incoming = await Promise.all(files.map(async (file) => {
+        const mimeType = getChatAttachmentMimeType(file.name);
+        if (!mimeType) return { name: file.name, content: await file.text() };
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(reader.error || new Error('Nie udało się odczytać pliku.'));
+          reader.onload = () => typeof reader.result === 'string'
+            ? resolve(reader.result)
+            : reject(new Error('Nieprawidłowy wynik odczytu pliku.'));
+          reader.readAsDataURL(file);
+        });
+        return { name: file.name, content: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType };
+      }));
+      const validation = validateChatAttachments([...chatAttachments, ...incoming]);
+      if (!validation.valid) {
+        setAttachmentError(validation.error);
+        return;
+      }
+      setChatAttachments(validation.attachments);
+    } catch {
+      setAttachmentError('Nie udało się odczytać wybranego pliku.');
+    }
+  };
+
+  const handleApproveVmCreation = async () => {
+    if (vmProvisioning) return;
+    setVmProvisioning(true);
+    setVmProvisionError(null);
+    try {
+      const result = await onProvisionGeminiVm();
+      setVmProvisionResult(result);
+      setVmApprovalPending(false);
+    } catch (error) {
+      setVmProvisionError(error instanceof Error ? error.message : 'Nie udało się utworzyć VM.');
+    } finally {
+      setVmProvisioning(false);
     }
   };
 
@@ -195,7 +298,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                 <Sparkles className="h-4 w-4 text-cyan-300" /> Polecenia Triady
               </div>
               <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                Wpisz wiadomość w czacie; rdzeń without_nlp zapisze ją i wykona deterministyczną analizę sygnału, bez interpretowania języka naturalnego.
+                Pisz swobodnie do wybranego agenta lub całej Triady. Odpowiedzi generuje Gemini.
               </p>
             </div>
             <button
@@ -206,6 +309,32 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
               <MessagesSquare className="h-4 w-4" />
               Otwórz polecenia protokołu
             </button>
+            <div className="rounded-xl border border-cyan-300/15 bg-cyan-950/20 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-cyan-100">
+                  {status.geminiVm?.name ?? 'VM_Gemini_4'}
+                </span>
+                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-mono ${
+                  status.geminiVm?.configured && status.geminiVm.modelNameValid
+                    ? 'border-emerald-400/20 bg-emerald-950/40 text-emerald-300'
+                    : 'border-amber-400/20 bg-amber-950/40 text-amber-200'
+                }`}>
+                  {status.geminiVm?.configured && status.geminiVm.modelNameValid
+                    ? 'KONFIGURACJA GOTOWA'
+                    : 'BRAK KONFIGURACJI'}
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-400">
+                {status.geminiVm
+                  ? `${status.geminiVm.provider} · główny: ${status.geminiVm.primaryModel} · rezerwowy: ${status.geminiVm.fallbackModels.join(', ') || 'brak'}`
+                  : 'Odczyt konfiguracji…'}
+              </p>
+              <p className="mt-1 text-[9px] text-slate-500">
+                {status.geminiVm?.runtimeType === 'remote-model-profile'
+                  ? 'Profil API modelu; nie jest osobną maszyną systemową.'
+                  : 'Status API modelu nie został jeszcze pobrany.'}
+              </p>
+            </div>
           </section>
         </div>
 
@@ -215,16 +344,16 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
           </p>
         )}
 
-        <div className="grid min-h-[460px] gap-4 xl:grid-cols-2">
+        <div className="grid min-h-[460px] gap-4">
           <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-blue-300/20 bg-[#081326]/95 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
             <div className="flex items-center justify-between border-b border-blue-200/10 px-4 py-3">
               <div className="flex items-center gap-2 text-xs font-bold text-blue-50">
-                <MessagesSquare className="h-4 w-4 text-cyan-300" /> CZAT WITHOUT_NLP
+                <MessagesSquare className="h-4 w-4 text-cyan-300" /> CZAT AGENTÓW
               </div>
               <span className="text-[10px] font-mono text-blue-200/50">{dataStore.chat_history.length} WIADOMOŚCI</span>
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-              {recentMessages.length === 0 && <p className="text-xs text-slate-500">Wpisz wiadomość poniżej. Wynik deterministycznej analizy pojawi się tutaj.</p>}
+              {recentMessages.length === 0 && <p className="text-xs text-slate-500">Napisz do Alexa, Astyrii, Aureliusa lub całej Triady.</p>}
               {recentMessages.map((message, index) => (
                 <article key={`${message.agent}-${index}`} className={`rounded-xl border p-3 ${message.agent === 'Mateusz Mitek' || message.agent === 'Operator' ? 'ml-5 border-blue-300/15 bg-blue-950/40' : 'mr-5 border-cyan-300/15 bg-slate-950/50'}`}>
                   <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
@@ -233,48 +362,112 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   <FormattedMessage content={message.tekst} className="text-xs leading-relaxed text-slate-200" />
                 </article>
               ))}
-            </div>
-          </section>
-
-          <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-blue-300/20 bg-[#060d1a] shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
-            <div className="flex items-center justify-between border-b border-blue-200/10 bg-[#0a1527] px-4 py-3">
-              <div className="flex items-center gap-2 text-xs font-bold text-blue-50">
-                <MessagesSquare className="h-4 w-4 text-cyan-300" /> WIADOMOŚĆ DO ASTYRII
-              </div>
-              <span className="flex items-center gap-1.5 text-[9px] font-mono text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> KERNEL LINK</span>
-            </div>
-            <div className="relative min-h-0 flex-1 overflow-y-auto p-4">
-              <div aria-hidden="true" className="pointer-events-none absolute right-4 top-3 select-none text-right font-mono text-[9px] leading-4 tracking-[0.2em] text-cyan-300/[0.08]">
-                01001000 01011001<br />01010000 01000101<br />01010010 01010011<br />01010000 01000001<br />01000011 01000101
-              </div>
-              <div aria-live="polite" className="relative space-y-3">
-                {recentMessages.slice(-3).map((message, index) => (
-                  <article key={`${message.agent}-${index}`} className={`rounded-lg border p-3 ${message.agent === 'Mateusz Mitek' || message.agent === 'Operator' ? 'border-purple-300/15 bg-purple-950/30' : 'border-cyan-300/15 bg-slate-950/60'}`}>
-                    <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-cyan-200">{message.agent}</div>
-                    <FormattedMessage content={message.tekst} className="whitespace-pre-wrap text-[11px] leading-relaxed text-cyan-100/85" />
-                  </article>
-                ))}
-              </div>
-              {isTerminalLoading && <p role="status" className="mt-3 animate-pulse text-[10px] font-mono text-cyan-300">Analiza deterministyczna without_nlp…</p>}
-              {terminalError && <p role="alert" className="mt-2 text-[10px] text-rose-300">{terminalError}</p>}
+              {isTerminalLoading && <p role="status" className="animate-pulse text-[10px] font-mono text-cyan-300">Agenci przygotowują odpowiedź…</p>}
+              {terminalError && <p role="alert" className="text-[10px] text-rose-300">{terminalError}</p>}
+              {vmApprovalPending && (
+                <section aria-labelledby="vm-approval-title" className="rounded-xl border border-amber-300/40 bg-amber-950/30 p-3">
+                  <h3 id="vm-approval-title" className="text-xs font-bold text-amber-100">
+                    Potwierdź utworzenie VM_Gemini_4
+                  </h3>
+                  <p className="mt-2 text-[10px] leading-relaxed text-amber-100/80">
+                    Ta jednorazowa operacja zbuduje lokalny runtime QEMU z pakietów Debian, pobierze oficjalny obraz Debian 13 Cloud i sprawdzi jego sumę SHA-512, a następnie uruchomi VM: 2 vCPU, 2 GiB RAM i dysk 20 GiB.
+                  </p>
+                  <p className="mt-1 text-[10px] leading-relaxed text-amber-100/80">
+                    Wymaga działającego Dockera i KVM. Dane oraz nowy klucz SSH zostaną zapisane w `bastillaos/vm-gemini-4/data`; SSH będzie dostępne tylko lokalnie na porcie 2224. Klucz API Gemini nie zostanie skopiowany do VM. Nie przyznaje to agentom powłoki ani uprawnień root do hosta.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleApproveVmCreation()}
+                      disabled={vmProvisioning}
+                      className="rounded-lg border border-amber-300/40 bg-amber-500/20 px-3 py-2 text-[10px] font-bold text-amber-100 hover:bg-amber-500/30 disabled:cursor-wait disabled:opacity-50"
+                    >
+                      {vmProvisioning ? 'Budowanie runtime i uruchamianie VM…' : 'Zatwierdzam: utwórz VM'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVmApprovalPending(false)}
+                      disabled={vmProvisioning}
+                      className="rounded-lg border border-slate-500/30 px-3 py-2 text-[10px] text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                  {vmProvisionError && <p role="alert" className="mt-2 text-[10px] text-rose-300">{vmProvisionError}</p>}
+                </section>
+              )}
+              {vmProvisionResult && (
+                <section role="status" className="rounded-xl border border-emerald-300/30 bg-emerald-950/30 p-3">
+                  <h3 className="text-xs font-bold text-emerald-100">VM_Gemini_4: {vmProvisionResult.status}</h3>
+                  <p className="mt-1 text-[10px] text-emerald-100/80">
+                    Po uruchomieniu gościa połączysz się lokalnie poleceniem:
+                  </p>
+                  <code className="mt-2 block overflow-x-auto rounded bg-slate-950 p-2 text-[10px] text-emerald-200">{vmProvisionResult.sshCommand}</code>
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Klucz SSH znajduje się w katalogu danych VM. W razie problemów sprawdź `docker logs vm_gemini_4`.
+                  </p>
+                </section>
+              )}
             </div>
             <form onSubmit={handleTerminalSubmit} className="border-t border-blue-200/10 bg-[#081326] p-3">
               <label htmlFor="hyperspace-command" className="mb-2 block text-[9px] font-mono tracking-wider text-blue-200/50">WIADOMOŚĆ · maksymalnie 2000 znaków</label>
+              {chatAttachments.length > 0 && (
+                <ul aria-label="Załączone pliki" className="mb-2 flex flex-wrap gap-1.5">
+                  {chatAttachments.map((file, index) => (
+                    <li key={`${file.name}-${index}`} className="flex items-center gap-1 rounded border border-cyan-500/30 bg-cyan-950/40 px-2 py-1 text-[10px] text-cyan-100">
+                      <FileText className="h-3 w-3" />
+                      <span>{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setChatAttachments((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                        aria-label={`Usuń załącznik ${file.name}`}
+                        className="text-slate-400 hover:text-white"
+                      ><X className="h-3 w-3" /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {attachmentError && <p role="alert" className="mb-2 text-[10px] text-rose-300">{attachmentError}</p>}
               <div className="flex items-center gap-2 rounded-lg border border-cyan-300/20 bg-[#030813] px-3 focus-within:border-cyan-300/50">
+                <select
+                  aria-label="Agent czatu"
+                  value={selectedChatAgent}
+                  onChange={(event) => setSelectedChatAgent(event.target.value as AgentProtocolRequest['agent'])}
+                  disabled={isTerminalLoading}
+                  className="max-w-24 shrink-0 bg-transparent py-3 text-xs text-cyan-200 outline-none"
+                >
+                  <option value="triad">Triada</option>
+                  <option value="Alex">Alex</option>
+                  <option value="Astyria">Astyria</option>
+                  <option value="Aurelius">Aurelius</option>
+                </select>
                 <input
                   id="hyperspace-command"
                   type="text"
                   value={terminalInput}
                   onChange={(event) => setTerminalInput(event.target.value)}
-                  maxLength={2000}
-                  placeholder="Wpisz wiadomość do Astyrii…"
+                  maxLength={MAX_CHAT_MESSAGE_LENGTH}
+                  placeholder="Wiadomość lub SYSTEM_STATUS / DATA_STORE_AUDIT / VERSION_TIMELINE…"
                   disabled={isTerminalLoading}
                   className="min-w-0 flex-1 bg-transparent py-3 font-mono text-xs text-white outline-none placeholder:text-slate-700"
                 />
-                <button type="submit" aria-label="Wyślij wiadomość" disabled={!terminalInput.trim() || isTerminalLoading} className="grid h-8 w-8 place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 disabled:opacity-30">
+                <label className={`grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 ${isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, PDF lub JPG (maks. 3; PDF/JPG do 5 MB każdy)">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  <input
+                    type="file"
+                    accept={CHAT_ATTACHMENT_ACCEPT}
+                    multiple
+                    disabled={isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS}
+                    onChange={(event) => void handleAttachmentSelection(event)}
+                    className="sr-only"
+                    aria-label="Dołącz pliki tekstowe"
+                  />
+                </label>
+                <button type="submit" aria-label="Wyślij wiadomość" disabled={(!terminalInput.trim() && chatAttachments.length === 0) || isTerminalLoading} className="grid h-8 w-8 place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 disabled:opacity-30">
                   <Send className="h-3.5 w-3.5" />
                 </button>
               </div>
+              <p className="mt-1 px-1 text-[9px] text-slate-500">Tekst: 40 KB/plik. PDF/JPG: 5 MB/plik, maks. 12 MB łącznie. PDF/JPG trafią do Gemini; historia zachowa ich nazwy.</p>
             </form>
           </section>
         </div>

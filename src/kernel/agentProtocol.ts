@@ -42,11 +42,48 @@ export interface AgentProtocolRequest {
   payload?: AgentProtocolPayload;
 }
 
+export function parseChatProtocolCommand(
+  message: string,
+  defaultAgent: AgentProtocolRequest['agent'] = 'triad',
+): AgentProtocolRequest | null {
+  const trimmed = message.trim();
+  let agent = defaultAgent;
+  let commandText = trimmed;
+
+  const targetedCommand = trimmed.match(
+    /^\/agent\s+(triad|Alex|Astyria|Aurelius)\s+(status|audit|history|SYSTEM_STATUS|DATA_STORE_AUDIT|VERSION_TIMELINE)$/i,
+  );
+  if (targetedCommand) {
+    const target = targetedCommand[1].toLowerCase();
+    agent = target === 'triad'
+      ? 'triad'
+      : target === 'alex'
+      ? 'Alex'
+      : target === 'astyria'
+      ? 'Astyria'
+      : 'Aurelius';
+    commandText = targetedCommand[2];
+  } else {
+    const directCommand = trimmed.match(/^(?:\/command\s+)?(SYSTEM_STATUS|DATA_STORE_AUDIT|VERSION_TIMELINE)$/i);
+    if (!directCommand) return null;
+    commandText = directCommand[1];
+  }
+
+  const normalizedCommand = commandText.toUpperCase();
+  const command: AgentProtocolCommand | null = normalizedCommand === 'STATUS' || normalizedCommand === 'SYSTEM_STATUS'
+    ? 'SYSTEM_STATUS'
+    : normalizedCommand === 'AUDIT' || normalizedCommand === 'DATA_STORE_AUDIT'
+    ? 'DATA_STORE_AUDIT'
+    : normalizedCommand === 'HISTORY' || normalizedCommand === 'VERSION_TIMELINE'
+    ? 'VERSION_TIMELINE'
+    : null;
+
+  return command ? { agent, command } : null;
+}
+
 export interface AgentProtocolReply {
   agent: TriadAgentName;
-  role: string;
   command: AgentProtocolCommand;
-  summary: string;
   data: Record<string, unknown>;
 }
 
@@ -77,35 +114,6 @@ export const AGENT_PROTOCOL_LABELS: Record<AgentProtocolCommand, string> = {
   DATA_STORE_AUDIT: 'Kontrola DATA_STORE',
   VERSION_TIMELINE: 'Historia wersji',
   SIGNAL_ANALYSIS: 'Analiza sygnału',
-};
-
-const AGENT_ROLES: Record<TriadAgentName, string> = {
-  Alex: 'infrastruktura i status systemu',
-  Astyria: 'deterministyczna analiza i integralność danych',
-  Aurelius: 'trwałość danych i historia zmian',
-};
-
-const COMMAND_SUMMARIES: Record<AgentProtocolCommand, Record<TriadAgentName, string>> = {
-  SYSTEM_STATUS: {
-    Alex: 'Status infrastruktury odczytany z bieżącego stanu jądra.',
-    Astyria: 'Metryki i konfiguracja jądra przedstawione w postaci strukturalnej.',
-    Aurelius: 'Stan utrwalonego magazynu i liczniki historii odczytane z jądra.',
-  },
-  DATA_STORE_AUDIT: {
-    Alex: 'Struktura magazynu sprawdzona pod kątem wymaganych sekcji.',
-    Astyria: 'Integralność danych oceniona deterministycznie na podstawie struktury.',
-    Aurelius: 'Wynik kontroli utrwalonego DATA_STORE wraz z liczbą wpisów.',
-  },
-  VERSION_TIMELINE: {
-    Alex: 'Bieżąca wersja i rejestr zmian odczytane z jądra.',
-    Astyria: 'Oś wersji uporządkowana według kolejności zapisanej w historii.',
-    Aurelius: 'Chronologia wersji odczytana z trwałej historii aktualizacji.',
-  },
-  SIGNAL_ANALYSIS: {
-    Alex: 'Analiza sygnału wykonana przez deterministyczny silnik without_nlp.',
-    Astyria: 'Wynik transformacji Fouriera i fazora Eulera z silnika without_nlp.',
-    Aurelius: 'Parametry i wynik analizy sygnału zapisane jako dane strukturalne.',
-  },
 };
 
 export function isAgentProtocolCommand(value: unknown): value is AgentProtocolCommand {
@@ -247,9 +255,7 @@ export function buildAgentProtocolReplies(
   for (const agent of agents) {
     replies[agent] = {
       agent,
-      role: AGENT_ROLES[agent],
       command: request.command,
-      summary: COMMAND_SUMMARIES[request.command][agent],
       data,
     };
   }

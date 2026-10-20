@@ -1,0 +1,81 @@
+name: Dependency maintenance
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 8 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependency-maintenance
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Verify compatible dependency updates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Check for an existing maintenance pull request
+        id: pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          count="$(gh pr list --base "$BASE_BRANCH" --state open --json title --jq '[.[] | select(.title == "chore: update compatible dependencies")] | length')"
+          if [ "$count" -gt 0 ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "A dependency maintenance pull request is already open; skipping."
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install locked dependencies
+        if: steps.pending.outputs.found != 'true'
+        run: npm ci
+
+      - name: Update and verify compatible dependencies
+        if: steps.pending.outputs.found != 'true'
+        run: npm run maintenance -- --apply
+
+      - name: Open a review pull request
+        if: steps.pending.outputs.found != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "No compatible dependency changes to publish."
+            exit 0
+          fi
+
+          branch="automation/dependency-maintenance-${RUN_ID}"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- package.json package-lock.json
+          git commit -m "chore: update compatible dependencies" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+          git push origin "$branch"
+
+          gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$branch" \
+            --title "chore: update compatible dependencies" \
+            --body "Automated dependency maintenance. npm audit, tests, TypeScript validation, browser build and server build passed. Review the dependency diff before merging."

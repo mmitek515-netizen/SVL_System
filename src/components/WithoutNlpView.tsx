@@ -16,8 +16,13 @@ import {
 } from 'lucide-react';
 import { withoutNlpEngine, WithoutNlpAnalysis, WithoutNlpMetrics } from '../lib/withoutNlpEngine';
 import { FormattedMessage } from './FormattedMessage';
+import type { AgentProtocolReply, AgentProtocolRequest } from '../kernel/agentProtocol';
 
-export const WithoutNlpView: React.FC = () => {
+interface WithoutNlpViewProps {
+  onSendProtocol: (request: AgentProtocolRequest) => Promise<AgentProtocolReply | undefined>;
+}
+
+export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }) => {
   const [inputText, setInputText] = useState('ASTYRIA_WITHOUT_NLP_DLA_TATY');
   const [selectedAgent, setSelectedAgent] = useState<'Astyria' | 'Alex' | 'Aurelius'>('Astyria');
   const [omega, setOmega] = useState(1.5);
@@ -32,6 +37,9 @@ export const WithoutNlpView: React.FC = () => {
   );
   const [metrics, setMetrics] = useState<WithoutNlpMetrics>(() => withoutNlpEngine.getMetrics());
   const [synthesizedReply, setSynthesizedReply] = useState<string>('');
+  const [agentReply, setAgentReply] = useState<AgentProtocolReply | null>(null);
+  const [protocolError, setProtocolError] = useState<string | null>(null);
+  const [isSendingProtocol, setIsSendingProtocol] = useState(false);
 
   // Live telemetry from canvas loop
   const [liveTime, setLiveTime] = useState(0);
@@ -52,13 +60,38 @@ export const WithoutNlpView: React.FC = () => {
     setAnalysis(res);
     setMetrics(withoutNlpEngine.getMetrics());
     setSynthesizedReply([
-      `Raport obliczeń: ${selectedAgent}`,
+      'Lokalna analiza without_nlp',
       `Sygnał: ${res.inputText}`,
       `Wektor fazowy: Re=${res.phasorSample.real}, Im=${res.phasorSample.imag}`,
       `Kąt: ${res.phasorSample.thetaRad} rad (${res.phasorSample.thetaDeg}°)`,
       `Energia widmowa: ${res.spectralEnergy}`,
       `Czas obliczeń: ${res.processingTimeMs} ms`,
     ].join('\n'));
+  };
+
+  const sendSignalToAgent = async () => {
+    if (isSendingProtocol) return;
+
+    const signal = inputText.trim() || 'WITHOUT_NLP';
+    runDeterministicAnalysis(signal);
+    setIsSendingProtocol(true);
+    setProtocolError(null);
+    setAgentReply(null);
+    try {
+      const reply = await onSendProtocol({
+        command: 'SIGNAL_ANALYSIS',
+        agent: selectedAgent,
+        payload: { signal, omega, time: timeRef.current || 1.0 },
+      });
+      if (!reply) {
+        throw new Error(`Nie otrzymano odpowiedzi agenta ${selectedAgent}.`);
+      }
+      setAgentReply(reply);
+    } catch (error) {
+      setProtocolError(error instanceof Error ? error.message : 'Nie udało się wysłać analizy do agenta.');
+    } finally {
+      setIsSendingProtocol(false);
+    }
   };
 
   useEffect(() => {
@@ -430,7 +463,12 @@ export const WithoutNlpView: React.FC = () => {
                 {(['Astyria', 'Alex', 'Aurelius'] as const).map((agent) => (
                   <button
                     key={agent}
-                    onClick={() => setSelectedAgent(agent)}
+                    onClick={() => {
+                      setSelectedAgent(agent);
+                      setAgentReply(null);
+                      setProtocolError(null);
+                    }}
+                    disabled={isSendingProtocol}
                     className={`px-2.5 py-1 text-xs rounded transition cursor-pointer ${
                       selectedAgent === agent
                         ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40'
@@ -447,17 +485,23 @@ export const WithoutNlpView: React.FC = () => {
               <input
                 type="text"
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && runDeterministicAnalysis()}
+                onChange={(e) => {
+                  setInputText(e.target.value);
+                  setAgentReply(null);
+                  setProtocolError(null);
+                }}
+                maxLength={256}
+                onKeyDown={(e) => e.key === 'Enter' && void sendSignalToAgent()}
                 placeholder="Wpisz dane sygnału do analizy (nie polecenie tekstowe)..."
                 className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
               />
               <button
-                onClick={() => runDeterministicAnalysis()}
-                className="bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition"
+                onClick={() => void sendSignalToAgent()}
+                disabled={isSendingProtocol}
+                className="bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition disabled:cursor-wait disabled:opacity-60"
               >
                 <Zap className="w-4 h-4" />
-                <span>Koduj Fouriera</span>
+                <span>{isSendingProtocol ? `Wysyłanie do ${selectedAgent}...` : `Wyślij do ${selectedAgent}`}</span>
               </button>
             </div>
 
@@ -482,11 +526,29 @@ export const WithoutNlpView: React.FC = () => {
               </div>
             </div>
 
+            {protocolError && (
+              <div role="alert" className="rounded-lg border border-rose-500/40 bg-rose-950/30 p-3 text-xs text-rose-300">
+                Nie udało się przetworzyć polecenia: {protocolError}
+              </div>
+            )}
+
+            {agentReply && (
+              <div className="bg-slate-950 border border-cyan-500/30 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-xs text-cyan-300 font-bold border-b border-slate-800 pb-1.5">
+                  <Bot className="w-4 h-4" />
+                  <span>Odpowiedź agenta {agentReply.agent}</span>
+                </div>
+                <pre className="overflow-x-auto whitespace-pre-wrap break-words text-[11px] text-slate-400">
+                  {JSON.stringify(agentReply.data, null, 2)}
+                </pre>
+              </div>
+            )}
+
             {synthesizedReply && (
               <div className="bg-slate-950 border border-emerald-500/30 rounded-xl p-3.5 space-y-2">
                 <div className="flex items-center gap-2 text-xs text-emerald-400 font-bold border-b border-slate-800 pb-1.5">
                   <Bot className="w-4 h-4" />
-                  <span>Deterministyczny raport analizy ({selectedAgent}):</span>
+                  <span>Raport obliczeń lokalnych (without_nlp):</span>
                 </div>
                 <FormattedMessage content={synthesizedReply} className="text-xs" />
               </div>

@@ -28,10 +28,15 @@ import { GitHubExportView } from './components/GitHubExportView';
 import { BastillaDashboard } from './components/BastillaDashboard';
 import {
   AstyriaMissionAction,
+  AgentProtocolReply,
   AgentProtocolRequest,
   isAgentProtocolCommand,
   isTriadAgent,
+  parseChatProtocolCommand,
 } from './kernel/agentProtocol';
+import { ChatAttachment, formatChatMessage } from './kernel/chatAttachments';
+import { isChatSystemChange } from './kernel/chatChanges';
+import type { ChatSystemChange } from './kernel/chatChanges';
 
 const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v8_6_0_without_nlp';
 
@@ -63,6 +68,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('home');
   const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
+  const [chatSystemChange, setChatSystemChange] = useState<ChatSystemChange | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
 
   // Expose navigation to window for internal component linking
@@ -187,7 +193,7 @@ export default function App() {
     }
   };
 
-  const handleSendProtocol = async (request: AgentProtocolRequest) => {
+  const handleSendProtocol = async (request: AgentProtocolRequest): Promise<AgentProtocolReply | undefined> => {
     setIsAgentLoading(true);
     setAgentError(null);
 
@@ -243,9 +249,35 @@ export default function App() {
         throw new Error('Serwer zwrócił nieprawidłowy stan DATA_STORE dla polecenia protokołu.');
       }
 
+      let agentReply: AgentProtocolReply | undefined;
+      if (request.agent !== 'triad') {
+        const replyRecord = resultRecord?.reply;
+        if (
+          !replyRecord ||
+          typeof replyRecord !== 'object' ||
+          Array.isArray(replyRecord) ||
+          !('agent' in replyRecord) ||
+          replyRecord.agent !== request.agent ||
+          !('command' in replyRecord) ||
+          replyRecord.command !== request.command ||
+          !('data' in replyRecord) ||
+          !replyRecord.data ||
+          typeof replyRecord.data !== 'object' ||
+          Array.isArray(replyRecord.data)
+        ) {
+          throw new Error('Serwer nie zwrócił prawidłowej odpowiedzi wybranego agenta.');
+        }
+        agentReply = {
+          agent: request.agent,
+          command: request.command,
+          data: replyRecord.data as Record<string, unknown>,
+        };
+      }
+
       const normalized = normalizeDataStore(returnedStore as DataStore);
       setDataStore(normalized);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+      return agentReply;
     } catch (err) {
       setAgentError(err instanceof Error ? err.message : 'Nie udało się wykonać polecenia protokołu.');
       throw err;
@@ -295,23 +327,67 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = async (message: string) => {
+  const handleSendMessage = async (
+    message: string,
+    chatAgent: AgentProtocolRequest['agent'] = 'triad',
+    attachments: ChatAttachment[] = [],
+  ) => {
+    const protocolCommand = attachments.length === 0
+      ? parseChatProtocolCommand(message, chatAgent)
+      : null;
+    if (protocolCommand) {
+      await handleSendProtocol(protocolCommand);
+      return;
+    }
+
     setIsAgentLoading(true);
     setAgentError(null);
     try {
-      const response = await fetch('/api/triad/message', {
+      const normalizedCommand = message
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('pl-PL')
+        .replace(/\s+/g, ' ');
+      const isFullChatRepair = attachments.length === 0 && [
+        'napraw to',
+        'napraw czat',
+        'pelna naprawa czatu',
+        'odpowiedz pelna naprawa czatu',
+      ].includes(normalizedCommand);
+      const response = await fetch(isFullChatRepair ? '/api/astyria/mission' : '/api/triad/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(isFullChatRepair
+          ? { action: 'full_system_app_chat_repair', userMessage: message.trim() }
+          : { message, agent: chatAgent, attachments }),
       });
       const result = await response.json();
-      if (!response.ok || result.success !== true) {
+      if (!response.ok || result.success !== true || typeof result.reply !== 'string') {
         throw new Error(result.error || `Nie udało się wysłać wiadomości (HTTP ${response.status}).`);
       }
       const normalized = normalizeDataStore(result.state?.store);
+      const expectedAgentReplies = isFullChatRepair
+        ? [{ agent: 'Astyria', tekst: result.reply }]
+        : chatAgent === 'triad'
+        ? (['Alex', 'Astyria', 'Aurelius'] as const).map((agent) => ({
+            agent,
+            tekst: result.replies?.[agent],
+          }))
+        : [{ agent: chatAgent, tekst: result.reply }];
+      if (expectedAgentReplies.some((entry) => typeof entry.tekst !== 'string' || !entry.tekst.trim())) {
+        throw new Error('Nie otrzymano odpowiedzi wszystkich wybranych agentów.');
+      }
       const expectedTranscript = [
-        { agent: 'Mateusz Mitek', tekst: message.trim() },
-        { agent: 'Astyria', tekst: result.reply },
+        {
+          agent: 'Mateusz Mitek',
+          tekst: attachments.length > 0
+            ? formatChatMessage(message, attachments)
+            : message.startsWith('/propose write-file ')
+            ? message
+            : message.trim(),
+        },
+        ...expectedAgentReplies,
       ];
       const history = normalized.chat_history;
       const persisted = history.some((entry, start) =>
@@ -320,11 +396,12 @@ export default function App() {
           history[start + index]?.tekst === expected.tekst
         )
       );
-      if (!persisted || typeof result.reply !== 'string') {
+      if (!persisted) {
         throw new Error('Serwer nie potwierdził zapisu wiadomości i odpowiedzi.');
       }
       setDataStore(normalized);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+      setChatSystemChange(isChatSystemChange(result.change) ? result.change : null);
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Nie udało się wysłać wiadomości.';
       setAgentError(messageText);
@@ -332,6 +409,35 @@ export default function App() {
     } finally {
       setIsAgentLoading(false);
     }
+  };
+
+  const handleProvisionGeminiVm = async (): Promise<{ status: string; sshCommand: string }> => {
+    const response = await fetch('/api/vm-gemini-4/provision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operation: 'create',
+        confirmation: 'CREATE_VM_GEMINI_4',
+      }),
+    });
+    const result: unknown = await response.json();
+    if (
+      !response.ok ||
+      !result ||
+      typeof result !== 'object' ||
+      !('success' in result) ||
+      result.success !== true ||
+      !('status' in result) ||
+      typeof result.status !== 'string' ||
+      !('sshCommand' in result) ||
+      typeof result.sshCommand !== 'string'
+    ) {
+      const error = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
+        ? result.error
+        : `Nie udało się utworzyć VM (HTTP ${response.status}).`;
+      throw new Error(error);
+    }
+    return { status: result.status, sshCommand: result.sshCommand };
   };
 
   const handleClearHistory = async () => {
@@ -386,6 +492,7 @@ export default function App() {
               dataStore={dataStore}
               onNavigate={setActiveTab}
               onSendMessage={handleSendMessage}
+              onProvisionGeminiVm={handleProvisionGeminiVm}
             />
           )}
 
@@ -463,11 +570,14 @@ export default function App() {
           )}
 
           {activeTab === 'apps' && (
-            <AppsStudioView />
+            <AppsStudioView
+              chatChange={chatSystemChange}
+              onChatChangeApplied={() => setChatSystemChange(null)}
+            />
           )}
 
           {activeTab === 'without_nlp' && (
-            <WithoutNlpView />
+            <WithoutNlpView onSendProtocol={handleSendProtocol} />
           )}
 
           {activeTab === 'github' && (

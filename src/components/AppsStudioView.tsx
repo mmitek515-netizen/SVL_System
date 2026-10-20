@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import type { ChatSystemChange } from '../kernel/chatChanges';
 import {
   LayoutGrid,
   Terminal,
@@ -59,7 +60,15 @@ interface TerminalLog {
   timestamp: string;
 }
 
-export const AppsStudioView: React.FC = () => {
+interface AppsStudioViewProps {
+  chatChange?: ChatSystemChange | null;
+  onChatChangeApplied?: () => void;
+}
+
+export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
+  chatChange,
+  onChatChangeApplied,
+}) => {
   const [apps, setApps] = useState<AppItem[]>([]);
   const [totalApps, setTotalApps] = useState(0);
   const [storageUsed, setStorageUsed] = useState('0 KB');
@@ -106,11 +115,13 @@ export const AppsStudioView: React.FC = () => {
   const [previewViewport, setPreviewViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [previewIframeKey, setPreviewIframeKey] = useState(Date.now());
   const [notificationMsg, setNotificationMsg] = useState<string | null>(null);
+  const fileRequestIdRef = useRef(0);
+  const preferredFileNameRef = useRef<string | null>(null);
 
   // Fetch applications list
   const fetchApps = async () => {
     try {
-      const res = await fetch('/api/apps/list');
+      const res = await fetch('/api/apps/list', { cache: 'no-store' });
       if (!res.ok) {
         throw new Error(`Nie można pobrać listy aplikacji (HTTP ${res.status}).`);
       }
@@ -138,30 +149,68 @@ export const AppsStudioView: React.FC = () => {
   }, []);
 
   // Fetch files when selected app changes
-  const fetchAppFiles = async (appId: string) => {
+  const fetchAppFiles = async (appId: string, preferredFileName?: string) => {
     if (!appId) return;
+    const requestId = ++fileRequestIdRef.current;
     try {
-      const res = await fetch(`/api/apps/${appId}/files`);
-      if (res.ok) {
-        const data = await res.json();
-        const files: AppFile[] = data.files || [];
-        setAppFiles(files);
-        if (files.length > 0) {
-          const entry = files.find(f => f.name === 'index.html' || f.name === 'main.py' || f.name === 'server.js') || files[0];
-          setActiveFileName(entry.name);
-          setFileContent(entry.content || '');
-        }
+      const res = await fetch(`/api/apps/${encodeURIComponent(appId)}/files`, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error(`Nie można pobrać plików aplikacji (HTTP ${res.status}).`);
       }
-    } catch (e) {
-      console.warn('Failed to fetch app files:', e);
+      const data = await res.json();
+      if (requestId !== fileRequestIdRef.current) return;
+      const files: AppFile[] = data.files || [];
+      setAppFiles(files);
+      if (files.length > 0) {
+        const entry = (preferredFileName && files.find((file) => file.name === preferredFileName))
+          || files.find(f => f.name === 'index.html' || f.name === 'main.py' || f.name === 'server.js')
+          || files[0];
+        setActiveFileName(entry.name);
+        setFileContent(entry.content || '');
+      } else {
+        setFileContent('');
+      }
+    } catch (error) {
+      if (requestId === fileRequestIdRef.current) {
+        console.warn('Failed to fetch app files:', error);
+      }
     }
   };
 
   useEffect(() => {
     if (selectedAppId) {
-      fetchAppFiles(selectedAppId);
+      const preferredFileName = preferredFileNameRef.current || undefined;
+      preferredFileNameRef.current = null;
+      fetchAppFiles(selectedAppId, preferredFileName);
     }
   }, [selectedAppId]);
+
+  useEffect(() => {
+    if (!chatChange) return;
+
+    setSelectedAppId(chatChange.appId);
+    void fetchApps();
+    if (chatChange.type === 'app-launched') {
+      setActiveSubTab('preview');
+      setPreviewIframeKey(Date.now());
+      showNotification(`Zsynchronizowano uruchomioną aplikację ${chatChange.appId} z czatu.`);
+    } else {
+      setActiveSubTab('code');
+      setPreviewIframeKey(Date.now());
+      const preferredFileName = chatChange.type === 'app-file-updated' ? chatChange.filename : undefined;
+      preferredFileNameRef.current = preferredFileName ?? null;
+      if (selectedAppId === chatChange.appId) {
+        preferredFileNameRef.current = null;
+        void fetchAppFiles(chatChange.appId, preferredFileName);
+      }
+      showNotification(
+        chatChange.type === 'app-created'
+          ? `Aplikacja ${chatChange.appId} z czatu jest gotowa do podglądu i edycji.`
+          : `Zsynchronizowano plik ${chatChange.filename} z aplikacji ${chatChange.appId}.`,
+      );
+    }
+    onChatChangeApplied?.();
+  }, [chatChange]);
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -852,6 +901,8 @@ export const AppsStudioView: React.FC = () => {
                   {[
                     { label: 'create-app <id>', cmd: 'create-app quantum-scanner html5-web' },
                     { label: 'create-game <id>', cmd: 'create-app space-invaders cyber-game' },
+                    { label: 'create-db <id>', cmd: 'create-db alex-project-data' },
+                    { label: 'list-db', cmd: 'list-db' },
                     { label: 'list-apps', cmd: 'list' },
                     { label: 'build <app>', cmd: `build ${selectedAppId}` },
                     { label: 'run <app>', cmd: `run ${selectedAppId}` },

@@ -54,8 +54,6 @@ for required in \
   usr/lib/systemd/system/bastillaos-system.service \
   usr/share/bastillaos/system-defaults/svl_kernel.py \
   usr/share/bastillaos/system-defaults/apps/matrix-telemetry/app.json \
-  usr/share/bastillaos/system-defaults/bastillaos/windows-update-agent/BastillaWindowsUpdateAgent.ps1 \
-  usr/share/bastillaos/system-defaults/src/components/WindowsUpdateView.tsx \
   usr/share/bastillaos/system-defaults/src/App.tsx \
   usr/share/bastillaos/system-defaults/bastillaos/system-package/build-package.sh \
   usr/share/bastillaos/system-defaults/server.ts \
@@ -69,6 +67,7 @@ for required in \
 done
 
 DEFAULTS="$ROOT/usr/share/bastillaos/system-defaults"
+! find "$DEFAULTS" \( -path '*/windows-update-agent/*' -o -name 'WindowsUpdateView.tsx' -o -name 'BastillaWindowsUpdateAgent.ps1' \) | grep -q .
 ! find "$DEFAULTS" \( -type d \( -name .git -o -name node_modules -o -name dist -o -name build \) \
   -o -type f \( -name '.env*' -o -name '.github_credentials.json' -o -name 'svl_datastore.json' \) \) | grep -q .
 grep -q '^exports/svl_datastore.json$' "$DEFAULTS/.gitignore"
@@ -158,13 +157,15 @@ node -e "
   const status = await statusResponse.json();
   if (
     !statusResponse.ok ||
-    status.enabled !== false ||
-    status.provider !== 'disabled' ||
+    typeof status.enabled !== 'boolean' ||
+    status.provider !== (status.enabled ? 'Google Gemini API' : 'disabled') ||
+    status.connection !== (status.enabled ? 'configured' : 'disabled') ||
     status.protocol !== '/api/triad/command' ||
+    status.chatProtocol !== '/api/triad/message' ||
     'apiKey' in status ||
     'model' in status
   ) {
-    throw new Error('text model status is not explicitly disabled');
+    throw new Error('text model status does not accurately report Gemini chat configuration');
   }
 
   for (const route of ['/api/kernel/agent', '/api/terminal/generate-script']) {

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { DataStore, OPERATOR_NAME, SYS_VERSION, generateTextReport, generatePythonMonolith } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS } from '../kernel/agents';
-import type { AgentProtocolCommand, AgentProtocolRequest } from '../kernel/agentProtocol';
+import type { AgentProtocolCommand, AgentProtocolReply, AgentProtocolRequest } from '../kernel/agentProtocol';
 import {
   Play,
   CornerDownLeft,
@@ -26,7 +26,7 @@ import {
 interface TerminalViewProps {
   dataStore: DataStore;
   onUpdateDataStore: (updater: (prev: DataStore) => DataStore) => void;
-  onSendProtocol: (request: AgentProtocolRequest) => Promise<void>;
+  onSendProtocol: (request: AgentProtocolRequest) => Promise<AgentProtocolReply | undefined>;
   onExecutePythonCommand?: (command: string) => Promise<{ output: string; state?: any }>;
 }
 
@@ -519,14 +519,7 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
       }
 
       case 'agents': {
-        let msg = 'AKTYWNE PROCESY AGENTÓW SVL:\n';
-        for (const [key, profile] of Object.entries(SYSTEM_AGENTS)) {
-          if (key === 'Operator') continue;
-          msg += `\n[${profile.name}] - ${profile.title}\n`;
-          msg += `  Dewiza: "${profile.coreMotto}"\n`;
-          msg += `  Specjalizacje: ${profile.specialization.join(', ')}\n`;
-        }
-        addLog(msg, 'system');
+        addLog('AGENTY SVL: Alex, Astyria, Aurelius', 'system');
         break;
       }
 

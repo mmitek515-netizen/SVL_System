@@ -1,5 +1,6 @@
 {
-  "name": "react-example",
+  "name": "svl-system",
+  "description": "Local SVL system panel with structured agent commands and OpenRouter chat.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,6 +8,8 @@
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
     "maintenance": "node scripts/maintenance.mjs",
+    "check:gemini": "node scripts/check-gemini.mjs",
+    "test": "node --test tests/*.test.mjs",
     "build": "vite build",
     "build:server": "mkdir -p bastillaos/build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --target=node20 --outfile=bastillaos/build/server.mjs",
     "preview": "vite preview",
@@ -14,6 +17,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^2.30.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
     "@tailwindcss/vite": "^4.3.3",
