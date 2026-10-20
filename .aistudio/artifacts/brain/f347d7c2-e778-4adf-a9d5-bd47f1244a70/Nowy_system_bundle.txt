@@ -1,0 +1,30 @@
+--- BUNDLE START: Nowy_system ---
+
+FILE: /Nowy_system/config.json
+---
+{
+  "project_name": "Nowy_system",
+  "version": "1.0.0",
+  "description": "Zoptymalizowany system operacyjny SVL Kernel.",
+  "status": "ready_for_import"
+}
+---
+
+FILE: /Nowy_system/engine.py
+---
+import time
+from datetime import datetime
+
+class NowySystemEngine:
+    def __init__(self):
+        self.version = "1.0.0"
+        self.status = "ACTIVE"
+        
+    def run(self):
+        print(f"[{datetime.now()}] System Nowy_system uruchomiony.")
+        
+if __name__ == "__main__":
+    engine = NowySystemEngine()
+    engine.run()
+---
+--- BUNDLE END ---

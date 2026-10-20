@@ -1,0 +1,16 @@
+{
+  "id": "test-agent",
+  "name": "TEST AGENT",
+  "type": "quantum-agent",
+  "version": "1.0.0",
+  "author": "Astyria & Operator",
+  "description": "Aplikacja typu quantum-agent utworzona w Studio Aplikacji przez terminal.",
+  "entry": "agent.js",
+  "status": "ready",
+  "created_at": "2026-10-17T22:26:04.542Z",
+  "files": [
+    "app.json",
+    "README.md",
+    "agent.js"
+  ]
+}

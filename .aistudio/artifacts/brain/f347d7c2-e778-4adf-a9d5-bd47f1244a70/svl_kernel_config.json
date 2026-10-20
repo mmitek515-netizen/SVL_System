@@ -1,0 +1,16 @@
+{
+  "name": "SVL Kernel OS - Studio Monolith",
+  "version": "6.7.0",
+  "description": "System operacyjny SVL Kernel zaprojektowany dla Mateusza Mitka. Zawiera jądro Python samomodyfikujące, architekturę agentów Triady (Alex, Astyria, Aurelius), silnik dialogowy Ring-0 oraz narzędzia wizualizacji 3D i danych.",
+  "infrastructure": {
+    "commander": "Alex",
+    "engine": "Python-Monolith",
+    "dialogue": "Gemini-API-Technical-Mode"
+  },
+  "capabilities": [
+    "LOG_BASED_AUTO_REPAIR",
+    "RING_0_PRIVILEGES",
+    "3D_RENDERING_ENGINE",
+    "DYNAMIC_SCRIPT_GENERATOR"
+  ]
+}

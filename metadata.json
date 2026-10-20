@@ -1,0 +1,6 @@
+{
+  "name": "SVL Kernel OS - Studio Monolith",
+  "description": "System operacyjny SVL Kernel v8.5.1-Desktop-Ready dla Google AI Studio z samomodyfikującym się jądrem, agentami Alex, Astyria i Aurelius oraz stacją roboczą operatora Mateusza Mitka.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
