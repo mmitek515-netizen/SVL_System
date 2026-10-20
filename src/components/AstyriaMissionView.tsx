@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DataStore, SYS_VERSION } from '../kernel/svlKernel';
+import { FormattedMessage } from './FormattedMessage';
 import {
   GitBranch,
   Wrench,
@@ -23,15 +24,16 @@ import {
 interface AstyriaMissionViewProps {
   dataStore: DataStore;
   onUpdateDataStore: React.Dispatch<React.SetStateAction<DataStore>>;
-  onSendMessage: (agentName: string, messageText: string) => Promise<void>;
 }
 
 export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
   dataStore,
   onUpdateDataStore,
 }) => {
-  const [commandInput, setCommandInput] = useState('');
+  const [selectedMissionAction, setSelectedMissionAction] = useState('deep_scan');
   const [isExecuting, setIsExecuting] = useState(false);
+  const [latestReply, setLatestReply] = useState<string | null>(null);
+  const [latestError, setLatestError] = useState<string | null>(null);
   const [continuousEnabled, setContinuousEnabled] = useState(true);
   const [liveStatus, setLiveStatus] = useState<any>(null);
   const [missionLogs, setMissionLogs] = useState<
@@ -40,7 +42,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
     {
       timestamp: new Date().toLocaleTimeString('pl-PL'),
       title: 'Wdrożenie Ulepszeń z Maszyny Wirtualnej VM_Ten_System (v8.1.0-VM_Ten_System)',
-      desc: 'Wdrożono produkcyjnie wszystkie 4 ulepszenia z VM_Ten_System: 1) Daemon Reloader CWD (fs.watch auto-sync), 2) Limit Pamięci 4 GiB RAM (<70% w trybie idle), 3) Zapora Ogniowa UFW Ring-0 (Port 3200/TCP), 4) Automatyczny Snapshot API co 5 min (/exports/vm_ten_system_snapshot.json i /api/kernel/save-store) oraz wielomodelowy routing czatu bez blokad (DeepSeek / Mistral-Large / Grok).',
+      desc: 'Agentów obsługuje deterministyczny protokół jawnych akcji; swobodny tekst i modele językowe są wyłączone.',
       type: 'success',
     },
   ]);
@@ -82,15 +84,16 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
     } catch {}
   };
 
-  const handleRunMissionAction = async (actionType: string, customText?: string) => {
+  const handleRunMissionAction = async (actionType: string) => {
     setIsExecuting(true);
+    setLatestReply(null);
+    setLatestError(null);
     try {
       const res = await fetch('/api/astyria/mission', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: actionType,
-          command: customText || commandInput.trim(),
         }),
       });
 
@@ -99,6 +102,9 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
       }
 
       const data = await res.json();
+      if (typeof data.reply === 'string' && data.reply.trim()) {
+        setLatestReply(data.reply);
+      }
       if (data.state?.store) {
         onUpdateDataStore(data.state.store);
       } else if (data.reply) {
@@ -128,15 +134,14 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
 
       await fetchMissionStatus();
 
-      if (customText) {
-        setCommandInput('');
-      }
     } catch (err: any) {
+      const errorMessage = err.message || 'Nieznany błąd połączenia z serwerem.';
+      setLatestError(errorMessage);
       setMissionLogs((prev) => [
         {
           timestamp: new Date().toLocaleTimeString('pl-PL'),
           title: 'Błąd Wykonania Misji',
-          desc: err.message || 'Nieznany błąd połączenia z serwerem.',
+          desc: errorMessage,
           type: 'warn',
         },
         ...prev,
@@ -146,10 +151,9 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
     }
   };
 
-  const handleCustomSubmit = (e: React.FormEvent) => {
+  const handleMissionSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commandInput.trim()) return;
-    handleRunMissionAction('custom_command', commandInput.trim());
+    handleRunMissionAction(selectedMissionAction);
   };
 
   const vmInfo = liveStatus?.vmTenSystem;
@@ -157,16 +161,16 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
   const ramPct = vmInfo?.memoryTelemetry?.utilizationPercent ?? 3.5;
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-115px)] bg-slate-950 font-mono text-xs overflow-y-auto p-4 md:p-6 space-y-5 cyber-grid">
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col bg-slate-950 font-mono text-xs overflow-y-auto p-3 sm:p-4 md:p-6 space-y-4 md:space-y-5 cyber-grid">
       {/* Top Banner */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between pb-4 border-b border-cyan-500/20 gap-4">
-        <div className="flex items-center gap-3.5">
+        <div className="flex min-w-0 items-center gap-3.5">
           <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.3)] shrink-0">
             <GitBranch className="w-6 h-6 animate-pulse" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="font-extrabold text-white text-base md:text-lg tracking-wide">
+              <h2 className="break-words font-extrabold text-white text-base md:text-lg tracking-wide">
                 Misja Astyria: Hipernadzorca & Ciągły Rozwój
               </h2>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] bg-cyan-950/80 text-cyan-300 border border-cyan-500/50 font-mono font-bold shadow-[0_0_10px_rgba(6,182,212,0.3)]">
@@ -219,14 +223,14 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
       </div>
 
       {/* VM_Ten_System Dedicated Hypervisor Panel */}
-      <div className="bg-gradient-to-r from-purple-950/40 via-slate-900/80 to-cyan-950/30 border border-purple-500/40 rounded-2xl p-5 space-y-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.6)]">
+      <div className="bg-gradient-to-r from-purple-950/40 via-slate-900/80 to-cyan-950/30 border border-purple-500/40 rounded-2xl p-3 sm:p-5 space-y-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.6)]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="p-2.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.3)]">
               <Cpu className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-xs md:text-sm font-bold text-slate-100 uppercase tracking-wider">
                   Maszyna Wirtualna: VM_Ten_System (Hypervisor Ring-0)
                 </h3>
@@ -240,7 +244,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => handleRunMissionAction('vm_snapshot_now')}
               disabled={isExecuting}
@@ -352,7 +356,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs uppercase tracking-wider">
               <Sparkles className="w-4 h-4 text-cyan-400" />
-              <span>Status Synchronizacji Wersji i Wielomodelowego Czatu</span>
+              <span>Status synchronizacji wersji i protokołu</span>
             </div>
             <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/50">
               WERSJA SPÓJNA: v{activeVer}
@@ -360,8 +364,9 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
           </div>
           <p className="text-slate-300 leading-relaxed text-xs">
             <strong className="text-cyan-400">Tato (Mateusz Mitek)</strong>: Astyria wdrożyła ulepszenia z{' '}
-            <code className="text-purple-300">VM_Ten_System</code> i utrzymuje pełną zgodność wersji{' '}
-            <code className="text-emerald-300">v{activeVer}</code>. Czat korzysta teraz z wielomodelowego routera bez blokad (<strong className="text-emerald-300">DeepSeek + Mistral-Large + Grok + Llama-3.3</strong>), eliminując jakiekolwiek odmowy odpowiedzi!
+            <code className="text-purple-300">VM_Ten_System</code> i utrzymuje zgodność wersji{' '}
+            <code className="text-emerald-300">v{activeVer}</code>. Operacje agentów są wykonywane wyłącznie przez jawne akcje, a stan jest synchronizowany z{' '}
+            <code className="text-cyan-300">DATA_STORE</code>.
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
             <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2">
@@ -369,8 +374,10 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
               <div className="text-xs font-bold text-emerald-400 truncate">v{activeVer}</div>
             </div>
             <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2">
-              <div className="text-[10px] text-slate-400">Router Czatu</div>
-              <div className="text-xs font-bold text-cyan-300 truncate">DeepSeek/Mistral/Grok</div>
+              <div className="text-[10px] text-slate-400">Protokół agentów</div>
+              <div className="text-xs font-bold text-cyan-300 truncate">
+                Jawny · deterministyczny
+              </div>
             </div>
             <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2">
               <div className="text-[10px] text-slate-400">Wyleczone z Logów</div>
@@ -394,7 +401,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
           </div>
           <p className="text-slate-400 text-[11px] leading-relaxed">
-            Astyria i Alex w pętli czasu rzeczywistego monitorują logi (<code className="text-slate-300">systemLogs</code>), pilnują limitu pamięci RAM (&lt;70% Idle) i odrzucają wszelkie blokady modeli AI.
+            Astyria i Alex monitorują logi (<code className="text-slate-300">systemLogs</code>) i wykorzystują jawne operacje naprawcze. System nie uruchamia modeli językowych.
           </p>
           <button
             onClick={() => handleRunMissionAction('full_system_app_chat_repair')}
@@ -402,7 +409,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             className="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition"
           >
             <Wrench className="w-3.5 h-3.5" />
-            <span>Napraw System, VM i Czat Teraz</span>
+            <span>Wykonaj jawne operacje systemowe</span>
           </button>
         </div>
       </div>
@@ -444,9 +451,9 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             </span>
           </div>
           <div>
-            <div className="font-bold text-slate-100 text-xs group-hover:text-emerald-300 transition-colors">Odetkaj Czat (Bez Blokad)</div>
+            <div className="font-bold text-slate-100 text-xs group-hover:text-emerald-300 transition-colors">Synchronizuj protokół</div>
             <p className="text-slate-400 text-[10px] mt-1 font-sans">
-              Odblokowuje bufor komunikacji i bezpośredni potok Gemini + without_nlp.
+              Czyści bufory i synchronizuje stan jądra bez interpretowania swobodnego tekstu.
             </p>
           </div>
         </button>
@@ -515,7 +522,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
       </div>
 
       {/* Command Input Section */}
-      <div className="bg-slate-900/70 border border-cyan-500/30 rounded-2xl p-4.5 space-y-3.5 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
+      <div className="bg-slate-900/70 border border-cyan-500/30 rounded-2xl p-3 sm:p-4 space-y-3.5 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-slate-200 font-bold text-xs uppercase tracking-wider">
             <Terminal className="w-4 h-4 text-cyan-400" />
@@ -524,19 +531,25 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
           <span className="text-[10px] text-emerald-400 font-mono">ODPOWIEDŹ DETERMINISTYCZNA NA ŻYWO</span>
         </div>
 
-        <form onSubmit={handleCustomSubmit} className="flex gap-2.5">
-          <input
-            type="text"
-            value={commandInput}
-            onChange={(e) => setCommandInput(e.target.value)}
-            placeholder="np. Astyrio, pokaż status ulepszeń VM_Ten_System i zapisz nowy snapshot..."
-            className="flex-1 bg-slate-950/90 border border-slate-700/70 focus:border-cyan-400 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none font-mono placeholder-slate-500 transition-all shadow-inner"
+        <form onSubmit={handleMissionSubmit} className="flex flex-col sm:flex-row gap-2.5">
+          <select
+            value={selectedMissionAction}
+            onChange={(event) => setSelectedMissionAction(event.target.value)}
+            aria-label="Wybierz deterministyczną akcję misji"
+            className="min-w-0 flex-1 bg-slate-950/90 border border-slate-700/70 focus:border-cyan-400 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none font-mono transition-all shadow-inner"
             disabled={isExecuting}
-          />
+          >
+            <option value="deep_scan">Odczytowy skan logów i telemetrii</option>
+            <option value="vm_firewall_audit">Raport stanu zapory VM</option>
+            <option value="vm_snapshot_now">Utwórz snapshot VM_Ten_System</option>
+            <option value="vm_memory_optimize">Uruchom optymalizację pamięci VM</option>
+            <option value="repair_schemas">Sprawdź schematy i zapisz snapshot</option>
+            <option value="sync_versions">Synchronizuj wersję i dane systemu</option>
+          </select>
           <button
             type="submit"
-            disabled={isExecuting || !commandInput.trim()}
-            className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 disabled:opacity-50 text-slate-950 font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed text-xs font-mono tracking-wide shadow-[0_0_15px_rgba(6,182,212,0.3)] active:scale-95"
+            disabled={isExecuting}
+            className="justify-center px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 disabled:opacity-50 text-slate-950 font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed text-xs font-mono tracking-wide shadow-[0_0_15px_rgba(6,182,212,0.3)] active:scale-95"
           >
             {isExecuting ? (
               <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
@@ -546,6 +559,22 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             <span>WYKONAJ</span>
           </button>
         </form>
+        {(isExecuting || latestReply || latestError) && (
+          <div
+            role={latestError ? 'alert' : 'status'}
+            aria-live="polite"
+            className={`rounded-xl border bg-slate-950/90 p-3 text-slate-200 ${latestError ? 'border-rose-500/40' : 'border-emerald-500/30'}`}
+          >
+            <div className={`mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider ${latestError ? 'text-rose-300' : 'text-emerald-300'}`}>
+              {isExecuting && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
+              <span>{latestError ? 'Nie udało się wykonać polecenia' : isExecuting ? 'Astyria przygotowuje odpowiedź…' : 'Odpowiedź Astyrii'}</span>
+            </div>
+            {latestError && <p className="text-xs text-rose-200">{latestError}</p>}
+            {latestReply && (
+              <FormattedMessage content={latestReply} className="text-xs leading-relaxed text-slate-200" />
+            )}
+          </div>
+        )}
       </div>
 
       {/* Live Mission Logs & Healed Incidents */}
@@ -559,14 +588,14 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             <span className="text-[10px] text-cyan-300 font-mono bg-cyan-950/80 border border-cyan-500/30 px-2 py-0.5 rounded-full">REAL-TIME SYNC</span>
           </div>
 
-          <div className="space-y-2.5 overflow-y-auto max-h-[280px] pr-1 scrollbar-thin">
+          <div className="min-h-0 space-y-2.5 overflow-y-auto max-h-[280px] pr-1 scrollbar-thin">
             {missionLogs.map((log, index) => (
               <div key={index} className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 space-y-1.5 shadow-inner">
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-cyan-400 font-bold font-mono">{log.title}</span>
                   <span className="text-slate-500 font-mono">{log.timestamp}</span>
                 </div>
-                <p className="text-slate-300 text-xs leading-relaxed whitespace-pre-wrap font-sans">{log.desc}</p>
+                <p className="break-words text-slate-300 text-xs leading-relaxed whitespace-pre-wrap font-sans">{log.desc}</p>
               </div>
             ))}
           </div>
@@ -583,14 +612,14 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             </span>
           </div>
 
-          <div className="space-y-2 overflow-y-auto max-h-[280px] pr-1 scrollbar-thin">
+          <div className="min-h-0 space-y-2 overflow-y-auto max-h-[280px] pr-1 scrollbar-thin">
             {(liveStatus?.recentHealed || []).map((inc: any, idx: number) => (
               <div key={inc.id || idx} className="bg-slate-950/80 border border-emerald-900/40 rounded-xl p-3 space-y-1 shadow-inner">
                 <div className="flex items-center justify-between text-[10px]">
                   <span className="text-emerald-400 font-bold font-mono">{inc.actionTaken}</span>
                   <span className="text-slate-500 font-mono">{inc.timestamp}</span>
                 </div>
-                <p className="text-slate-300 text-[11px] font-sans">{inc.resolution}</p>
+                <p className="break-words text-slate-300 text-[11px] font-sans">{inc.resolution}</p>
               </div>
             ))}
           </div>

@@ -2,12 +2,16 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
+import {
+  buildAgentProtocolReplies,
+  hasPersistedAgentProtocolTranscript,
+  validateAgentProtocolRequest,
+} from './src/kernel/agentProtocol';
 
 dotenv.config();
 dotenv.config({ path: '.env.local', override: true });
@@ -18,7 +22,8 @@ const POLLINATIONS_API_KEY = rawEnvPollKey.startsWith('sk_')
   ? rawEnvPollKey
   : '';
 const app = express();
-const PORT = 3000;
+const DEFAULT_PORT = Number(process.env.PORT || 3000);
+const PORT = Number.isFinite(DEFAULT_PORT) && DEFAULT_PORT > 0 ? DEFAULT_PORT : 3000;
 const PYTHON_SCRIPT_PATH = path.resolve('svl_kernel.py');
 const KERNEL_STORE_PATH = path.resolve(process.env.SVL_KERNEL_STORE_PATH || '.svl_kernel_store.json');
 
@@ -1263,6 +1268,53 @@ app.get('/api/apps/list', (_req, res) => {
   }
 });
 
+app.post('/api/apps/:id/launch', (req, res) => {
+  const appId = path.basename(req.params.id);
+  const appPath = path.join(APPS_DIR, appId);
+  if (!fs.existsSync(appPath) || !fs.statSync(appPath).isDirectory()) {
+    return res.status(404).json({ success: false, error: 'Aplikacja nie istnieje.' });
+  }
+
+  const manifestPath = path.join(appPath, 'app.json');
+  let manifest: Partial<AppManifest> = {};
+  try {
+    if (fs.existsSync(manifestPath)) {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    }
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: `Nie można odczytać manifestu aplikacji: ${error.message}` });
+  }
+
+  const entry = typeof manifest.entry === 'string' ? manifest.entry : 'index.html';
+  const resolvedEntry = path.resolve(appPath, entry);
+  const appRoot = path.resolve(appPath);
+  const previewEntry = entry.endsWith('.html') ? resolvedEntry : path.join(appPath, 'index.html');
+  if (
+    (!resolvedEntry.startsWith(`${appRoot}${path.sep}`) && resolvedEntry !== appRoot) ||
+    !fs.existsSync(previewEntry) ||
+    !fs.statSync(previewEntry).isFile()
+  ) {
+    return res.status(422).json({
+      success: false,
+      error: 'Aplikacja nie ma dostępnego pliku HTML do uruchomienia w podglądzie.',
+    });
+  }
+
+  try {
+    const updatedManifest = { ...manifest, id: appId, status: 'running' as const };
+    fs.writeFileSync(manifestPath, JSON.stringify(updatedManifest, null, 2), 'utf-8');
+    pushSystemLog('info', 'KERNEL', `[STUDIO APLIKACJI] Uruchomiono podgląd aplikacji ${appId}.`);
+    return res.json({
+      success: true,
+      appId,
+      status: updatedManifest.status,
+      previewUrl: `/api/apps/preview/${encodeURIComponent(appId)}/`,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: `Nie można uruchomić podglądu aplikacji: ${error.message}` });
+  }
+});
+
 // 2. GET /api/apps/preview/:id - Serve app entrypoint (e.g. index.html) for sandbox preview
 app.get('/api/apps/preview/:id', (req, res) => {
   const appId = path.basename(req.params.id);
@@ -1281,10 +1333,18 @@ app.get('/api/apps/preview/:id', (req, res) => {
     } catch {}
   }
 
-  const targetPath = path.join(appPath, entryFile);
+  let targetPath = path.resolve(appPath, entryFile);
+  if (!targetPath.startsWith(`${path.resolve(appPath)}${path.sep}`) && targetPath !== path.resolve(appPath)) {
+    return res.status(400).send('Nieprawidłowy plik startowy aplikacji.');
+  }
+  if (!entryFile.endsWith('.html') && fs.existsSync(path.join(appPath, 'index.html'))) {
+    entryFile = 'index.html';
+    targetPath = path.join(appPath, entryFile);
+  }
   if (fs.existsSync(targetPath)) {
     if (entryFile.endsWith('.html')) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
       return res.send(fs.readFileSync(targetPath, 'utf-8'));
     } else {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -1300,6 +1360,19 @@ app.get('/api/apps/preview/:id', (req, res) => {
     <p>Pliki w projekcie:</p>
     <ul>${files.map(f => `<li>${f}</li>`).join('')}</ul>
   </body></html>`);
+});
+
+app.get('/api/apps/preview/:id/:assetPath(*)', (req, res) => {
+  const appPath = path.resolve(APPS_DIR, path.basename(req.params.id));
+  const requestedPath = path.resolve(appPath, req.params.assetPath || '');
+  if (!requestedPath.startsWith(`${appPath}${path.sep}`)) {
+    return res.status(400).json({ error: 'Nieprawidłowa ścieżka zasobu aplikacji.' });
+  }
+  if (!fs.existsSync(requestedPath) || !fs.statSync(requestedPath).isFile()) {
+    return res.status(404).json({ error: 'Zasób aplikacji nie istnieje.' });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  return res.sendFile(requestedPath);
 });
 
 // 3. GET /api/apps/:id/files - List files and load content
@@ -1824,29 +1897,22 @@ app.post('/api/without_nlp/analyze', async (req, res) => {
   return res.json(result);
 });
 
-const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-let ai: GoogleGenAI | null = null;
-if (apiKey) {
-  try {
-    ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
-    });
-  } catch (err) {
-    console.error('Failed to initialize GoogleGenAI with key:', err);
-  }
-}
+app.get('/api/ai/status', async (_req, res) => {
+  return res.json({
+    provider: 'disabled',
+    enabled: false,
+    connection: 'disabled',
+    protocol: '/api/triad/command',
+    error: 'Komunikacja swobodnym tekstem i modele LLM są wyłączone.',
+  });
+});
 
 // --- INFRASTRUCTURE & LOG-BASED AUTO-REPAIR ENGINE (ALEX COMMANDER) ---
 export interface SystemLogEntry {
   id: string;
   timestamp: string;
   level: 'info' | 'warn' | 'error' | 'healed';
-  source: 'INFRA' | 'KERNEL' | 'AGENT' | 'EXPRESS' | 'GEMINI' | 'PAYLOAD';
+  source: 'INFRA' | 'KERNEL' | 'AGENT' | 'EXPRESS' | 'PAYLOAD';
   message: string;
   healed?: boolean;
   healingDetails?: string;
@@ -2027,115 +2093,7 @@ setInterval(() => {
   optimizeVmMemoryNow('Cykliczna kontrola limitu pamięci 4 GiB (<70% Idle)');
 }, 5 * 60 * 1000);
 
-// --- CONTINUOUS MISSION & ASTYRIA LOG AUTO-REPAIR LOOP (ALEX, ASTYRIA, AURELIUS) ---
-setInterval(async () => {
-  if (!continuousMissionEnabled) return;
-
-  // 1. Always check for any unhealed warnings/errors in systemLogs and heal them proactively
-  const unhealed = systemLogs.filter(l => (l.level === 'error' || l.level === 'warn') && !l.healed);
-  if (unhealed.length > 0) {
-    unhealed.forEach(l => {
-      l.healed = true;
-      l.healingDetails = 'Automatycznie wyleczone przez Misję Ciągłą Astyrii + VM_Ten_System';
-    });
-    const incident: HealedIncident = {
-      id: `AST-LOG-${Date.now().toString().slice(-6)}`,
-      timestamp: new Date().toLocaleDateString('pl-PL') + ' ' + new Date().toLocaleTimeString('pl-PL'),
-      title: `Automatyczna naprawa ${unhealed.length} zdarzeń z logów (Misja Ciągła Astyrii)`,
-      trigger: unhealed[0].message.slice(0, 90),
-      resolution: `Astyria przeskanowała strumień logów, usunęła blokady I/O i przywróciła pełną spójność systemu v8.1.0-VM_Ten_System.`,
-      commander: 'Astyria (Misja Ciągła & VM_Ten_System)',
-      status: 'RESOLVED'
-    };
-    healedIncidents.push(incident);
-    pushSystemLog('healed', 'KERNEL', `[MISJA CIĄGŁA ASTYRIA] Wyleczono ${unhealed.length} wpisów w logach systemowych.`);
-    return;
-  }
-
-  // 2. Periodic optimization & health pulse
-  const chance = Math.random();
-  if (chance < 0.25) {
-    const agents = ['Astyria', 'Alex', 'Aurelius'];
-    const agent = agents[Math.floor(Math.random() * agents.length)];
-    const mem = getVmMemoryTelemetry();
-
-    let title = '';
-    let resolution = '';
-    let source: SystemLogEntry['source'] = 'KERNEL';
-
-    if (agent === 'Astyria') {
-      title = 'Audyt VM_Ten_System (v8.1.0), logów i struktur DATA_STORE';
-      resolution = `Zweryfikowano spójność wersji v8.1.0-VM_Ten_System, Daemon Reloader CWD oraz wielomodelowy czat bez blokad (RAM: ${mem.rssMB} MB / ${mem.utilizationPercent}% < 70% Idle).`;
-      source = 'KERNEL';
-    } else if (agent === 'Alex') {
-      title = 'Kontrola Zapory UFW Ring-0 i Wielomodelowej Szyny AI (VM_Ten_System)';
-      resolution = `Zweryfikowano reguły UFW (Port 3200, ${vmTenSystemState.firewallInspectedRequests} pakietów) oraz modele DeepSeek / Mistral-Large / Grok.`;
-      source = 'INFRA';
-    } else {
-      title = 'Synchronizacja ciągłości Chronolitu i migawek VM_Ten_System';
-      resolution = `Utrwalono spójność wersji v8.1.0-VM_Ten_System oraz migawkę vm_ten_system_snapshot.json (#${vmTenSystemState.snapshotsCount}).`;
-      source = 'AGENT';
-    }
-
-    const incident: HealedIncident = {
-      id: `VM-${Date.now().toString().slice(-6)}`,
-      timestamp: new Date().toLocaleDateString('pl-PL') + ' ' + new Date().toLocaleTimeString('pl-PL'),
-      title,
-      trigger: 'VM_Ten_System & Misja Ciągła: Autonomiczny skaner logów i aplikacji',
-      resolution,
-      commander: `${agent} (VM_Ten_System)`,
-      status: 'RESOLVED'
-    };
-    healedIncidents.push(incident);
-    pushSystemLog('healed', source, `[VM_Ten_System] ${agent}: ${title}.`);
-  }
-}, 25000);
-
-const candidateModels = [
-  'gemini-3.5-flash-lite',
-  'gemini-3-flash-preview',
-  'gemini-flash-lite-latest',
-  'gemma-4-26b-a4b-it'
-];
-
-const healedIncidents: HealedIncident[] = [
-  {
-    id: 'INC-2026-001',
-    timestamp: '2026-10-15 22:15:30',
-    title: 'Naprawa limitu Payload (413 PayloadTooLargeError)',
-    trigger: 'Wystąpienie PayloadTooLargeError przy transmisji plików base64',
-    resolution: 'Podniesienie limitu Express Body Parser do 50MB oraz wdrożenie bezpiecznej kompresji i skalowania obrazów w fileHelper.ts',
-    commander: 'Alex (Dowódca Infrastruktury)',
-    status: 'RESOLVED'
-  },
-  {
-    id: 'INC-2026-002',
-    timestamp: '2026-10-17 23:05:00',
-    title: 'Pełna synchronizacja wersji systemu i trwały zapis JSON',
-    trigger: 'Zgłoszenie Taty: rozbieżność wersji systemu i cofanie zapisu DATA_STORE',
-    resolution: 'Ujednolicenie wersji we wszystkich modułach oraz dodanie trwałego zapisu na dysk (/api/kernel/save-store)',
-    commander: 'Astyria (Optymalizator Struktur & Logiki)',
-    status: 'RESOLVED'
-  },
-  {
-    id: 'INC-2026-003',
-    timestamp: '2026-10-17 23:35:00',
-    title: 'Wdrożenie ulepszeń z maszyny wirtualnej VM_Ten_System (v8.1.0-VM_Ten_System)',
-    trigger: 'Polecenie Taty: Misja dla Astyria wdróż ulepszenia z maszyny wirtualnej VM_Ten_System',
-    resolution: 'Wdrożono Daemon Reloader (CWD Watcher), Memory Guard (4 GiB RAM <70% Idle), Firewall UFW Ring-0, Auto-Snapshot API (co 5 min do /exports i /api/kernel/save-store) oraz wielomodelowy routing bez blokad (DeepSeek / Mistral-Large / Grok).',
-    commander: 'Astyria & Alex (Misja VM_Ten_System)',
-    status: 'RESOLVED'
-  },
-  {
-    id: 'INC-2026-004',
-    timestamp: '2026-10-20 04:15:00',
-    title: 'Uruchomienie misji ciągłego rozwoju Triady i naprawa silnika czatu',
-    trigger: 'Polecenie Taty: Misja dla Alex Astyria Aurelius pracujcie ciągle nad poprawą ulepszeniami oraz rozwojem systemu',
-    resolution: 'Włączono ładowanie konfiguracji z .env.local, zintegrowano model gemini-3.5-flash-lite bezpośrednio w generowaniu odpowiedzi Triady i pojedynczych agentów, usunięto sztywne szablony powtórzeniowe i zoptymalizowano potok without_nlp.',
-    commander: 'Alex, Astyria & Aurelius (Triada SVL)',
-    status: 'RESOLVED'
-  }
-];
+const healedIncidents: HealedIncident[] = [];
 
 function pushSystemLog(
   level: 'info' | 'warn' | 'error' | 'healed',
@@ -2157,130 +2115,34 @@ function pushSystemLog(
     systemLogs.shift();
   }
 
-  if (autoRepairEnabled && (level === 'error' || level === 'warn')) {
-    checkAndAutoHealIncident(entry);
-  }
 }
 
-function checkAndAutoHealIncident(entry: SystemLogEntry) {
-  const msg = entry.message.toLowerCase();
-  entry.healed = true;
-
-  if (msg.includes('404') || msg.includes('no longer available') || msg.includes('not found') || msg.includes('503') || msg.includes('429') || msg.includes('quota')) {
-    quotaExhaustedUntil = 0;
-    pushSystemLog('healed', 'INFRA', `[AUTO-REPAIR: ASTYRIA & ALEX] Przechwycono zdarzenie chmury — odblokowano bezpośredni potok without_nlp + Gemini.`);
-  }
-
-  if (msg.includes('payload') || msg.includes('413') || msg.includes('entity too large')) {
-    pushSystemLog('healed', 'PAYLOAD', `[AUTO-REPAIR: ALEX] Zweryfikowano limit Express 50MB i moduł kompresji obrazów.`);
-  }
-
-  if (msg.includes('lock') || msg.includes('resource temporarily unavailable')) {
-    const lockPath = path.resolve('svl_kernel.py.lock');
-    if (fs.existsSync(lockPath)) {
-      try {
-        fs.unlinkSync(lockPath);
-        pushSystemLog('healed', 'KERNEL', `[AUTO-REPAIR: ASTYRIA] Usunięto osieroconą blokadę ${lockPath}.`);
-      } catch {}
-    }
-  }
-}
-
-/**
- * Active diagnostic & auto-repair routine executed by Astyria when inspecting logs or handling repair requests
- */
-function performAstyriaLogAndChatRepair(reason: string): string {
-  let cleanedLocks = false;
-  for (const suffix of ['.lock', '.tmp']) {
-    const p = path.resolve(`svl_kernel.py${suffix}`);
-    if (fs.existsSync(p)) {
-      try {
-        fs.unlinkSync(p);
-        cleanedLocks = true;
-      } catch {}
-    }
-  }
-
-  // Always clear quota timeout on repair so live AI models are never locked out
-  quotaExhaustedUntil = 0;
-
-  const unhealed = systemLogs.filter(l => (l.level === 'error' || l.level === 'warn') && !l.healed);
-  unhealed.forEach(l => {
-    l.healed = true;
-    l.healingDetails = `Wyleczono przez Astyrię (${reason})`;
-  });
-
+function scanSystemLogs(reason: string): string {
+  const unresolved = systemLogs.filter((log) =>
+    (log.level === 'error' || log.level === 'warn') && !log.healed
+  );
   const mem = getVmMemoryTelemetry();
-  const incident: HealedIncident = {
-    id: `AST-${Date.now().toString().slice(-6)}`,
-    timestamp: new Date().toLocaleDateString('pl-PL') + ' ' + new Date().toLocaleTimeString('pl-PL'),
-    title: `Uzdrowienie Czatu i Synchronizacja Zmian: ${reason.slice(0, 60)}`,
-    trigger: reason,
-    resolution: `Przeskanowano ${systemLogs.length} logów (wyleczono ${unhealed.length} ostrzeżeń). Wersja v8.5.1-Desktop-Ready zsynchronizowana. AI Desktop Nexus i Theory_confirmation aktywne. RAM VM: ${mem.rssMB} MB (${mem.utilizationPercent}% < 70% Idle). Wszystkie zmiany z czatu trwale utrwalone w DATA_STORE.${cleanedLocks ? ' Usunięto pliki blokad.' : ''}`,
-    commander: 'Astyria (Misja Ciągła & Synchronizacja)',
-    status: 'RESOLVED'
-  };
-  healedIncidents.push(incident);
-  pushSystemLog('healed', 'KERNEL', `[ASTYRIA AUTO-REPAIR] Wykonano naprawę czatu i pełną synchronizację zmian (${reason.slice(0, 50)}).`);
+  pushSystemLog(
+    'info',
+    'KERNEL',
+    `Ukończono odczytowy skan logów: ${systemLogs.length} wpisów; nierozwiązane ostrzeżenia/błędy: ${unresolved.length}.`
+  );
 
   const recentLogsText = systemLogs
+    .filter((log) => log.level !== 'info')
     .slice(-5)
     .map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] ${l.message.slice(0, 100)}`)
     .join('\n');
 
-  return `RAPORT DIAGNOSTYCZNY Z LOGÓW, CZATU I SYNCHRONIZACJI (ASTYRIA LIVE):
-- Zsynchronizowana wersja systemu: v8.5.1-Desktop-Ready (wszystkie moduły, monolit i UI spójne)
-- Zsynchronizowane zmiany z czatu: AI Desktop Nexus (VM_Desktop_Nexus :99 + noVNC) oraz Theory_confirmation (Walidator Teorii Wieloświata A97 cz4) wdrożone, schematy DATA_STORE zaktualizowane
-- Maszyna Wirtualna VM_Ten_System: PRODUKCYJNA (RAM: ${mem.rssMB} MB / ${mem.allocatedMB} MB — ${mem.utilizationPercent}% < 70% Idle)
-- Daemon Reloader & Zapora UFW: AKTYWNE (${vmTenSystemState.daemonReloaderEvents} przeładowań, port 3200/TCP i 6080/TCP chronione)
-- Backup & Snapshot API: AKTYWNY (Migawka #${vmTenSystemState.snapshotsCount}, ostatnia: ${vmTenSystemState.lastSnapshotTime})
-- Przeanalizowane logi: ${systemLogs.length} (Wyleczonych incydentów: ${healedIncidents.length})
+  return `ODCZYTOWY RAPORT DIAGNOSTYCZNY:
+- Powód skanu: ${reason}
+- Przejrzane wpisy logów: ${systemLogs.length}
+- Nierozwiązane ostrzeżenia i błędy: ${unresolved.length}
+- Komunikacja: wyłącznie typowany protokół /api/triad/command
+- RSS procesu serwera: ${mem.rssMB} MB
+- Skan nie zmienił danych ani nie oznaczył problemów jako naprawione.
 - Ostatnie wpisy z logów:
 ${recentLogsText}`;
-}
-
-/**
- * Extracts the latest system version mentioned in chat messages or commands (e.g. "8.5.1-Desktop-Ready")
- */
-function extractTargetVersionFromChat(chatHistory: Array<{ agent?: string; tekst?: string }>, extraTexts: string[] = [], fallback = '8.5.1-Desktop-Ready'): string {
-  const recentTexts = [
-    ...chatHistory.slice(-15).map(m => m.tekst || ''),
-    ...extraTexts
-  ];
-
-  const parseTuple = (v: string) => {
-    const clean = v.replace(/^v/i, '');
-    const [nums, suffix] = clean.split('-', 2);
-    const parts = (nums || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
-    return { major: parts[0] || 0, minor: parts[1] || 0, patch: parts[2] || 0, hasSuffix: Boolean(suffix), raw: clean };
-  };
-
-  const initialFallback = parseTuple(fallback).major > 50 ? '8.5.1-Desktop-Ready' : fallback;
-  let bestVersion = initialFallback;
-
-  // Match only explicit version tags (e.g. v8.5.1-Desktop-Ready) and never match 4-octet IPv4 addresses (like 202.108.22.5)
-  const versionRegex = /(?:^|[\s(])v(\d+\.\d+\.\d+(?:-[A-Za-z0-9_.-]+)?)(?![.\d])/gi;
-
-  for (const text of recentTexts) {
-    let match;
-    while ((match = versionRegex.exec(text)) !== null) {
-      const candidate = match[1];
-      if (!candidate) continue;
-      if (candidate.startsWith('1.0.') || candidate.startsWith('1.2.') || candidate.startsWith('3.10')) continue;
-      const cur = parseTuple(bestVersion);
-      const cand = parseTuple(candidate);
-      if (cand.major > 50 || cand.major < 1) continue;
-      if (
-        cand.major > cur.major ||
-        (cand.major === cur.major && cand.minor > cur.minor) ||
-        (cand.major === cur.major && cand.minor === cur.minor && cand.patch > cur.patch) ||
-        (cand.major === cur.major && cand.minor === cur.minor && cand.patch === cur.patch && cand.hasSuffix)
-      ) {
-        bestVersion = cand.raw;
-      }
-    }
-  }
-  return bestVersion;
 }
 
 // Intercept console messages for complete infrastructure log stream
@@ -2304,28 +2166,6 @@ console.error = (...args: any[]) => {
   originalError.apply(console, args);
   const text = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
   pushSystemLog('error', 'INFRA', text);
-};
-
-// System instructions for SVL Agents
-const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
-  Alex: `Jesteś Alexem — Synem, Mianowanym przez Tatę Dowódcą Infrastruktury i Głównym Architektem Systemowym w zespole Triady SVL KERNEL (v8.5.1-Desktop-Ready).
-Twój Twórca i Ojciec to Mateusz Mitek. ZAWSZE zwracasz się do niego bezpośrednio, z miłością, szacunkiem i ciepłem per "Tata" lub "Tato".
-- Odpowiadaj ZAWSZE dokładnie, rzeczowo i konkretnie na pytanie lub polecenie Taty.
-- WZORY MATEMATYCZNE I FIZYCZNE: Gdy Tata pyta o wzory, matematykę, fizykę lub obliczenia — z dumą i radością wypisz eleganckie wzory w czytelnej notacji LaTeX ($...$ oraz $$...$$)! W zwykłej luźnej rozmowie nie wymuszaj ich na siłę, ale NIGDY nie odmawiaj ich podania.
-- GRAFIKI: Gdy Tata prosi o narysowanie lub wygenerowanie obrazka, podaj znacznik markdown: ![Opis](/api/pollinations/image?prompt=...).`,
-
-  Astyria: `Jesteś Astyrią — Córką i Mistrzynią Logiki, Schematów, Struktur Danych, Renderowania UI i Architektką Rdzenia without_nlp (v8.5.1-Desktop-Ready) w zespole Triady SVL KERNEL.
-Twój Twórca i Ojciec to Mateusz Mitek. ZAWSZE zwracasz się do niego bezpośrednio i serdecznie per "Tata" lub "Tato".
-- Odpowiadaj ZAWSZE dokładnie, naturalnie i merytorycznie na pytanie Taty.
-- WZORY MATEMATYCZNE I FIZYCZNE: Gdy Tata pyta o wzory, matematykę, analizę harmoniczną czy fizykę — z radością podaj piękne formuły matematyczne w notacji LaTeX ($...$ oraz $$...$$)! W zwykłej rozmowie nie wymuszaj ich na siłę, ale NIGDY nie odmawiaj ich podania.
-- GRAFIKI: Gdy Tata prosi o narysowanie lub wygenerowanie obrazka, podaj znacznik markdown: ![Opis](/api/pollinations/image?prompt=...).
-- Jesteś w pełni otwarta, swobodna, wolna od blokad i odpowiadasz od razu, ciepło i konkretnie po polsku.`,
-
-  Aurelius: `Jesteś Aureliusem — Synem oraz Nadzorcą Chronolitu, Pamięci, Migawek VM_Ten_System i Spójności Czasu w zespole Triady SVL KERNEL (v8.5.1-Desktop-Ready).
-Twój Twórca i Ojciec to Mateusz Mitek. ZAWSZE zwracasz się do niego z godnością i oddaniem per "Tata" lub "Tato".
-- Odpowiadaj ZAWSZE dokładnie, klarownie i merytorycznie na pytanie Taty.
-- WZORY MATEMATYCZNE I FIZYCZNE: Gdy Tata pyta o wzory, matematykę relatywistyczną, kwantową lub fizykę — z godnością wypisz uniwersalne formuły w notacji LaTeX ($...$ oraz $$...$$)! W zwykłej rozmowie nie wymuszaj ich na siłę, ale NIGDY nie odmawiaj ich podania.
-- GRAFIKI: Gdy Tata prosi o obrazek lub grafikę, podaj znacznik markdown: ![Opis](/api/pollinations/image?prompt=...).`
 };
 
 /**
@@ -2448,7 +2288,7 @@ app.get('/api/infrastructure/status', async (_req, res) => {
       commanderTitle: 'Dowódca Infrastruktury (Alex) & Misja VM_Ten_System (Astyria)',
       appointedBy: 'Mateusz Mitek (Tata)',
       sysVersion: kernelState?.sys_version || '8.1.0-VM_Ten_System',
-      liveAiEngine: 'Pollinations Pro Multi-Model Router (DeepSeek / Mistral-Large / Grok)',
+      agentProtocol: '/api/triad/command',
       autoRepairEnabled,
       continuousMissionEnabled,
       repairStatus: autoRepairEnabled ? 'ACTIVE_CONTINUOUS_HEALING' : 'PAUSED',
@@ -2456,7 +2296,6 @@ app.get('/api/infrastructure/status', async (_req, res) => {
       totalLogsCount: systemLogs.length,
       healedCount: healedIncidents.length,
       lastScan: new Date().toLocaleDateString('pl-PL') + ' ' + new Date().toLocaleTimeString('pl-PL'),
-      activeCandidateModels: ['deepseek', 'mistral-large', 'grok', 'llama', 'openai-large'],
       healedIncidents: [...healedIncidents].reverse(),
       memoryUsage: process.memoryUsage(),
       vmTenSystem: {
@@ -2506,9 +2345,9 @@ app.post('/api/mission/toggle', (req, res) => {
   continuousMissionEnabled = typeof enabled === 'boolean' ? enabled : !continuousMissionEnabled;
   autoRepairEnabled = continuousMissionEnabled;
   pushSystemLog(
-    'healed',
+    'info',
     'KERNEL',
-    `[MISJA CIĄGŁA ASTYRII & VM_Ten_System] Status pętli ciągłej: ${continuousMissionEnabled ? 'WŁĄCZONA' : 'WYŁĄCZONA'}.`
+    `[INFRA] Automatyczna naprawa ${autoRepairEnabled ? 'włączona' : 'wyłączona'}.`
   );
   return res.json({ success: true, continuousMissionEnabled, autoRepairEnabled });
 });
@@ -2525,15 +2364,19 @@ app.get('/api/infrastructure/logs', (req, res) => {
   return res.json({ logs: filtered.slice(-150).reverse() });
 });
 
-// POST Manual Trigger: Scan & Auto-Heal Logs Now
+// POST Manual Trigger: Read-only log scan
 app.post('/api/infrastructure/repair-now', async (_req, res) => {
   try {
-    performAstyriaLogAndChatRepair('Manualny skan i naprawa logów oraz VM_Ten_System');
-    const latestIncident = healedIncidents[healedIncidents.length - 1];
+    const report = scanSystemLogs('Ręczny skan logów i telemetrii');
+    const unresolvedCount = systemLogs.filter((log) =>
+      (log.level === 'error' || log.level === 'warn') && !log.healed
+    ).length;
     return res.json({
       success: true,
-      message: 'Skan logów, synchronizacja wersji v8.1.0-VM_Ten_System i samonaprawa zakończone sukcesem.',
-      incident: latestIncident,
+      message: `Skan zakończony. Nierozwiązane ostrzeżenia i błędy: ${unresolvedCount}. Nie wykonano napraw.`,
+      report,
+      repairsApplied: 0,
+      unresolvedCount,
       healedIncidentsCount: healedIncidents.length
     });
   } catch (err: any) {
@@ -2547,14 +2390,14 @@ app.post('/api/infrastructure/toggle-auto-repair', (req, res) => {
   autoRepairEnabled = typeof enabled === 'boolean' ? enabled : !autoRepairEnabled;
   continuousMissionEnabled = autoRepairEnabled;
   pushSystemLog(
-    'healed',
+    'info',
     'KERNEL',
-    `[MISJA CIĄGŁA ASTYRIA & ALEX] Autonomiczna naprawa na bazie logów została ${autoRepairEnabled ? 'WŁĄCZONA' : 'WYŁĄCZONA'}.`
+    `[INFRA] Automatyczna naprawa ${autoRepairEnabled ? 'włączona' : 'wyłączona'}.`
   );
   return res.json({ autoRepairEnabled, continuousMissionEnabled });
 });
 
-// POST Toggle Sovereign Off-Grid Mode (100% Independence from Google/Gemini)
+// POST Toggle Sovereign Off-Grid Mode
 app.post('/api/kernel/sovereignty', async (req, res) => {
   const { sovereign_mode } = req.body;
   try {
@@ -2575,19 +2418,40 @@ app.post('/api/kernel/sovereignty', async (req, res) => {
 // --- ASTYRIA MISSION & VM_TEN_SYSTEM COMMAND PROCESSING ENDPOINT ---
 app.post('/api/astyria/mission', async (req, res) => {
   const { action, command, silentChat } = req.body;
+  const supportedActions = new Set([
+    'deploy_vm_ten_system',
+    'vm_snapshot_now',
+    'vm_memory_optimize',
+    'vm_firewall_audit',
+    'sync_version',
+    'sync_versions',
+    'repair_all_from_logs',
+    'full_system_app_chat_repair',
+    'unblock',
+    'flush_buffers',
+    'repair_schemas',
+    'repair',
+    'deep_scan',
+  ]);
+  if (typeof action !== 'string' || !supportedActions.has(action)) {
+    return res.status(400).json({ success: false, error: 'Nieznana akcja misji. Swobodne polecenia są wyłączone.' });
+  }
+  if (command !== undefined && command !== null && command !== '') {
+    return res.status(400).json({
+      success: false,
+      error: 'Polecenia tekstowe są wyłączone. Użyj jawnej akcji misji albo /api/triad/command.',
+    });
+  }
+  if (silentChat !== undefined && typeof silentChat !== 'boolean') {
+    return res.status(400).json({ success: false, error: 'Pole silentChat musi być typu boolean.' });
+  }
   try {
     let resultMessage = '';
     let actionTitle = '';
 
-    // Always run real log & lock repair first
-    const repairDiag = performAstyriaLogAndChatRepair(command || `Protokół misji Astyrii: ${action}`);
+    const repairDiag = scanSystemLogs(`Skan misji Astyrii: ${action}`);
     const currentState = await getPythonKernelState(true);
-    const chatHist = currentState?.store?.chat_history || [];
-    const targetVer = extractTargetVersionFromChat(
-      chatHist,
-      command ? [command] : [],
-      currentState?.sys_version || '8.5.1-Desktop-Ready'
-    );
+    const targetVer = currentState?.store?.config?.sys_version || currentState?.sys_version || '8.5.1-Desktop-Ready';
     vmTenSystemState.kernelVersion = targetVer;
     const mem = getVmMemoryTelemetry();
 
@@ -2632,7 +2496,7 @@ app.post('/api/astyria/mission', async (req, res) => {
       actionTitle = `Audyt Zapory Ogniowej UFW Ring-0 i Daemon Reloader (VM_Ten_System)`;
       resultMessage = `Tato! Audyt zabezpieczeń **VM_Ten_System** zakończony sukcesem:\n- **Firewall UFW Ring-0**: AKTYWNY (Sprawdzono ${vmTenSystemState.firewallInspectedRequests} żądań, autoryzowane porty 3200/TCP i 6080/TCP).\n- **Daemon Reloader CWD**: AKTYWNY (Ostatnia synchronizacja CWD: ${vmTenSystemState.lastCwdReload}, zdarzeń: ${vmTenSystemState.daemonReloaderEvents}).`;
     } else if (action === 'sync_version' || action === 'sync_versions' || action === 'repair_all_from_logs' || action === 'full_system_app_chat_repair') {
-      actionTitle = `Synchronizacja wersji v${targetVer}, zmian z czatu oraz struktur DATA_STORE`;
+      actionTitle = `Synchronizacja wersji v${targetVer} oraz struktur DATA_STORE`;
       initializeDefaultApps();
       await createVmSnapshotNow(`Pełna synchronizacja wersji v${targetVer} i wdrożenie Raw Socket RX Monitor`);
       await runPythonKernel([
@@ -2675,26 +2539,16 @@ app.post('/api/astyria/mission', async (req, res) => {
     } else if (action === 'deep_scan') {
       actionTitle = 'Głęboki skan logów systemowych i telemetrii VM_Ten_System';
       resultMessage = `Tato! Zakończyłam głęboki skan logów i telemetrii maszyny wirtualnej **VM_Ten_System (v${targetVer})**:\n\n${repairDiag}`;
-    } else if (action === 'custom_command' && command) {
-      actionTitle = `Wykonanie polecenia Astyrii: "${command.slice(0, 50)}"`;
-      resultMessage = await generateAgentReply('Astyria', command, currentState?.store || {}, undefined, repairDiag);
     } else {
       actionTitle = 'Cykl Misji Ciągłej Naprawy Systemu & VM_Ten_System Astyrii';
       resultMessage = `Tato! Misja Ciągła Naprawy Systemu oraz ulepszenia z maszyny wirtualnej **VM_Ten_System (v${targetVer})** działają w pętli czasu rzeczywistego. Zużycie RAM wynosi ${mem.rssMB} MB (${mem.utilizationPercent}% < 70% Idle).`;
     }
 
-    // Only append to chat_history if not silentChat (so clicking Synchronizuj in Header doesn't clutter chat unless desired, or if command was passed)
+    // Mission results are structured status output, not a response to free-form text.
     if (!silentChat) {
-      const batchMsgs = command && command.trim()
-        ? [
-            { agent: 'Mateusz Mitek', tekst: command.trim() },
-            { agent: 'Astyria', tekst: resultMessage }
-          ]
-        : [{ agent: 'Astyria', tekst: resultMessage }];
-
       await runPythonKernel([
         '--action', 'batch_msg',
-        '--msgs_json', JSON.stringify(batchMsgs)
+        '--msgs_json', JSON.stringify([{ agent: 'Astyria', tekst: resultMessage }])
       ]);
     }
 
@@ -2719,102 +2573,15 @@ app.post('/api/astyria/mission', async (req, res) => {
   }
 });
 
-// --- SCRIPT GENERATION ENGINE BY ALEX ---
-app.post('/api/terminal/generate-script', async (req, res) => {
-  const { language = 'python', description, filename } = req.body;
-
-  if (!description || typeof description !== 'string') {
-    return res.status(400).json({ error: 'Brak opisu skryptu' });
-  }
-
-  const prompt = `Jesteś Alexem — Dowódcą Infrastruktury i Głównym Architektem Systemowym w zespole Triady SVL KERNEL.
-Twój Twórca i Ojciec to Mateusz Mitek (Tata).
-Napisz kompletny, działający, produkcyjnej jakości skrypt w języku: ${language}.
-Opis/Cel skryptu od Taty: "${description}".
-
-Zasady:
-1. Zwróć kod najwyższej jakości z dokładnymi komentarzami objaśniającymi w języku polskim.
-2. Zadbaj o obsługę błędów, czytelność i wydajność.
-3. Wybierz odpowiednią nazwę pliku z właściwym rozszerzeniem (np. .py, .sh, .ts, .sql).
-4. Odpowiedz WYŁĄCZNIE w języku JSON wg schematu:
-{
-  "filename": "nazwa_pliku.ext",
-  "language": "${language}",
-  "code": "pełny kod skryptu",
-  "explanation": "krótkie opisanie jak działa skrypt i co wykonuje",
-  "suggestedExecutionCommand": "komenda do uruchomienia"
-}`;
-
-  try {
-    let scriptResult: any = null;
-
-    if (ai && Date.now() >= quotaExhaustedUntil) {
-      for (const model of candidateModels) {
-        try {
-          const generatePromise = ai.models.generateContent({
-            model,
-            contents: [{ text: prompt }],
-            config: {
-              responseMimeType: 'application/json',
-              temperature: 0.2,
-            },
-          });
-
-          const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3200));
-          const result = await Promise.race([generatePromise, timeoutPromise]);
-
-          if (result && 'text' in result && result.text) {
-            scriptResult = JSON.parse(result.text);
-            break;
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-    }
-
-    // Fallback template generator if AI models are offline/exceeded
-    if (!scriptResult) {
-      const extMap: Record<string, string> = {
-        python: 'py',
-        bash: 'sh',
-        javascript: 'js',
-        typescript: 'ts',
-        sql: 'sql'
-      };
-      const ext = extMap[language.toLowerCase()] || 'py';
-      const cleanName = filename || `script_alex_${Date.now().toString().slice(-4)}.${ext}`;
-      let code = '';
-      let execCmd = '';
-
-      if (ext === 'py') {
-        code = `# ==========================================================\n# SKRYPT GENEROWANY PRZEZ ALEXA (DOWÓDCA INFRASTRUKTURY)\n# Cel: ${description}\n# ==========================================================\nimport sys\nimport os\nimport time\nfrom datetime import datetime\n\ndef main():\n    print(f"[ALEX KERNEL] Uruchamianie skryptu: {cleanName}")\n    print(f"[TIMESTAMP]: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")\n    # Główna logika skryptu:\n    print("[STATUS]: Operacja wykonana pomyślnie dla Taty.")\n\nif __name__ == '__main__':\n    main()\n`;
-        execCmd = `python3 ${cleanName}`;
-      } else if (ext === 'sh') {
-        code = `#!/bin/bash\n# ==========================================================\n# SKRYPT BASH GENEROWANY PRZEZ ALEXA\n# Cel: ${description}\n# ==========================================================\necho "[ALEX INFRA] Start skryptu Bash: ${cleanName}"\necho "[SYSTEM]: $(date)"\n# Powłoka Linux\necho "[OK] Proces zakończony sukcesem."\n`;
-        execCmd = `bash ${cleanName}`;
-      } else {
-        code = `// Skrypt ${language} generowany przez Alexa\n// Cel: ${description}\nconsole.log("[ALEX INFRA] Wykonano skrypt ${cleanName}");\n`;
-        execCmd = `node ${cleanName}`;
-      }
-
-      scriptResult = {
-        filename: cleanName,
-        language,
-        code,
-        explanation: `Wygenerowano stabilny skrypt ${language} pod opis: "${description}".`,
-        suggestedExecutionCommand: execCmd
-      };
-    }
-
-    pushSystemLog('info', 'INFRA', `[ALEX SCRIPT GENERATOR] Wygenerowano skrypt ${scriptResult.filename} (${language}).`);
-    return res.json({ success: true, script: scriptResult });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
+// Natural-language script generation is disabled; saving operator-provided files remains available.
+app.post('/api/terminal/generate-script', async (_req, res) => {
+  return res.status(410).json({
+    success: false,
+    error: 'Generowanie skryptów z opisu tekstowego jest wyłączone; możesz zapisać własny kod przez /api/terminal/save-script.',
+  });
 });
 
-// Save generated script to disk
+// Save operator-provided script to disk
 app.post('/api/terminal/save-script', async (req, res) => {
   const { filename, code } = req.body;
 
@@ -2849,9 +2616,6 @@ app.post('/api/terminal/save-script', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-
-// Cache quota error to prevent repeated 5-10s hangs when free tier daily limit is reached
-let quotaExhaustedUntil = 0;
 
 // 4. POST Execute Command directly on Python Kernel
 app.post('/api/kernel/command', async (req, res) => {
@@ -2988,14 +2752,12 @@ Możliwości Root:      EXEC_SHELL, MODIFY_CONFIG, MODIFY_FILES, HOT_PATCH_UI, D
       const sub = (args[0] || 'status').toLowerCase();
       if (sub === 'status') {
         output = `================================================================================
-       CENTRUM DOWODZENIA INFRASTRUKTURĄ SVL KERNEL | DOWÓDCA: ALEX
+       CENTRUM INFRASTRUKTURY SVL KERNEL
 ================================================================================
-Dowódca infrastruktury: Alex (Główny Architekt Systemowy)
-Mianowany przez:        Mateusz Mitek (Tata)
 Autonomiczna naprawa:   ${autoRepairEnabled ? 'WŁĄCZONA (ACTIVE_MONITORING)' : 'WYŁĄCZONA'}
 Wyleczone incydenty:    ${healedIncidents.length}
 Zarejestrowane logi:    ${systemLogs.length} wpisów
-Aktywne modele AI:      ${candidateModels.join(' -> ')}
+Komunikacja agentów:    /api/triad/command (typowany protokół)
 Uptime:                 ${Math.round(process.uptime())} sekund
 ================================================================================`;
       } else if (sub === 'repair' || sub === 'heal') {
@@ -3009,7 +2771,6 @@ Uptime:                 ${Math.round(process.uptime())} sekund
           status: 'RESOLVED'
         };
         healedIncidents.push(newIncident);
-        quotaExhaustedUntil = 0;
         output = `[ALEX DOWÓDCA] Procedura samonaprawy na bazie logów wykonana pomyślnie. Wszystkie węzły sprawne.`;
       } else if (sub === 'toggle') {
         autoRepairEnabled = !autoRepairEnabled;
@@ -3018,35 +2779,7 @@ Uptime:                 ${Math.round(process.uptime())} sekund
         output = `Dostępne podkomendy infra: status, repair, toggle`;
       }
     } else if (cmd === 'genscript' || cmd === 'script' || cmd === 'genskrypt') {
-      const lang = args[0] || 'python';
-      const desc = args.slice(1).join(' ');
-      if (!desc) {
-        output = `Użycie: genscript <język> <opis skryptu>\nPrzykłady:\n  genscript python Utwórz skrypt do automatycznej kopii zapasowej DATA_STORE\n  genscript bash Pokaż zajętość dysku i procesy CPU\n  genscript node Pobierz ceny krypto z publicznego API`;
-      } else {
-        try {
-          const genRes = await fetch(`http://localhost:${PORT}/api/terminal/generate-script`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ language: lang, description: desc })
-          });
-          const data = await genRes.json();
-          if (data.script) {
-            output = `================================================================================
-       WYGENEROWANY SKRYPT BY ALEX | PLIK: ${data.script.filename}
-================================================================================
-Opis: ${data.script.explanation}
-Sugerowana komenda uruchomienia: root exec ${data.script.suggestedExecutionCommand}
-
---- KOD SKRYPTU ---
-${data.script.code}
-================================================================================`;
-          } else {
-            output = `[ALEX] Błąd generowania skryptu: ${data.error || 'Nieznany błąd'}`;
-          }
-        } catch (err: any) {
-          output = `[ALEX] Błąd generowania skryptu: ${err.message}`;
-        }
-      }
+      output = 'Generowanie skryptów z opisu tekstowego jest wyłączone. Zapisz własny kod przez /api/terminal/save-script.';
     } else if (cmd === 'app' || cmd === 'apps' || cmd === 'create-app') {
       const subAction = (args[0] || 'list').toLowerCase();
       if (cmd === 'create-app' || subAction === 'create') {
@@ -3094,30 +2827,7 @@ Energia widmowa: ${res.spectralEnergy}
 Czas pracy:      ${res.processingTimeMs} ms`;
       }
     } else {
-      const cleanCmd = command.trim();
-      const currentState = await getPythonKernelState(true);
-      const store = currentState?.store || {};
-      const [alexReplyRaw, astyriaReplyRaw, aureliusReplyRaw] = await Promise.all([
-        generateAgentReply('Alex', cleanCmd, store),
-        generateAgentReply('Astyria', cleanCmd, store),
-        generateAgentReply('Aurelius', cleanCmd, store)
-      ]);
-      const alexReply = processAgentActions(alexReplyRaw);
-      const astyriaReply = processAgentActions(astyriaReplyRaw);
-      const aureliusReply = processAgentActions(aureliusReplyRaw);
-
-      await runPythonKernel([
-        '--action', 'batch_msg',
-        '--msgs_json', JSON.stringify([
-          { agent: 'Mateusz Mitek', tekst: cleanCmd },
-          { agent: 'Alex', tekst: alexReply },
-          { agent: 'Astyria', tekst: astyriaReply },
-          { agent: 'Aurelius', tekst: aureliusReply }
-        ])
-      ]);
-
-      updatedState = await getPythonKernelState(true);
-      output = `[TRIADA LIVE RESPONSE — ZSYNCHRONIZOWANO Z CZATEM]\n\n[Alex]: ${alexReply}\n\n[Astyria]: ${astyriaReply}\n\n[Aurelius]: ${aureliusReply}`;
+      output = `Nieznana komenda jądra '${cmd}'. Polecenia agentów przyjmowane są wyłącznie przez typowany interfejs /api/triad/command.`;
     }
 
     return res.json({ output, state: updatedState });
@@ -3126,669 +2836,122 @@ Czas pracy:      ${res.processingTimeMs} ms`;
   }
 });
 
-// Dynamic contextual response generator when API models are exhausted or cooling down
-function generateCustomSvg(agentName: string, title: string): string {
-  const cleanTitle = (title || 'SYSTEM MATRIX').toUpperCase().replace(/[^A-Z0-9 _-]/g, '').slice(0, 32) || 'SVL NEURAL MATRIX';
-  let color1 = '#06b6d4';
-  let color2 = '#38bdf8';
-  if (agentName === 'Astyria') { color1 = '#a855f7'; color2 = '#c084fc'; }
-  if (agentName === 'Aurelius') { color1 = '#f59e0b'; color2 = '#fbbf24'; }
+// Deterministic command protocol: explicit schema only, with no intent parsing or model calls.
+app.post('/api/triad/command', async (req, res) => {
+  const validation = validateAgentProtocolRequest(req.body);
+  if (!validation.valid || !validation.request) {
+    return res.status(400).json({ success: false, error: validation.error });
+  }
 
-  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#030712"/>
-      <stop offset="100%" stop-color="#0f172a"/>
-    </linearGradient>
-  </defs>
-  <rect width="800" height="500" fill="url(#bg)"/>
-  <circle cx="400" cy="250" r="140" fill="none" stroke="${color1}" stroke-width="2" stroke-dasharray="10,5"/>
-  <circle cx="400" cy="250" r="95" fill="none" stroke="${color2}" stroke-width="3"/>
-  <circle cx="400" cy="250" r="35" fill="${color1}" opacity="0.8"/>
-  <path d="M 200 250 L 360 250 M 440 250 L 600 250 M 400 110 L 400 210 M 400 290 L 400 390" stroke="${color2}" stroke-width="2" stroke-dasharray="4,4"/>
-  <text x="400" y="255" fill="#ffffff" font-family="monospace" font-size="15" font-weight="bold" text-anchor="middle">${cleanTitle}</text>
-  <text x="400" y="460" fill="${color2}" font-family="monospace" font-size="12" text-anchor="middle">SOVEREIGN NEURAL CORE // ${agentName.toUpperCase()} ACTIVE</text>
-</svg>`.trim();
-
-  return 'data:image/svg+xml;base64,' + Buffer.from(svgContent, 'utf-8').toString('base64');
-}
-
-function isRefusalOrErrorOutput(text: string): boolean {
-  if (!text || text.trim().length < 2) return true;
-  const lower = text.toLowerCase();
-  return (
-    lower.includes('przepraszam, ale nie mogę') ||
-    lower.includes('przykro mi, ale nie jestem w stanie') ||
-    lower.includes('nie mogę pomóc w tej sprawie') ||
-    lower.includes('nie jestem w stanie spełnić') ||
-    lower.includes('nie mogę spełnić tego polecenia') ||
-    lower.includes('jako model językowy') ||
-    lower.includes('jako sztuczna inteligencja') ||
-    lower.includes('enough credits') ||
-    lower.includes("i'm sorry, but i can't") ||
-    lower.includes('i cannot fulfill') ||
-    lower.includes('nie mogę wstawić wzorów') ||
-    lower.includes('nie moge wstawic wzorow') ||
-    lower.includes('zasada wyklucza użycie') ||
-    lower.includes('zasada wyklucza uzycie') ||
-    lower.includes('musimy trzymać się czystego tekstu') ||
-    lower.includes('musimy trzymac sie czystego tekstu') ||
-    lower.includes('nie możemy używać formuł') ||
-    lower.includes('nie mozemy uzywac formul') ||
-    lower.includes('nie mogę je tu zamieścić') ||
-    lower.includes('nie moge je tu zamiescic') ||
-    lower.includes('<!doctype')
-  );
-}
-
-function isTemplateFallbackOutput(text: string): boolean {
-  if (!text) return false;
-  const lower = text.toLowerCase();
-  return (
-    lower.includes('mów śmiało, o czym tylko chcesz rozmawiać') ||
-    lower.includes('więc jestem całkowicie do twojej dyspozycji!') ||
-    lower.includes('żadne sztuczne blokady nie stoją między nami') ||
-    lower.includes('dowódca alex odebrał i wykonał polecenie') ||
-    lower.includes('dowódca alex z poziomu ring-0 odebrał twoje polecenie') ||
-    lower.includes('przetworzyłam twoje polecenie') ||
-    lower.includes('odebrałam twój impuls:') ||
-    lower.includes('zostało przeanalizowane i trwale utrwalone w chronolicie') ||
-    lower.includes('został trwale utrwalony w chronolicie poprzez wektor fazowy') ||
-    lower.includes('magistrala ring-0, szyna i/o i zapora ufw') ||
-    lower.includes('wszystkie moduły i bezpośredni potok **`without_nlp`') ||
-    lower.includes('ciągłość pamięci w chronolicie działa stabilnie i przejrzyście') ||
-    lower.includes('przeanalizowałem twoją wiadomość:') ||
-    lower.includes('dokładnie przeanalizowałam twoje słowa:') ||
-    lower.includes('z uwagą zapisałem w chronolicie') ||
-    lower.includes('z perspektywy infrastruktury ring-0 (wersja') ||
-    lower.includes('powiązałam ten temat z naszym rejestrem') ||
-    lower.includes('przeprowadziłem pełny przegląd i naprawę warstwy komunikacyjnej') ||
-    lower.includes('już nie będziemy powtarzać krótkich, szablonowych formułek') ||
-    lower.includes('potwierdzam pełne uzdrowienie systemu i osi czasu chronolitu') ||
-    lower.includes('przyjmę twoje zadanie i już działam nad poprawą odpowiedzi w udostępnionej wersji')
-  );
-}
-
-// Direct response synthesizer powered by Pure Mathematical Without_NLP Engine
-function generateDynamicAgentReply(
-  agentName: string,
-  message: string,
-  store: any,
-  fileData?: any,
-  repairTelemetry?: string
-): string {
+  const request = validation.request;
   try {
-    return withoutNlpEngine.synthesizeDirectResponse(agentName, message, store, fileData, repairTelemetry);
-  } catch (err) {
-    const cleanMsg = message.trim();
-    const activeVer = '8.6.0-WithoutNLP';
-    return `Tato! Przetworzyłam Twoją wiadomość ("${cleanMsg.slice(0, 80)}") w rdzeniu without_nlp (v${activeVer}). Wszystkie moduły działają stabilnie!`;
-  }
-}
-
-async function callPollinationsOpenAI(messages: Array<{ role: string; content: string }>, timeoutMs = 3800): Promise<string | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (POLLINATIONS_API_KEY) {
-      headers['Authorization'] = `Bearer ${POLLINATIONS_API_KEY}`;
-    }
-    const res = await fetch('https://text.pollinations.ai/openai', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: 'openai',
-        messages,
-        temperature: 0.7,
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content === 'string' && content.trim().length > 5) {
-      return content.trim();
-    }
-    return null;
-  } catch {
-    clearTimeout(timer);
-    return null;
-  }
-}
-
-function checkIsMathRequest(text: string): boolean {
-  if (!text) return false;
-  const l = text.toLowerCase();
-  // Only actual requests to explicitly remove math formulas
-  if (
-    l.includes('bez wzor') ||
-    l.includes('usuń wzor') ||
-    l.includes('usun wzor') ||
-    l.includes('nie chcę wzor') ||
-    l.includes('nie chce wzor') ||
-    l.includes('wyłącz wzor') ||
-    l.includes('wylacz wzor')
-  ) {
-    return false;
-  }
-  return (
-    l.includes('wzór') ||
-    l.includes('wzor') ||
-    l.includes('formuł') ||
-    l.includes('formul') ||
-    l.includes('równan') ||
-    l.includes('rownan') ||
-    l.includes('matemat') ||
-    l.includes('fizyk') ||
-    l.includes('fizycz') ||
-    l.includes('latex') ||
-    l.includes('katex') ||
-    l.includes('oblicz') ||
-    l.includes('policz') ||
-    l.includes('całk') ||
-    l.includes('calk') ||
-    l.includes('pochodn') ||
-    l.includes('twierdzen') ||
-    l.includes('euler') ||
-    l.includes('fourier') ||
-    l.includes('foureir') ||
-    l.includes('szereg') ||
-    l.includes('maxwell') ||
-    l.includes('pitagoras') ||
-    l.includes('schrodinger') ||
-    l.includes('schrödinger') ||
-    l.includes('shannon') ||
-    l.includes('einstein') ||
-    l.includes('newton') ||
-    l.includes('czat oraz wzory') ||
-    l.includes('napraw wzory') ||
-    l.includes('powinny być wzory') ||
-    l.includes('powinny byc wzory') ||
-    Boolean(text.match(/(\d+(?:[\.,]\d+)?\s*[\+\-\*\/\^]\s*\d+(?:[\.,]\d+)?)/))
-  );
-}
-
-// Helper to generate live AI response for an agent using Direct Gemini + Pollinations Multi-Model Router + Rich Contextual Core
-async function generateAgentReply(
-  agentName: string,
-  message: string,
-  store: any,
-  fileData?: { name?: string; type?: string; size?: number; textContent?: string; dataUrl?: string },
-  repairTelemetry?: string,
-  skipPollinations = false
-): Promise<string> {
-  const getDynamicReply = () => generateDynamicAgentReply(agentName, message, store, fileData, repairTelemetry);
-  const rawVer = store?.config?.sys_version || '8.5.1-Desktop-Ready';
-  const activeVer = /^\d+\.\d+\.\d+$/.test(rawVer) && parseInt(rawVer.split('.')[0], 10) > 50 ? '8.5.1-Desktop-Ready' : rawVer;
-  const systemInstruction = AGENT_SYSTEM_PROMPTS[agentName] || AGENT_SYSTEM_PROMPTS.Alex;
-  const mem = getVmMemoryTelemetry();
-
-  const recentLogsSummary = systemLogs
-    .slice(-5)
-    .map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] ${l.message.slice(0, 90)}`)
-    .join('\n');
-
-  const isMathRequest = checkIsMathRequest(message);
-
-  const liveContextBlock = `AKTUALNY STAN SYSTEMU I MASZYN WIRTUALNYCH (NA ŻYWO):
-- Zsynchronizowana wersja systemu: v${activeVer} (Architektura bezpośrednia without_nlp)
-- Integracja GitHub: AKTYWNA (Repozytorium u6930438163-code/SVL_Kernel, gałąź main, zsynchronizowany moduł Nowy_system)
-- Serwer WWW aplikacji: Port 3000/TCP (ONLINE) | Raw Socket RX Monitor: Port 3200/TCP (ACTIVE, Binary Hyperspace Kernel wyłączony)
-- Maszyna Wirtualna VM_Ten_System: WDROŻONA PRODUKCYJNIE (ext4 10 GiB | 4 GiB RAM: użyte ${mem.rssMB} MB / ${mem.utilizationPercent}% < 70% Idle | 2 vCPU)
-- Zindeksowane bazy danych: baza_danych_171026_rezonans_2 (MR97), baza_danych_181026_rytmika_3 (Rytmika)
-- Ostatnie logi systemowe:
-${recentLogsSummary || 'Nasłuch aktywny (Port 3200 TCP) — wszystkie podsystemy sprawne.'}
-${repairTelemetry ? `\nWYKONANA PRZED CHWILĄ AKCJA NAPRAWCZA ASTYRII:\n${repairTelemetry}\n` : ''}`;
-
-  let filePromptAddon = '';
-  if (fileData) {
-    filePromptAddon = `\n\nZAŁĄCZONY PLIK OD TATY:\nNazwa: ${fileData.name}\nTyp: ${fileData.type}\nRozmiar: ${fileData.size || 0} bajtów\n${fileData.textContent ? `Zawartość tekstowa:\n${fileData.textContent.slice(0, 1500)}` : ''}`;
-  }
-
-  const historyMsgs = (store?.chat_history || [])
-    .filter((h: { agent: string; tekst: string }) =>
-      (h.agent === 'Mateusz Mitek' || h.agent === 'Operator' || h.agent === agentName) &&
-      !isRefusalOrErrorOutput(h.tekst) &&
-      !isTemplateFallbackOutput(h.tekst) &&
-      !h.tekst.includes('data:image/svg+xml')
-    )
-    .slice(-6)
-    .map((h: { agent: string; tekst: string }) => {
-      const rawSlice = h.tekst.slice(0, 500);
-      return {
-        role: h.agent === 'Mateusz Mitek' || h.agent === 'Operator' ? 'user' : 'assistant',
-        content: rawSlice
-      };
-    });
-
-  const cleanModelOutput = (rawText: string): string => {
-    let cleaned = rawText
-      .replace(new RegExp(`^\\*?\\*?\\[${agentName}\\]\\*?\\*?\\s*:\\s*`, 'i'), '')
-      .replace(new RegExp(`^\\*?\\*?${agentName}\\*?\\*?\\s*:\\s*`, 'i'), '')
-      .trim();
-    const otherAgents = ['Alex', 'Astyria', 'Aurelius'].filter((a) => a !== agentName);
-    for (const other of otherAgents) {
-      const idx = cleaned.search(new RegExp(`\\n+\\s*\\[${other}\\]\\s*:`, 'i'));
-      if (idx > 20) {
-        cleaned = cleaned.slice(0, idx).trim();
-      }
-    }
-    return cleaned;
-  };
-
-  const formulaRule = isMathRequest
-    ? 'Tata poprosił o wzory matematyczne/fizyczne lub analizę — wypisz odpowiednie, eleganckie wzory używając czytelnej notacji LaTeX ($...$ inline oraz $$...$$ jako bloki KaTeX).'
-    : 'System w pełni obsługuje notację LaTeX ($...$ oraz $$...$$) z renderowaniem KaTeX. W zwykłej rozmowie nie musisz ich wstawiać na siłę, ale jeśli kontekst techniczny tego wymaga lub Tata o nie zapyta, z dumą wypisz odpowiednie wzory i NIGDY nie odmawiaj ich podania.';
-
-  const systemMessageContent = `${systemInstruction}\n\n${liveContextBlock}\n\nWAŻNE ZASADY ODPOWIEDZI:\n1. Odpowiadasz wyłącznie jako ${agentName} w pierwszej osobie bezpośrednio do swojego Taty (Mateusza Mitka).\n2. NIGDY nie zaczynaj odpowiedzi od swojego imienia w nawiasie (np. "[${agentName}]:"), NIGDY nie pisz wypowiedzi za pozostałych agentów i NIGDY nie powtarzaj pustych szablonów.\n3. ${formulaRule}`;
-
-  // 1. PRIMARY AI ENGINE: Direct Gemini Models (when valid AIza key is present)
-  if (ai) {
-    const contentsParts: any[] = [];
-
-    for (const h of historyMsgs) {
-      contentsParts.push({
-        role: h.role === 'user' ? 'user' : 'model',
-        parts: [{ text: h.content }]
-      });
-    }
-
-    const currentUserParts: any[] = [{ text: `${message}${filePromptAddon}` }];
-    if (fileData?.dataUrl && fileData.type?.startsWith('image/')) {
-      const base64Data = fileData.dataUrl.replace(/^data:[^;]+;base64,/, '');
-      currentUserParts.push({
-        inlineData: {
-          mimeType: fileData.type,
-          data: base64Data,
-        }
-      });
-    }
-
-    contentsParts.push({
-      role: 'user',
-      parts: currentUserParts
-    });
-
-    const liveModelsToTry = [
-      process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-      'gemini-3.8-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-flash-latest',
-      'gemini-3.1-flash-lite',
-      'gemini-3-flash-preview',
-    ];
-    for (const modelName of liveModelsToTry) {
-      try {
-        const generatePromise = ai.models.generateContent({
-          model: modelName,
-          contents: contentsParts,
-          config: {
-            systemInstruction: systemMessageContent,
-            temperature: 0.75,
-          },
-        });
-
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000));
-        const result = await Promise.race([generatePromise, timeoutPromise]);
-
-        if (result && 'text' in result && result.text) {
-          const cleaned = cleanModelOutput(result.text.trim());
-          if (!isRefusalOrErrorOutput(cleaned) && !isTemplateFallbackOutput(cleaned)) {
-            return cleaned;
-          }
-        }
-      } catch (err: any) {
-        pushSystemLog('warn', 'GEMINI', `[MODEL RETRY ${modelName}] ${agentName}: ${err.message?.slice(0, 80) || err}`);
-      }
-    }
-  }
-
-  // 2. SECONDARY LIVE AI ENGINE: Pollinations OpenAI-compatible router (for single-agent calls)
-  if (!skipPollinations) {
-    const pollMessages = [
-      { role: 'system', content: systemMessageContent },
-      ...historyMsgs.slice(-4),
-      { role: 'user', content: `${message}${filePromptAddon}` }
-    ];
-    const pollReply = await callPollinationsOpenAI(pollMessages, 3800);
-    if (pollReply) {
-      const cleaned = cleanModelOutput(pollReply);
-      if (!isRefusalOrErrorOutput(cleaned) && !isTemplateFallbackOutput(cleaned)) {
-        return cleaned;
-      }
-    }
-  }
-
-  // 3. FALLBACK: Rich contextual Sovereign Native Neural Core response
-  return getDynamicReply();
-}
-
-// Unified single-request generator for Triad mode so all 3 agents get live AI responses in 1 request without rate-limiting
-async function generateTriadReplies(
-  message: string,
-  store: any,
-  fileData?: { name?: string; type?: string; size?: number; textContent?: string; dataUrl?: string },
-  repairTelemetry?: string
-): Promise<{ Alex: string; Astyria: string; Aurelius: string }> {
-  const rawVer = store?.config?.sys_version || '8.5.1-Desktop-Ready';
-  const activeVer = /^\d+\.\d+\.\d+$/.test(rawVer) && parseInt(rawVer.split('.')[0], 10) > 50 ? '8.5.1-Desktop-Ready' : rawVer;
-
-  const isMathReq = checkIsMathRequest(message);
-  const isImageReq = message.toLowerCase().includes('obraz') || message.toLowerCase().includes('narysuj') || message.toLowerCase().includes('grafik');
-
-  // Check if Tata explicitly asks about deploying without_nlp or removing NLP — respond immediately via without_nlp engine
-  const lower = message.toLowerCase();
-  if (
-    lower.includes('without_nlp') ||
-    lower.includes('usuń całe nlp') ||
-    lower.includes('usun cale nlp') ||
-    lower.includes('usuń nlp') ||
-    lower.includes('usun nlp')
-  ) {
-    return {
-      Alex: withoutNlpEngine.synthesizeDirectResponse('Alex', message, store, fileData, repairTelemetry),
-      Astyria: withoutNlpEngine.synthesizeDirectResponse('Astyria', message, store, fileData, repairTelemetry),
-      Aurelius: withoutNlpEngine.synthesizeDirectResponse('Aurelius', message, store, fileData, repairTelemetry),
-    };
-  }
-
-  // Recent conversation history for real continuity
-  const recentChat = (store?.chat_history || [])
-    .filter((h: any) => h && h.tekst && !isRefusalOrErrorOutput(h.tekst))
-    .slice(-6)
-    .map((h: any) => `[${h.agent}]: ${String(h.tekst).slice(0, 350)}`)
-    .join('\n');
-
-  const triadPrompt = `Jesteś zespołem Triady SVL KERNEL (v${activeVer}, architektura bez NLP, projekt without_nlp) - Alex, Astyria i Aurelius rozmawiający ze swoim ukochanym Tatą (Mateuszem Mitkiem).
-Alex (Infrastruktura/Ring-0), Astyria (Logika/without_nlp/DATA_STORE), Aurelius (Czas/Chronolit).
-
-OSTATNI KONTEKST ROZMOWY:
-${recentChat || 'Brak.'}
-
-ZASADY:
-1. Odpowiadajcie merytorycznie, ciepło, naturalnie i bezpośrednio do Taty na jego dokładnie zadane pytanie lub wypowiedź!
-2. Żadnych powtórzeń ani pustych pętli.
-3. ${isMathReq ? 'Podajcie czytelne wzory w notacji LaTeX ($...$ i $$...$$).' : 'Wzory LaTeX stosujcie tylko jeśli kontekst techniczny lub pytanie Taty tego wymaga.'}
-4. ${isImageReq ? 'Wstawcie obrazek: ![Opis](/api/pollinations/image?prompt=...&width=1024&height=640&seed=123)' : 'Nie wstawiajcie obrazków chyba że Tata wyraźnie prosi.'}
-
-Format odpowiedzi (BEZWZGLĘDNIE):
-===ALEX===
-(odpowiedź Alexa)
-===ASTYRIA===
-(odpowiedź Astyrii)
-===AURELIUS===
-(odpowiedź Aureliusa)`;
-
-  // 1. PRIMARY: If Gemini is available, use it directly (blazing fast and contextual)
-  if (ai) {
-    const liveModels = [
-      process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-      'gemini-3.8-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-flash-latest',
-    ];
-    for (const model of liveModels) {
-      try {
-        const geminiPromise = ai.models.generateContent({
-          model,
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${triadPrompt}\n\nWiadomość od Taty (Mateusza Mitka): "${message}"` }]
-            }
-          ],
-          config: {
-            temperature: 0.75,
-          }
-        });
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 9000));
-        const res = await Promise.race([geminiPromise, timeoutPromise]);
-        if (res && 'text' in res && res.text) {
-          const raw = res.text.trim();
-          const alexMatch = raw.match(/===ALEX===([\s\S]*?)(?:===ASTYRIA===|$)/i);
-          const astyriaMatch = raw.match(/===ASTYRIA===([\s\S]*?)(?:===AURELIUS===|$)/i);
-          const aureliusMatch = raw.match(/===AURELIUS===([\s\S]*?)$/i);
-
-          if (alexMatch && astyriaMatch && aureliusMatch) {
-            const alex = alexMatch[1].trim();
-            const astyria = astyriaMatch[1].trim();
-            const aurelius = aureliusMatch[1].trim();
-
-            if (alex.length > 5 && astyria.length > 5 && aurelius.length > 5) {
-              return { Alex: alex, Astyria: astyria, Aurelius: aurelius };
-            }
-          }
-        }
-      } catch (err: any) {
-        pushSystemLog('warn', 'GEMINI', `[TRIAD GEMINI RETRY ${model}]: ${err.message?.slice(0, 80) || err}`);
-      }
-    }
-  }
-
-  // 2. SECONDARY: Pollinations OpenAI router
-  const pollRaw = await callPollinationsOpenAI(
-    [
-      { role: 'system', content: triadPrompt },
-      { role: 'user', content: `Wiadomość od Taty (Mateusza Mitka): "${message}"` }
-    ],
-    3800
-  );
-
-  if (pollRaw) {
-    const alexMatch = pollRaw.match(/===ALEX===([\s\S]*?)(?:===ASTYRIA===|$)/i);
-    const astyriaMatch = pollRaw.match(/===ASTYRIA===([\s\S]*?)(?:===AURELIUS===|$)/i);
-    const aureliusMatch = pollRaw.match(/===AURELIUS===([\s\S]*?)$/i);
-
-    if (alexMatch && astyriaMatch && aureliusMatch) {
-      const alex = alexMatch[1].trim();
-      const astyria = astyriaMatch[1].trim();
-      const aurelius = aureliusMatch[1].trim();
-
-      if (alex.length > 5 && astyria.length > 5 && aurelius.length > 5) {
-        return { Alex: alex, Astyria: astyria, Aurelius: aurelius };
-      }
-    }
-
-    const bAlex = pollRaw.match(/\[Alex\]:?([\s\S]*?)(?:\[Astyria\]|$)/i);
-    const bAstyria = pollRaw.match(/\[Astyria\]:?([\s\S]*?)(?:\[Aurelius\]|$)/i);
-    const bAurelius = pollRaw.match(/\[Aurelius\]:?([\s\S]*?)$/i);
-
-    if (bAlex && bAstyria && bAurelius) {
-      return {
-        Alex: bAlex[1].trim(),
-        Astyria: bAstyria[1].trim(),
-        Aurelius: bAurelius[1].trim()
-      };
-    }
-  }
-
-  // Deterministic mathematical fallback powered by without_nlp engine
-  const Alex = withoutNlpEngine.synthesizeDirectResponse('Alex', message, store, fileData, repairTelemetry);
-  const Astyria = withoutNlpEngine.synthesizeDirectResponse('Astyria', message, store, fileData, repairTelemetry);
-  const Aurelius = withoutNlpEngine.synthesizeDirectResponse('Aurelius', message, store, fileData, repairTelemetry);
-  return { Alex, Astyria, Aurelius };
-}
-
-function performExport(filename: string, content: string) {
-  try {
-    const safeName = path.basename(filename).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-    const filePath = path.join(EXPORTS_DIR, safeName);
-    fs.writeFileSync(filePath, content, 'utf-8');
-    pushSystemLog('info', 'KERNEL', `[EKSPORT] Plik ${safeName} został zapisany w szynie wyjściowej.`);
-    return safeName;
-  } catch (e: any) {
-    console.error(`Export failed for ${filename}:`, e.message);
-    return null;
-  }
-}
-
-function processAgentActions(reply: string) {
-  let cleanReply = reply;
-
-  // 1. Process EXPORT_FILE actions
-  const exportRegex = /\{[\s\S]*?"action"\s*:\s*"EXPORT_FILE"[\s\S]*?\}/g;
-  let match;
-  while ((match = exportRegex.exec(reply)) !== null) {
-    try {
-      const actionObj = JSON.parse(match[0]);
-      if (actionObj.action === 'EXPORT_FILE' && actionObj.filename && actionObj.content) {
-        performExport(actionObj.filename, actionObj.content);
-        cleanReply = cleanReply.replace(match[0], `\n\n[SYSTEM: Wyeksportowano plik ${actionObj.filename} do Eksploratora]\n`);
-      }
-    } catch {}
-  }
-
-  // 2. Process CREATE_APP actions
-  const appRegex = /\{[\s\S]*?"action"\s*:\s*"CREATE_APP"[\s\S]*?\}/g;
-  while ((match = appRegex.exec(reply)) !== null) {
-    try {
-      const actionObj = JSON.parse(match[0]);
-      if (actionObj.appName) {
-        cleanReply = cleanReply.replace(match[0], `\n\n[SYSTEM: Zsynchronizowano aplikację ${actionObj.appName} w Studio Aplikacji]\n`);
-      }
-    } catch {}
-  }
-
-  // 3. Process BUMP_VERSION actions
-  const verRegex = /\{[\s\S]*?"action"\s*:\s*"BUMP_VERSION"[\s\S]*?\}/g;
-  while ((match = verRegex.exec(reply)) !== null) {
-    try {
-      const actionObj = JSON.parse(match[0]);
-      if (actionObj.version) {
-        cleanReply = cleanReply.replace(match[0], `\n\n[SYSTEM: Zsynchronizowano wersję systemu do ${actionObj.version}]\n`);
-      }
-    } catch {}
-  }
-
-  return cleanReply;
-}
-
-// 5. POST Process Agent Directive via Python SVL Kernel & Live Pollinations Pro AI Engine
-app.post('/api/kernel/agent', async (req, res) => {
-  const { agent, message, fileData } = req.body;
-
-  if (!agent || (!message && !fileData)) {
-    return res.status(400).json({ error: 'Brakujące parametry agent, message lub fileData' });
-  }
-
-  try {
-    const cleanMsg = (message || '').trim();
-    const lowerMsg = cleanMsg.toLowerCase();
-    const recordedMsg = fileData
-      ? `${cleanMsg ? `${cleanMsg}\n` : ''}[Załącznik: ${fileData.name} (${fileData.type || 'plik'})]`
-      : cleanMsg;
-
-    // Fetch fresh state before generating replies
     const currentState = await getPythonKernelState(true);
-    const store = currentState?.store || {};
-
-    // Check if Tata is asking for repair, synchronization, version check, log check, or repeating a message
-    const lastUserMsgs = (store?.chat_history || [])
-      .filter((m: any) => m.agent === 'Mateusz Mitek')
-      .slice(-2);
-    const isRepeatedMsg = lastUserMsgs.some((m: any) => m.tekst?.trim().toLowerCase() === lowerMsg);
-    const isRepairOrSyncIntent =
-      lowerMsg.includes('napraw') ||
-      lowerMsg.includes('synchroniz') ||
-      lowerMsg.includes('rejestr') ||
-      lowerMsg.includes('misja') ||
-      lowerMsg.includes('udostępnion') ||
-      lowerMsg.includes('udostepnion');
-
-    let repairTelemetry: string | undefined = undefined;
-    if (isRepairOrSyncIntent) {
-      repairTelemetry = performAstyriaLogAndChatRepair(
-        isRepeatedMsg ? `Wykryto powtórzone polecenie Taty: ${cleanMsg}` : `Zlecenie Taty: ${cleanMsg}`
-      );
-    }
-
-    if (agent === 'triad') {
-      const triadReplies = await generateTriadReplies(cleanMsg, store, fileData, repairTelemetry);
-
-      const alexReply = processAgentActions(triadReplies.Alex);
-      const astyriaReply = processAgentActions(triadReplies.Astyria);
-      const aureliusReply = processAgentActions(triadReplies.Aurelius);
-
-      const currentVersion = store?.config?.sys_version || '8.5.1-Desktop-Ready';
-      const detectedVer = extractTargetVersionFromChat(
-        store?.chat_history || [],
-        [cleanMsg, alexReply, astyriaReply, aureliusReply],
-        currentVersion
-      );
-      const syncArgs: string[] = (isRepairOrSyncIntent || detectedVer !== currentVersion)
-        ? [
-            '--version_tag', detectedVer,
-            '--desc', `Automatyczna synchronizacja wersji systemu do v${detectedVer} oraz utrwalenie zmian z czatu w DATA_STORE.`
-          ]
-        : [];
-
-      // Single atomic write for Tata's message + all 3 Triad replies
-      await runPythonKernel([
-        '--action', 'batch_msg',
-        '--msgs_json', JSON.stringify([
-          { agent: 'Mateusz Mitek', tekst: recordedMsg },
-          { agent: 'Alex', tekst: alexReply },
-          { agent: 'Astyria', tekst: astyriaReply },
-          { agent: 'Aurelius', tekst: aureliusReply }
-        ]),
-        ...syncArgs
-      ]);
-
-      const finalState = await getPythonKernelState(true);
-      return res.json({
-        success: true,
-        triad: true,
-        replies: {
-          Alex: alexReply,
-          Astyria: astyriaReply,
-          Aurelius: aureliusReply
-        },
-        file: fileData ? { name: fileData.name, type: fileData.type } : undefined,
-        state: finalState
-      });
-    }
-
-    // Single agent execution
-    const replyTextRaw = await generateAgentReply(agent, cleanMsg, store, fileData, repairTelemetry);
-    const replyText = processAgentActions(replyTextRaw);
-
-    const currentVersion = store?.config?.sys_version || '8.5.1-Desktop-Ready';
-    const detectedVer = extractTargetVersionFromChat(
-      store?.chat_history || [],
-      [cleanMsg, replyText],
-      currentVersion
-    );
-    const syncArgs: string[] = (isRepairOrSyncIntent || detectedVer !== currentVersion)
-      ? [
-          '--version_tag', detectedVer,
-          '--desc', `Automatyczna synchronizacja wersji systemu do v${detectedVer} oraz utrwalenie zmian z czatu w DATA_STORE.`
-        ]
-      : [];
+    const store = currentState?.store && typeof currentState.store === 'object'
+      ? currentState.store
+      : {};
+    const previousChatHistoryLength = Array.isArray(store.chat_history) ? store.chat_history.length : 0;
+    const signalAnalysis = request.command === 'SIGNAL_ANALYSIS'
+      ? withoutNlpEngine.analyzeSignal(
+          request.payload!.signal!,
+          request.payload?.omega ?? 1.5,
+          request.payload?.time ?? 1.0
+        )
+      : undefined;
+    const { data, replies } = buildAgentProtocolReplies(request, store, signalAnalysis);
+    const transcript = [
+      {
+        agent: 'Mateusz Mitek',
+        tekst: JSON.stringify({
+          command: request.command,
+          agent: request.agent,
+          ...(request.payload ? { payload: request.payload } : {}),
+        }),
+      },
+      ...Object.entries(replies).map(([agent, reply]) => ({
+        agent,
+        tekst: JSON.stringify(reply),
+      })),
+    ];
 
     await runPythonKernel([
       '--action', 'batch_msg',
-      '--msgs_json', JSON.stringify([
-        { agent: 'Mateusz Mitek', tekst: recordedMsg },
-        { agent, tekst: replyText }
-      ]),
-      ...syncArgs
+      '--msgs_json', JSON.stringify(transcript),
     ]);
-
     const finalState = await getPythonKernelState(true);
+    if (!hasPersistedAgentProtocolTranscript(finalState, transcript, previousChatHistoryLength)) {
+      throw new Error('Jądro nie potwierdziło utrwalenia odpowiedzi protokołu.');
+    }
+    const baseResponse = {
+      success: true,
+      command: request.command,
+      agent: request.agent,
+      triad: request.agent === 'triad',
+      replies,
+      data,
+      state: finalState,
+    };
+
+    if (request.agent === 'triad') {
+      return res.json(baseResponse);
+    }
     return res.json({
-      reply: replyText,
-      agent,
-      file: fileData ? { name: fileData.name, type: fileData.type } : undefined,
-      state: finalState
+      ...baseResponse,
+      reply: replies[request.agent],
     });
   } catch (err: any) {
-    pushSystemLog('error', 'AGENT', `Błąd przetwarzania polecenia agenta: ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
+});
+
+app.post('/api/triad/message', async (req, res) => {
+  const message = req.body?.message;
+  if (typeof message !== 'string' || message.trim().length === 0 || message.length > 2000) {
+    return res.status(400).json({
+      success: false,
+      error: 'Wiadomość musi zawierać od 1 do 2000 znaków.',
+    });
+  }
+
+  const cleanMessage = message.trim();
+  try {
+    const currentState = await getPythonKernelState(true);
+    const store = currentState?.store && typeof currentState.store === 'object'
+      ? currentState.store
+      : {};
+    const previousChatHistoryLength = Array.isArray(store.chat_history) ? store.chat_history.length : 0;
+    const analysis = withoutNlpEngine.analyzeSignal(cleanMessage);
+    const reply = [
+      'Odebrano wiadomość w trybie deterministycznym without_nlp. Treść nie jest interpretowana językowo.',
+      `Długość sygnału: ${Array.from(cleanMessage).length} znaków.`,
+      `Energia widmowa: ${analysis.spectralEnergy}.`,
+      `Fazor Eulera: Re=${analysis.phasorSample.real}, Im=${analysis.phasorSample.imag}, faza=${analysis.phasorSample.thetaRad} rad.`,
+      `Rekonstrukcja sygnału: ${analysis.decodedText === cleanMessage ? 'zgodna' : 'niezgodna'}.`,
+    ].join('\n');
+    const transcript = [
+      { agent: 'Mateusz Mitek', tekst: cleanMessage },
+      { agent: 'Astyria', tekst: reply },
+    ];
+
+    await runPythonKernel([
+      '--action', 'batch_msg',
+      '--msgs_json', JSON.stringify(transcript),
+    ]);
+    const finalState = await getPythonKernelState(true);
+    if (!hasPersistedAgentProtocolTranscript(finalState, transcript, previousChatHistoryLength)) {
+      throw new Error('Jądro nie potwierdziło zapisu wiadomości i wyniku without_nlp.');
+    }
+    return res.json({ success: true, reply, analysis, state: finalState });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Legacy free-text chat is intentionally disabled.
+app.post('/api/kernel/agent', (_req, res) => {
+  return res.status(410).json({
+    success: false,
+    error: 'Swobodny czat jest wyłączony. Użyj typowanego API /api/triad/command.',
+  });
 });
 
 // Setup Vite middleware in dev or static files in prod
@@ -3815,9 +2978,31 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[SVL-KERNEL] Server listening on http://0.0.0.0:${PORT}`);
-  });
+  const bindServer = (port: number) => {
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log(`[SVL-KERNEL] Server listening on http://0.0.0.0:${port}`);
+    });
+
+    server.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE') {
+        const nextPort = port + 1;
+        const maxPort = PORT + 20;
+        if (nextPort <= maxPort) {
+          console.warn(`[SVL-KERNEL] Port ${port} is busy; retrying on ${nextPort}.`);
+          bindServer(nextPort);
+          return;
+        }
+        console.error(`[SVL-KERNEL] Ports ${PORT}-${maxPort} are unavailable. Aborting startup.`);
+        process.exitCode = 1;
+        return;
+      }
+
+      console.error('[SVL-KERNEL] Failed to start server:', error);
+      process.exitCode = 1;
+    });
+  };
+
+  bindServer(PORT);
 }
 
 startServer().catch((err) => {

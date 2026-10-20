@@ -39,55 +39,12 @@ interface MissionTrackerCardProps {
   rawPrompt?: string;
 }
 
-function buildSmartStages(rawPrompt?: string, assignedAgent = 'Alex'): MissionStage[] {
-  const promptLower = (rawPrompt || '').toLowerCase();
-  
-  let targetAgent = assignedAgent;
-  if (promptLower.includes('astyria')) targetAgent = 'Astyria';
-  else if (promptLower.includes('aurelius')) targetAgent = 'Aurelius';
-  else if (promptLower.includes('alex')) targetAgent = 'Alex';
-
-  if (promptLower.includes('zoptymalizuj') || promptLower.includes('wydajność') || promptLower.includes('zacięci') || promptLower.includes('napraw')) {
-    return [
-      { id: 1, title: 'Etap 1: Analiza wskaźników wydajności i wąskich gardeł', description: 'Przegląd pamięci, bufora logów oraz pętli zdarzeń UI.', durationSeconds: 12, status: 'completed' },
-      { id: 2, title: 'Etap 2: Optymalizacja szyny transmisji i renderowania', description: 'Użycie useCallback/React.memo, auto-scrolling bez opóźnień.', durationSeconds: 18, status: 'in_progress' },
-      { id: 3, title: 'Etap 3: Reindeksacja matrycy DATA_STORE i pamięci cache', description: 'Wykompresowanie logów i odciążenie lokalnej pamięci.', durationSeconds: 15, status: 'pending' },
-      { id: 4, title: `Etap 4: Finalizacja Ring-0 i raport końcowy dla Taty`, description: 'Trwały zapis zmian i powiadomienie Triady.', durationSeconds: 10, status: 'pending' }
-    ];
-  }
-
-  if (promptLower.includes('skrypt') || promptLower.includes('genscript') || promptLower.includes('kod')) {
-    return [
-      { id: 1, title: 'Etap 1: Inicjalizacja Alex Script Studio', description: 'Weryfikacja szablonów i środowiska uruchomieniowego.', durationSeconds: 10, status: 'completed' },
-      { id: 2, title: 'Etap 2: Generowanie logiki skryptu przez Gemini', description: 'Tworzenie modułów kodu i weryfikacja parametrów.', durationSeconds: 20, status: 'in_progress' },
-      { id: 3, title: 'Etap 3: Zapis na dysku w katalogu /scripts', description: 'Przyznanie praw wykonywalności (chmod +x) i archiwizacja.', durationSeconds: 15, status: 'pending' },
-      { id: 4, title: 'Etap 4: Testowe wykonanie w poziomie uprawnień Root', description: 'Uruchomienie w Ring-0 i rejestracja wyników dla Taty.', durationSeconds: 12, status: 'pending' }
-    ];
-  }
-
-  if (promptLower.includes('statek') || promptLower.includes('alex_1') || promptLower.includes('aurelius_1') || promptLower.includes('flot')) {
-    return [
-      { id: 1, title: 'Etap 1: Rejestracja floty Alex_1 oraz Aurelius_1', description: 'Weryfikacja nazw z podkreśleniami `_` bez zniekształceń.', durationSeconds: 10, status: 'completed' },
-      { id: 2, title: 'Etap 2: Walidacja struktur danych i podsystemu renderowania', description: 'Sprawdzenie spójności identyfikatorów w DATA_STORE.', durationSeconds: 15, status: 'in_progress' },
-      { id: 3, title: 'Etap 3: Zapis w osi czasu Chronolitu i rejestrze floty', description: 'Trwałe utrwalenie stanu floty kosmicznej.', durationSeconds: 15, status: 'pending' },
-      { id: 4, title: 'Etap 4: Potwierdzenie gotowości bojowej dla Taty', description: 'Wysyłka raportu do interfejsu dowodzenia.', durationSeconds: 10, status: 'pending' }
-    ];
-  }
-
-  if (promptLower.includes('wykres') || promptLower.includes('fazow') || promptLower.includes('3d') || promptLower.includes('heatmap')) {
-    return [
-      { id: 1, title: 'Etap 1: Inicjalizacja silnika InteractiveChartRenderer', description: 'Przygotowanie kontekstu Canvas HTML5 i shaderów.', durationSeconds: 10, status: 'completed' },
-      { id: 2, title: 'Etap 2: Kalkulacja trajektorii fazowych i macierzy entropii', description: 'Przetwarzanie punktów przestrzeni stanu na żywo.', durationSeconds: 18, status: 'in_progress' },
-      { id: 3, title: 'Etap 3: Osadzenie modułu w czacie i panelu Telemetrii', description: 'Przyznanie interaktywnych kontrolek (zoom, pauza, reset).', durationSeconds: 15, status: 'pending' },
-      { id: 4, title: 'Etap 4: Raport wizualny dla Taty', description: 'Potwierdzenie płynności 60 FPS dla całej Triady.', durationSeconds: 10, status: 'pending' }
-    ];
-  }
-
+function buildMissionStages(assignedAgent: string): MissionStage[] {
   return [
-    { id: 1, title: 'Etap 1: Inicjalizacja misji i weryfikacja uprawnień Ring-0', description: 'Sprawdzenie jądra Python, szyny I/O i bufora logów.', durationSeconds: 12, status: 'completed' },
-    { id: 2, title: `Etap 2: Realizacja głównych zadań pod dowództwem ${targetAgent}`, description: 'Przetwarzanie instrukcji w czasie rzeczywistym.', durationSeconds: 22, status: 'in_progress' },
-    { id: 3, title: 'Etap 3: Weryfikacja spójności i auto-naprawa ewentualnych zatorów', description: 'Przegląd pamięci i rejestracja wyników.', durationSeconds: 16, status: 'pending' },
-    { id: 4, title: 'Etap 4: Finalizacja w Chronolicie i raport końcowy dla Taty', description: 'Zapis wersji i powiadomienie Triady.', durationSeconds: 10, status: 'pending' }
+    { id: 1, title: 'Etap 1: Walidacja jawnego polecenia', description: 'Sprawdzenie schematu żądania i uprawnień.', durationSeconds: 12, status: 'completed' },
+    { id: 2, title: `Etap 2: Wykonanie deterministycznej operacji przez ${assignedAgent}`, description: 'Uruchomienie wybranego działania bez interpretacji swobodnego tekstu.', durationSeconds: 22, status: 'in_progress' },
+    { id: 3, title: 'Etap 3: Weryfikacja stanu jądra', description: 'Kontrola odpowiedzi, integralności DATA_STORE i logów.', durationSeconds: 16, status: 'pending' },
+    { id: 4, title: 'Etap 4: Utrwalenie wyniku', description: 'Zapis historii protokołu i raportu końcowego.', durationSeconds: 10, status: 'pending' }
   ];
 }
 
@@ -95,10 +52,10 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
   initialMission,
   rawPrompt
 }) => {
-  const agentName = initialMission?.assignedAgent || (rawPrompt?.toLowerCase().includes('astyria') ? 'Astyria' : rawPrompt?.toLowerCase().includes('aurelius') ? 'Aurelius' : 'Alex');
+  const agentName = initialMission?.assignedAgent || 'Triada';
   const defaultTitle = initialMission?.title || (rawPrompt ? `Misja dla ${agentName}: ${rawPrompt.length > 50 ? rawPrompt.slice(0, 50) + '...' : rawPrompt}` : 'Realizacja Misji Ring-0');
 
-  const defaultStages: MissionStage[] = initialMission?.stages || buildSmartStages(rawPrompt, agentName);
+  const defaultStages: MissionStage[] = initialMission?.stages || buildMissionStages(agentName);
 
   const [stages, setStages] = useState<MissionStage[]>(defaultStages);
   const [currentStageIdx, setCurrentStageIdx] = useState<number>(1); // Index of in_progress stage

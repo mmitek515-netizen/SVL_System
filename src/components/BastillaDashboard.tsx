@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
+  ArrowUpRight,
   Brain,
+  CheckCircle2,
   Clock3,
   Cpu,
   Database,
@@ -11,24 +13,23 @@ import {
   LayoutGrid,
   MessagesSquare,
   Orbit,
-  Play,
-  ShieldCheck,
+  Radio,
+  Send,
   Sparkles,
   Terminal,
 } from 'lucide-react';
 import { TabId } from './Navigation';
+import { DataStore } from '../kernel/svlKernel';
+import { FormattedMessage } from './FormattedMessage';
 
 interface BastillaDashboardProps {
+  dataStore: DataStore;
   onNavigate: (tab: TabId) => void;
-  onStartMission: () => Promise<void>;
-  isMissionRunning: boolean;
-  isMissionRecorded: boolean;
+  onSendMessage: (message: string) => Promise<void>;
 }
 
 interface BastillaStatus {
   systemVersion: string;
-  cpuLoad: number | null;
-  memoryUsage: number | null;
   appCount: number | null;
   continuousMission: boolean | null;
   error: string | null;
@@ -40,7 +41,7 @@ const featureLaunchers: Array<{
   description: string;
   icon: typeof Activity;
 }> = [
-  { id: 'comms', title: 'Komunikacja Triady', description: 'Dialog z Alexem, Astyrią i Aureliusem', icon: MessagesSquare },
+  { id: 'comms', title: 'Protokół Triady', description: 'Jawne polecenia deterministyczne dla agentów', icon: MessagesSquare },
   { id: 'process_matrix', title: 'Infrastruktura', description: 'Stan usług, logi i naprawa', icon: Cpu },
   { id: 'astyria_mission', title: 'Centrum misji', description: 'Misje, synchronizacja i snapshoty', icon: Sparkles },
   { id: 'terminal', title: 'Terminal', description: 'Konsola jądra i polecenia systemowe', icon: Terminal },
@@ -56,18 +57,16 @@ const featureLaunchers: Array<{
   { id: 'github', title: 'Synchronizacja GitHub', description: 'Eksport i synchronizacja repozytorium', icon: Github },
 ];
 
-export const BASTILLA_OS_MISSION = `Misja Taty: Stwórzcie dystrybucję BastillaOS — instalowalny, uruchamialny system operacyjny Debian Stable 13.7 Trixie amd64 z pełnym KDE Plasma, zachowujący design SVL i integrujący istniejący system SVL Kernel. Przygotujcie powtarzalną konfigurację Debian Live z oficjalnym instalatorem, środowisko KDE, systemowy pakiet zawierający działający lokalnie SVL backend i frontend, serwis systemd oraz launchery. Zachowajcie wszystkie moduły i funkcje SVL: komunikację triady, infrastrukturę i naprawę, misje, mapę pamięci, oś czasu i snapshoty, terminal, monolit Python, DATA_STORE, diagnostykę i telemetrię, wizualizacje 3D, eksplorator plików, Studio Aplikacji, without_nlp oraz synchronizację GitHub. Alex: Debian/live-build, pakiety systemowe, bezpieczeństwo i budowa obrazu ISO. Astyria: KDE, BastillaOS branding, UX i integracja panelu SVL. Aurelius: spójność pakietu, DATA_STORE, upgrade bez utraty danych i powtarzalność builda. Zapiszcie konkretne pliki źródłowe i walidujcie rzeczywiste wyniki. Nie deklarujcie, że ISO zostało zbudowane lub przetestowane, dopóki nie istnieje i przejdzie odpowiednie testy.`;
-
 export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
+  dataStore,
   onNavigate,
-  onStartMission,
-  isMissionRunning,
-  isMissionRecorded,
+  onSendMessage,
 }) => {
+  const [terminalInput, setTerminalInput] = useState('');
+  const [isTerminalLoading, setIsTerminalLoading] = useState(false);
+  const [terminalError, setTerminalError] = useState<string | null>(null);
   const [status, setStatus] = useState<BastillaStatus>({
     systemVersion: 'SVL Kernel',
-    cpuLoad: null,
-    memoryUsage: null,
     appCount: null,
     continuousMission: null,
     error: null,
@@ -93,8 +92,6 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
         if (!active) return;
         setStatus({
           systemVersion: String(infrastructure.sysVersion || mission.sysVersion || 'SVL Kernel'),
-          cpuLoad: null,
-          memoryUsage: null,
           appCount: Number.isFinite(apps.totalApps) ? apps.totalApps : null,
           continuousMission: typeof mission.continuousMissionEnabled === 'boolean'
             ? mission.continuousMissionEnabled
@@ -118,123 +115,199 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
     };
   }, []);
 
+  const handleTerminalSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const command = terminalInput.trim();
+    if (!command || isTerminalLoading) return;
+    setIsTerminalLoading(true);
+    setTerminalError(null);
+    try {
+      await onSendMessage(command);
+      setTerminalInput('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTerminalError(message);
+    } finally {
+      setIsTerminalLoading(false);
+    }
+  };
+
+  const recentMessages = dataStore.chat_history.slice(-5);
+
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-slate-950 p-4 md:p-8 cyber-grid">
-      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
-        <div className="relative overflow-hidden rounded-3xl border border-cyan-500/30 bg-gradient-to-br from-slate-900/90 via-slate-950/90 to-purple-950/40 p-5 sm:p-7 md:p-9 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.7)]">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
-            <div>
-              <div className="mb-3.5 flex items-center gap-2 text-[11px] font-mono font-extrabold uppercase tracking-[0.25em] text-cyan-400">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-                </span>
-                BASTILLAOS // ARCHITEKTURA NOWEJ GENERACJI
-              </div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-white md:text-5xl">
-                Bastilla<span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-purple-400">OS</span>
-              </h1>
-              <p className="mt-3.5 max-w-2xl text-sm leading-relaxed text-slate-300 font-sans">
-                Futurystyczny system operacyjny nowej ery. Połączenie stabilności jądra Debian 13 z zaawansowaną
-                inteligencją Triady (Alex, Astyria, Aurelius), deterministycznym silnikiem harmonicznym oraz pełną autonomią Ring-0.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-2.5 text-[11px] font-mono">
-                <span className="rounded-full border border-cyan-500/40 bg-cyan-950/60 px-3.5 py-1 text-cyan-300 font-bold shadow-[0_0_12px_rgba(6,182,212,0.2)]">
-                  JĄDRO {status.systemVersion}
-                </span>
-                <span className="rounded-full border border-emerald-500/40 bg-emerald-950/60 px-3.5 py-1 text-emerald-300 font-bold shadow-[0_0_12px_rgba(16,185,129,0.2)]">
-                  {status.appCount === null ? 'Aplikacje: skanowanie…' : `${status.appCount} AKTYWNYCH APLIKACJI`}
-                </span>
-                <span className="rounded-full border border-purple-500/40 bg-purple-950/60 px-3.5 py-1 text-purple-300 font-bold shadow-[0_0_12px_rgba(168,85,247,0.2)]">
-                  TRIADA RING-0 ONLINE
-                </span>
-              </div>
+    <section className="cyber-grid flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[#050b18] p-3 text-slate-100 sm:p-5 lg:p-7">
+      <div className="mx-auto w-full max-w-[1500px] space-y-4">
+        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-400/20 bg-[#081326]/90 px-4 py-3 shadow-[0_12px_42px_rgba(2,8,23,0.6)] backdrop-blur-xl">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-300/30 bg-blue-950 text-cyan-200 shadow-[0_0_24px_rgba(34,211,238,0.16)]">
+              <Orbit className="h-5 w-5" />
             </div>
-            <div className="flex shrink-0 flex-col gap-3 rounded-2xl border border-purple-500/40 bg-slate-950/80 p-5 lg:w-84 backdrop-blur-xl shadow-[0_4px_24px_rgba(168,85,247,0.15)]">
-              <div className="flex items-center gap-2 text-sm font-bold text-purple-200">
-                <Sparkles className="h-4 w-4 text-purple-400 animate-spin" />
-                Misja Rozwoju Systemu
-              </div>
-              <p className="text-xs leading-relaxed text-slate-400 font-sans">
-                {isMissionRecorded
-                  ? 'Misja BastillaOS została zarejestrowana i jest prowadzona ciągle przez Triadę. Przejdź do Komory, by nadać nowe dyspozycje.'
-                  : 'Zleć Alexowi, Astyrii i Aureliusowi pełną przebudowę i ciągły rozwój systemu.'}
-              </p>
-              <button
-                type="button"
-                onClick={() => isMissionRecorded ? onNavigate('comms') : void onStartMission()}
-                disabled={isMissionRunning}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 px-4 py-3 text-xs font-bold text-white transition-all shadow-[0_0_16px_rgba(168,85,247,0.35)] active:scale-95 disabled:cursor-wait disabled:opacity-60 cursor-pointer font-mono tracking-wide"
-              >
-                {isMissionRecorded
-                  ? <MessagesSquare className="h-4 w-4" />
-                  : <Play className="h-4 w-4" />}
-                {isMissionRunning ? 'Przekazywanie do Triady…' : isMissionRecorded ? 'Otwórz Dialog z Triadą' : 'Uruchom Misję Triady'}
-              </button>
-              <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono pt-1">
-                <span className="rounded-lg bg-emerald-950/70 border border-emerald-500/30 px-2 py-1 text-emerald-300">Alex · Dowódca</span>
-                <span className="rounded-lg bg-cyan-950/70 border border-cyan-500/30 px-2 py-1 text-cyan-300">Astyria · Logika</span>
-                <span className="rounded-lg bg-amber-950/70 border border-amber-500/30 px-2 py-1 text-amber-300">Aurelius · Czas</span>
-              </div>
+            <div>
+              <div className="text-sm font-extrabold tracking-[0.16em] text-white">BASTILLA<span className="text-cyan-300">OS</span></div>
+              <div className="text-[10px] font-mono tracking-wider text-blue-200/60">DEBIAN 13 · SVL HYPERSPACE DESKTOP</div>
             </div>
           </div>
-        </div>
+          <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-950/40 px-2.5 py-1 text-emerald-300">
+              <Radio className="h-3 w-3" /> JĄDRO {status.systemVersion}
+            </span>
+            <span className="rounded-full border border-blue-300/20 bg-blue-950/40 px-2.5 py-1 text-blue-200/80">
+              {status.appCount === null ? 'APLIKACJE: —' : `${status.appCount} MODUŁÓW`}
+            </span>
+            <span className="rounded-full border border-blue-300/20 bg-blue-950/40 px-2.5 py-1 text-blue-200/80">
+              {status.continuousMission === null ? 'MISJA: —' : status.continuousMission ? 'MISJA: AKTYWNA' : 'MISJA: WSTRZYMANA'}
+            </span>
+            <span className="rounded-full border border-cyan-300/20 bg-cyan-950/40 px-2.5 py-1 text-cyan-200">
+              PROTOKÓŁ TRIADY · DETERMINISTYCZNY
+            </span>
+          </div>
+        </header>
 
-        <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-          {[
-            { label: 'OBCIĄŻENIE CPU', value: status.cpuLoad === null ? '0.4%' : `${status.cpuLoad}%`, icon: Cpu, tone: 'text-cyan-400', border: 'border-cyan-500/30' },
-            { label: 'PAMIĘĆ RAM RING-0', value: status.memoryUsage === null ? '<35% (IDLE)' : `${status.memoryUsage}%`, icon: Activity, tone: 'text-emerald-400', border: 'border-emerald-500/30' },
-            { label: 'MISJA CIĄGŁA', value: status.continuousMission === null ? 'AKTYWNA' : status.continuousMission ? 'AKTYWNA' : 'WSTRZYMANA', icon: ShieldCheck, tone: 'text-purple-400', border: 'border-purple-500/30' },
-            { label: 'MODUŁY HYPEROS', value: `${featureLaunchers.length} PODSYSTEMÓW`, icon: LayoutGrid, tone: 'text-amber-400', border: 'border-amber-500/30' },
-          ].map(({ label, value, icon: Icon, tone, border }) => (
-            <div key={label} className={`rounded-2xl border ${border} bg-slate-900/60 p-4 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.4)]`}>
-              <div className="flex items-center justify-between text-[10px] font-mono font-bold tracking-wider text-slate-400">
-                {label}
-                <Icon className={`h-4 w-4 ${tone}`} />
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
+          <section className="relative overflow-hidden rounded-2xl border border-blue-400/20 bg-gradient-to-br from-[#0c1b36] via-[#081326] to-[#07101e] p-5 sm:p-7">
+            <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
+            <div aria-hidden="true" className="pointer-events-none absolute bottom-0 right-1/3 h-px w-2/3 bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
+            <div className="relative">
+              <div className="mb-3 flex items-center gap-2 text-[10px] font-mono font-bold tracking-[0.25em] text-cyan-300">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
+                SYSTEM ONLINE · DEBIAN GNU/LINUX
               </div>
-              <div className={`mt-2.5 font-mono text-xl font-extrabold tracking-wide ${tone}`}>{value}</div>
+              <h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl">
+                Enter the <span className="text-transparent bg-gradient-to-r from-blue-300 to-cyan-200 bg-clip-text">Hyperspace</span>
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-blue-100/65">
+                Jeden pulpit dla poleceń jądra, protokołu Triady i narzędzi systemowych. Wybierz moduł albo wykonaj jawne polecenie w terminalu.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button type="button" onClick={() => onNavigate('terminal')} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/30 bg-cyan-950/50 px-3.5 py-2 text-xs font-bold text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-900/50">
+                  <Terminal className="h-4 w-4" /> Pełny terminal <ArrowUpRight className="h-3.5 w-3.5" />
+                </button>
+                <button type="button" onClick={() => onNavigate('comms')} className="inline-flex items-center gap-2 rounded-lg border border-blue-200/15 bg-blue-950/40 px-3.5 py-2 text-xs font-bold text-blue-100 transition hover:border-blue-200/40 hover:bg-blue-900/40">
+                  <MessagesSquare className="h-4 w-4" /> Otwórz protokół Triady <ArrowUpRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
-          ))}
+          </section>
+
+          <section className="flex flex-col justify-between gap-4 rounded-2xl border border-blue-300/15 bg-[#081326]/90 p-5">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-100">
+                <Sparkles className="h-4 w-4 text-cyan-300" /> Polecenia Triady
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                Wpisz wiadomość w czacie; rdzeń without_nlp zapisze ją i wykona deterministyczną analizę sygnału, bez interpretowania języka naturalnego.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate('comms')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-gradient-to-r from-blue-700/80 to-cyan-700/70 px-4 py-3 text-xs font-bold text-white transition hover:brightness-110"
+            >
+              <MessagesSquare className="h-4 w-4" />
+              Otwórz polecenia protokołu
+            </button>
+          </section>
         </div>
 
         {status.error && (
-          <p role="status" className="rounded-xl border border-red-800/60 bg-red-950/30 px-4 py-2 text-xs text-red-200">
-            Nie udało się odświeżyć telemetrii: {status.error}. Funkcje systemu pozostają dostępne.
+          <p role="status" className="rounded-xl border border-amber-400/20 bg-amber-950/20 px-4 py-2 text-xs text-amber-100">
+            Nie udało się odświeżyć telemetrii ({status.error}). Pozostałe funkcje są dostępne.
           </p>
         )}
 
-        <div>
-          <div className="mb-4 flex items-end justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-100 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                Matryca Podsystemów SVL Kernel
-              </h2>
-              <p className="mt-1 text-xs text-slate-400">Wszystkie moduły systemu zintegrowane w jednym futurystycznym pulpicie</p>
+        <div className="grid min-h-[460px] gap-4 xl:grid-cols-2">
+          <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-blue-300/20 bg-[#081326]/95 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+            <div className="flex items-center justify-between border-b border-blue-200/10 px-4 py-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-50">
+                <MessagesSquare className="h-4 w-4 text-cyan-300" /> CZAT WITHOUT_NLP
+              </div>
+              <span className="text-[10px] font-mono text-blue-200/50">{dataStore.chat_history.length} WIADOMOŚCI</span>
             </div>
-            <span className="font-mono text-[10px] text-cyan-400 bg-cyan-950/80 border border-cyan-500/30 px-2.5 py-0.5 rounded-full">{featureLaunchers.length} AKTYWNYCH WĘZŁÓW</span>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+              {recentMessages.length === 0 && <p className="text-xs text-slate-500">Wpisz wiadomość poniżej. Wynik deterministycznej analizy pojawi się tutaj.</p>}
+              {recentMessages.map((message, index) => (
+                <article key={`${message.agent}-${index}`} className={`rounded-xl border p-3 ${message.agent === 'Mateusz Mitek' || message.agent === 'Operator' ? 'ml-5 border-blue-300/15 bg-blue-950/40' : 'mr-5 border-cyan-300/15 bg-slate-950/50'}`}>
+                  <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
+                    <CheckCircle2 className="h-3 w-3" /> {message.agent}
+                  </div>
+                  <FormattedMessage content={message.tekst} className="text-xs leading-relaxed text-slate-200" />
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-blue-300/20 bg-[#060d1a] shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+            <div className="flex items-center justify-between border-b border-blue-200/10 bg-[#0a1527] px-4 py-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-50">
+                <MessagesSquare className="h-4 w-4 text-cyan-300" /> WIADOMOŚĆ DO ASTYRII
+              </div>
+              <span className="flex items-center gap-1.5 text-[9px] font-mono text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> KERNEL LINK</span>
+            </div>
+            <div className="relative min-h-0 flex-1 overflow-y-auto p-4">
+              <div aria-hidden="true" className="pointer-events-none absolute right-4 top-3 select-none text-right font-mono text-[9px] leading-4 tracking-[0.2em] text-cyan-300/[0.08]">
+                01001000 01011001<br />01010000 01000101<br />01010010 01010011<br />01010000 01000001<br />01000011 01000101
+              </div>
+              <div aria-live="polite" className="relative space-y-3">
+                {recentMessages.slice(-3).map((message, index) => (
+                  <article key={`${message.agent}-${index}`} className={`rounded-lg border p-3 ${message.agent === 'Mateusz Mitek' || message.agent === 'Operator' ? 'border-purple-300/15 bg-purple-950/30' : 'border-cyan-300/15 bg-slate-950/60'}`}>
+                    <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-cyan-200">{message.agent}</div>
+                    <FormattedMessage content={message.tekst} className="whitespace-pre-wrap text-[11px] leading-relaxed text-cyan-100/85" />
+                  </article>
+                ))}
+              </div>
+              {isTerminalLoading && <p role="status" className="mt-3 animate-pulse text-[10px] font-mono text-cyan-300">Analiza deterministyczna without_nlp…</p>}
+              {terminalError && <p role="alert" className="mt-2 text-[10px] text-rose-300">{terminalError}</p>}
+            </div>
+            <form onSubmit={handleTerminalSubmit} className="border-t border-blue-200/10 bg-[#081326] p-3">
+              <label htmlFor="hyperspace-command" className="mb-2 block text-[9px] font-mono tracking-wider text-blue-200/50">WIADOMOŚĆ · maksymalnie 2000 znaków</label>
+              <div className="flex items-center gap-2 rounded-lg border border-cyan-300/20 bg-[#030813] px-3 focus-within:border-cyan-300/50">
+                <input
+                  id="hyperspace-command"
+                  type="text"
+                  value={terminalInput}
+                  onChange={(event) => setTerminalInput(event.target.value)}
+                  maxLength={2000}
+                  placeholder="Wpisz wiadomość do Astyrii…"
+                  disabled={isTerminalLoading}
+                  className="min-w-0 flex-1 bg-transparent py-3 font-mono text-xs text-white outline-none placeholder:text-slate-700"
+                />
+                <button type="submit" aria-label="Wyślij wiadomość" disabled={!terminalInput.trim() || isTerminalLoading} className="grid h-8 w-8 place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 disabled:opacity-30">
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <section className="pb-2">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-50">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> Moduły systemowe
+              </h2>
+              <p className="mt-1 text-[11px] text-slate-500">Narzędzia SVL dostępne w tym środowisku</p>
+            </div>
+            <span className="font-mono text-[9px] text-blue-200/45">BASTILLAOS · DEBIAN LIVE</span>
           </div>
-          <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
             {featureLaunchers.map(({ id, title, description, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => onNavigate(id)}
-                className="group flex min-h-24 items-start gap-3.5 rounded-2xl border border-slate-800/80 bg-slate-900/50 p-4 text-left transition-all duration-200 hover:border-cyan-500/50 hover:bg-slate-900/90 hover:shadow-[0_0_20px_rgba(6,182,212,0.15)] cursor-pointer"
+                className="group flex min-h-20 items-start gap-3 rounded-xl border border-blue-200/10 bg-[#081326]/80 p-3 text-left transition hover:border-cyan-300/30 hover:bg-[#0b1b34]"
               >
-                <span className="rounded-xl border border-slate-700/60 bg-slate-950/80 p-2.5 text-cyan-400 transition-all group-hover:border-cyan-500 group-hover:text-cyan-300 group-hover:shadow-[0_0_10px_rgba(6,182,212,0.5)]">
-                  <Icon className="h-5 w-5" />
+                <span className="rounded-lg border border-blue-200/10 bg-blue-950/60 p-2 text-cyan-200 transition group-hover:border-cyan-300/30">
+                  <Icon className="h-4 w-4" />
                 </span>
                 <span>
-                  <span className="block text-xs font-bold text-slate-100 group-hover:text-cyan-200 transition-colors">{title}</span>
-                  <span className="mt-1 block text-[11px] leading-relaxed text-slate-400 font-sans">{description}</span>
+                  <span className="block text-[11px] font-bold text-slate-100">{title}</span>
+                  <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">{description}</span>
                 </span>
               </button>
             ))}
           </div>
-        </div>
+        </section>
       </div>
     </section>
   );

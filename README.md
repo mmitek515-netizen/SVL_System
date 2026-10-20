@@ -1,23 +1,44 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# SVL System
 
-# Run and deploy your AI Studio app
+SVL System is a local web-based system panel with a deterministic, structured
+agent-command interface. The protocol handles a finite set of named commands;
+it does not interpret free-form instructions. Existing system areas—including
+diagnostics, terminal, DATA_STORE, application management, visualizations, and
+image generation—remain separate features.
 
-This contains everything you need to run your app locally.
+## Run locally
 
-View your app in AI Studio: https://ai.studio/apps/f347d7c2-e778-4adf-a9d5-bd47f1244a70
+**Prerequisites:** Node.js and npm.
 
-## Run Locally
+```sh
+npm install
+npm run dev
+```
 
-**Prerequisites:**  Node.js
+The Triad command interface uses `POST /api/triad/command`. Requests must be
+JSON objects matching the schema in `src/kernel/agentProtocol.ts`; unknown
+commands or fields are rejected. Supported commands are `SYSTEM_STATUS`,
+`DATA_STORE_AUDIT`, `VERSION_TIMELINE`, and `SIGNAL_ANALYSIS`. The signal
+analysis command requires a `payload.signal`; optional numeric `omega` and
+`time` values can be supplied.
 
+Example:
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```sh
+curl -X POST http://localhost:3000/api/triad/command \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"SYSTEM_STATUS","agent":"triad"}'
+```
+
+Choose `agent` as `triad`, `Alex`, `Astyria`, or `Aurelius`. Successful
+responses contain structured replies and the resulting system state. The
+protocol is deterministic and does not require a generative text provider.
+
+## Configuration
+
+The deterministic command protocol has no model-provider settings. The
+`.env.example` file documents optional image-generation and application URL
+configuration; neither is required to run the command protocol.
 
 ## Aktualizacja i diagnostyka
 

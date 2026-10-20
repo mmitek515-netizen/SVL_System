@@ -46,7 +46,7 @@ interface SystemLogEntry {
   id: string;
   timestamp: string;
   level: 'info' | 'warn' | 'error' | 'healed';
-  source: 'INFRA' | 'KERNEL' | 'AGENT' | 'EXPRESS' | 'GEMINI' | 'PAYLOAD';
+  source: 'INFRA' | 'KERNEL' | 'AGENT' | 'EXPRESS' | 'PAYLOAD';
   message: string;
   healed?: boolean;
 }
@@ -60,7 +60,6 @@ interface InfraStatus {
   totalLogsCount: number;
   healedCount: number;
   lastScan: string;
-  activeCandidateModels: string[];
   healedIncidents: HealedIncident[];
   uptimeSeconds: number;
   continuousMissionEnabled: boolean;
@@ -292,18 +291,18 @@ export const TaskProcessMatrix: React.FC = () => {
           <div className="text-cyan-300 font-bold text-sm">
             {infraStatus?.healedCount ?? 4} anomalii samonaprawionych
           </div>
-          <p className="text-slate-500 text-[10px]">413 payload, 404/429 AI model, locki, szablony</p>
+          <p className="text-slate-500 text-[10px]">Błędy API, blokady zadań i niespójności danych</p>
         </div>
 
         <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-1">
           <div className="flex items-center justify-between text-slate-500 text-[11px]">
-            <span>AKTYWNY POTOK MODELI AI</span>
+            <span>PROTOKÓŁ AGENTÓW</span>
             <Zap className="w-3.5 h-3.5 text-amber-400" />
           </div>
           <div className="text-amber-300 font-bold text-sm truncate">
-            {infraStatus?.activeCandidateModels?.[0] || 'gemini-3.1-flash-lite'}
+            Deterministyczny · bez NLP
           </div>
-          <p className="text-slate-500 text-[10px]">Fallback: gemini-3.5-flash & 3.8-flash</p>
+          <p className="text-slate-500 text-[10px]">Jawne polecenia i typowane dane</p>
         </div>
 
         <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 space-y-1">

@@ -64,6 +64,7 @@ export const AppsStudioView: React.FC = () => {
   const [totalApps, setTotalApps] = useState(0);
   const [storageUsed, setStorageUsed] = useState('0 KB');
   const [loading, setLoading] = useState(true);
+  const [appsError, setAppsError] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'library' | 'terminal' | 'preview' | 'code'>('library');
 
   // Selected app for preview / code inspection
@@ -110,17 +111,21 @@ export const AppsStudioView: React.FC = () => {
   const fetchApps = async () => {
     try {
       const res = await fetch('/api/apps/list');
-      if (res.ok) {
-        const data = await res.json();
-        setApps(data.apps || []);
-        setTotalApps(data.totalApps || 0);
-        setStorageUsed(data.storageUsed || '0 KB');
-        if (data.apps?.length > 0 && !selectedAppId) {
-          setSelectedAppId(data.apps[0].id);
-        }
+      if (!res.ok) {
+        throw new Error(`Nie można pobrać listy aplikacji (HTTP ${res.status}).`);
       }
-    } catch (e) {
-      console.warn('Failed to fetch apps:', e);
+      const data = await res.json();
+      setApps(data.apps || []);
+      setTotalApps(data.totalApps || 0);
+      setStorageUsed(data.storageUsed || '0 KB');
+      setAppsError(null);
+      if (data.apps?.length > 0 && !selectedAppId) {
+        setSelectedAppId(data.apps[0].id);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setAppsError(message);
+      console.error('Failed to fetch apps:', message);
     } finally {
       setLoading(false);
     }
@@ -168,6 +173,25 @@ export const AppsStudioView: React.FC = () => {
   const showNotification = (msg: string) => {
     setNotificationMsg(msg);
     setTimeout(() => setNotificationMsg(null), 4500);
+  };
+
+  const handleLaunchApp = async (appId: string) => {
+    try {
+      const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/launch`, { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok || !result.success || typeof result.previewUrl !== 'string') {
+        throw new Error(result.error || `Nie można uruchomić aplikacji (HTTP ${response.status}).`);
+      }
+      setSelectedAppId(appId);
+      setPreviewIframeKey(Date.now());
+      setActiveSubTab('preview');
+      showNotification(`Uruchomiono podgląd aplikacji ${appId}.`);
+      await fetchApps();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showNotification(`Nie udało się uruchomić aplikacji: ${message}`);
+      console.error(`Failed to launch app ${appId}:`, message);
+    }
   };
 
   // Execute terminal command
@@ -675,7 +699,24 @@ export const AppsStudioView: React.FC = () => {
             </div>
 
             {/* Applications Grid */}
-            {filteredApps.length === 0 ? (
+            {appsError && (
+              <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-rose-800 bg-rose-950/40 p-3 text-xs text-rose-200">
+                <span>Nie udało się wczytać aplikacji: {appsError}</span>
+                <button
+                  type="button"
+                  onClick={() => void fetchApps()}
+                  className="shrink-0 rounded border border-rose-700 px-2 py-1 font-bold hover:bg-rose-900"
+                >
+                  Spróbuj ponownie
+                </button>
+              </div>
+            )}
+            {loading ? (
+              <div className="flex h-64 items-center justify-center gap-2 text-xs text-slate-400">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Wczytywanie aplikacji…
+              </div>
+            ) : filteredApps.length === 0 ? (
               <div className="h-64 flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-xl p-8">
                 <LayoutGrid className="w-12 h-12 mb-3 opacity-20" />
                 <p className="text-xs uppercase tracking-widest text-slate-400">Brak aplikacji spełniających kryteria</p>
@@ -738,16 +779,12 @@ export const AppsStudioView: React.FC = () => {
                       <div className="flex items-center justify-between gap-1 mt-2 pt-1">
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => {
-                              setSelectedAppId(app.id);
-                              setActiveSubTab('preview');
-                              setPreviewIframeKey(Date.now());
-                            }}
+                            onClick={() => void handleLaunchApp(app.id)}
                             className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600/20 border border-emerald-500/50 hover:bg-emerald-600 hover:text-slate-950 text-emerald-400 rounded-md text-[11px] font-bold transition active:scale-95 cursor-pointer"
-                            title="Otwórz podgląd na żywo w piaskownicy"
+                            title="Uruchom aplikację w podglądzie na żywo"
                           >
                             <Eye className="w-3.5 h-3.5" />
-                            <span>Podgląd</span>
+                            <span>Uruchom</span>
                           </button>
 
                           <button
@@ -774,7 +811,7 @@ export const AppsStudioView: React.FC = () => {
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => {
-                              handleExecuteCommand(`run ${app.id}`);
+                              void handleLaunchApp(app.id);
                             }}
                             className="p-1.5 bg-slate-950 border border-slate-800 hover:border-cyan-500/50 text-slate-400 hover:text-cyan-400 rounded-md text-[11px] transition cursor-pointer"
                             title="Wykonaj w terminalu polecenie run"
@@ -959,7 +996,7 @@ export const AppsStudioView: React.FC = () => {
                 </div>
 
                 <a
-                  href={`/api/apps/preview/${selectedAppId}`}
+                  href={`/api/apps/preview/${selectedAppId}/`}
                   target="_blank"
                   rel="noreferrer"
                   className="p-1.5 bg-slate-950 border border-slate-800 hover:border-cyan-500 text-cyan-400 rounded transition flex items-center gap-1 text-[11px]"
@@ -984,7 +1021,7 @@ export const AppsStudioView: React.FC = () => {
               >
                 <iframe
                   key={previewIframeKey}
-                  src={`/api/apps/preview/${selectedAppId}`}
+                  src={`/api/apps/preview/${selectedAppId}/`}
                   title={`Podgląd aplikacji ${selectedAppId}`}
                   className="w-full h-full border-0 bg-slate-950"
                   sandbox="allow-scripts allow-forms allow-same-origin allow-modals"

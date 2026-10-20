@@ -6,7 +6,7 @@
   "author": "Astyria",
   "description": "Wizualizacja stanu jądra SVL, dynamiczne oscylatory kwantowe, zużycie pamięci i strumień pakietów w czasie rzeczywistym.",
   "entry": "index.html",
-  "status": "ready",
+  "status": "running",
   "created_at": "2026-10-17T22:30:00Z",
   "files": [
     "index.html",

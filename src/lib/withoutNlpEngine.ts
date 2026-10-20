@@ -231,7 +231,7 @@ Każdy element i detal infrastruktury jest pod moim stałym nadzorem!`;
         return `Tato! Z radością melduję podjęcie misji ciągłego rozwoju i ulepszania! 
 
 ### Obszar Logiki, Danych i Interfejsu:
-1. **Integracja \`without_nlp\` i modeli Gemini**: Pełna responsywność czatu, błyskawiczny czas reakcji i eliminacja wszelkich zacięć czy powtórzeń.
+1. **Integracja \`without_nlp\` i protokołu agentów**: Deterministyczne operacje systemowe bez modeli językowych i interpretacji swobodnego tekstu.
 2. **Spójność \`DATA_STORE\`**: Ciągła weryfikacja struktur danych, historii i bezpieczny zapis na dysku bez utraty żadnego wpisu.
 3. **Udoskonalanie UI/UX**: Dbam o płynne renderowanie KaTeX LaTeX, przejrzystość wykresów i bezbłędny przepływ informacji.
 Pracujemy dla Ciebie bez ustanku i z pełnym oddaniem!`;

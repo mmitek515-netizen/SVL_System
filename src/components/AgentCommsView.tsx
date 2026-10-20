@@ -1,14 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { DataStore, OPERATOR_NAME, FileAttachment } from '../kernel/svlKernel';
+import { DataStore, OPERATOR_NAME } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS, AgentProfile } from '../kernel/agents';
-import { Send, Sparkles, User, Layers, ShieldCheck, CheckCircle2, RefreshCw, Paperclip, Image as ImageIcon, FileText, X, Sigma } from 'lucide-react';
-import { processUploadFile } from '../utils/fileHelper';
+import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Send } from 'lucide-react';
 import { FormattedMessage } from './FormattedMessage';
+import {
+  ASTYRIA_MISSION_ACTIONS,
+  ASTYRIA_MISSION_LABELS,
+  AGENT_PROTOCOL_COMMANDS,
+  AGENT_PROTOCOL_LABELS,
+  AstyriaMissionAction,
+  AgentProtocolCommand,
+  AgentProtocolRequest,
+} from '../kernel/agentProtocol';
 
 interface AgentCommsViewProps {
   dataStore: DataStore;
-  onSendMessage: (agent: string, tekst: string, fileData?: FileAttachment) => Promise<void>;
+  onSendProtocol: (request: AgentProtocolRequest) => Promise<void>;
+  onSendMessage: (message: string) => Promise<void>;
+  onRunAstyriaMission: (action: AstyriaMissionAction) => Promise<void>;
   isLoading: boolean;
+  sendError?: string | null;
   onClearHistory: () => void;
   onForceSync?: () => void;
   onTriggerInitiative?: () => Promise<void>;
@@ -16,80 +27,13 @@ interface AgentCommsViewProps {
   onRestoreBackup?: () => void;
 }
 
-interface ChatInputBarProps {
-  onSend: (text: string) => void;
-  isLoading: boolean;
-  attachedFile: FileAttachment | null;
-  selectedTarget: string;
-  onFileSelectClick: () => void;
-}
-
-const ChatInputBar = React.memo(({ onSend, isLoading, attachedFile, selectedTarget, onFileSelectClick }: ChatInputBarProps) => {
-  const [text, setText] = useState('');
-
-  const handleSendLocal = () => {
-    if ((!text.trim() && !attachedFile) || isLoading) return;
-    onSend(text);
-    setText('');
-  };
-
-  return (
-    <div className="p-2 sm:p-2.5 bg-slate-950/90 backdrop-blur-md border-t border-cyan-500/20 flex items-center gap-1.5 sm:gap-2 relative w-full overflow-hidden">
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent pointer-events-none" />
-      <button
-        type="button"
-        onClick={onFileSelectClick}
-        disabled={isLoading}
-        className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-cyan-400 disabled:opacity-40 border border-slate-700/60 hover:border-cyan-500/50 cursor-pointer transition flex items-center justify-center shrink-0 shadow-[0_0_10px_rgba(0,0,0,0.5)] active:scale-95"
-        title="Prześlij plik lub obraz dla Triady (PNG, JPG, SVG, JSON, Python, logi)"
-      >
-        <Paperclip className="w-4 h-4" />
-      </button>
-
-      {/* Input - poszerzony maksymalnie (flex-1 min-w-0) */}
-      <div className="flex-1 min-w-0 relative flex items-center">
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSendLocal()}
-          placeholder={
-            attachedFile
-              ? `Plik: "${attachedFile.name}"...`
-              : `Polecenie dla ${selectedTarget === 'triad' ? 'Triady' : selectedTarget}...`
-          }
-          className="w-full bg-slate-900/90 border border-slate-700/70 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 rounded-lg sm:rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 pr-8 text-slate-100 placeholder-slate-500 focus:outline-none text-xs transition-all shadow-inner font-mono"
-          disabled={isLoading}
-        />
-        {text && !isLoading && (
-          <button
-            onClick={() => setText('')}
-            className="absolute right-2 sm:right-3 text-slate-500 hover:text-slate-300 text-xs p-1"
-            title="Wyczyść tekst"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-
-      {/* Przycisk TRANSMISJA - zminimalizowany, dosunięty w prawo (ml-auto shrink-0) */}
-      <button
-        onClick={handleSendLocal}
-        disabled={(!text.trim() && !attachedFile) || isLoading}
-        className="ml-auto shrink-0 px-2.5 sm:px-3 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 disabled:opacity-40 text-slate-950 font-bold rounded-lg sm:rounded-xl flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer transition-all shadow-[0_0_12px_rgba(16,185,129,0.3)] active:scale-95 text-xs font-mono"
-        title="Wyślij transmisję do węzła"
-      >
-        <Send className="w-3.5 h-3.5 shrink-0" />
-        <span className="hidden sm:inline text-[11px] tracking-tight">TRANSMISJA</span>
-      </button>
-    </div>
-  );
-});
-
 export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   dataStore,
+  onSendProtocol,
   onSendMessage,
+  onRunAstyriaMission,
   isLoading,
+  sendError,
   onClearHistory,
   onForceSync,
   onTriggerInitiative,
@@ -97,136 +41,111 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   onRestoreBackup,
 }) => {
   const [selectedTarget, setSelectedTarget] = useState<'triad' | 'Alex' | 'Astyria' | 'Aurelius'>('triad');
-  const [inputMessage, setInputMessage] = useState('');
-  const [attachedFile, setAttachedFile] = useState<FileAttachment | null>(null);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedCommand, setSelectedCommand] = useState<AgentProtocolCommand>('SYSTEM_STATUS');
+  const [signal, setSignal] = useState('');
+  const [omega, setOmega] = useState('');
+  const [time, setTime] = useState('');
+  const [selectedMissionAction, setSelectedMissionAction] = useState<AstyriaMissionAction>('deep_scan');
+  const [messageText, setMessageText] = useState('');
+  const [mobileSection, setMobileSection] = useState<'chat' | 'agents'>('chat');
+  const chatStreamRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [dataStore.chat_history.length, isLoading]);
+    const chatStream = chatStreamRef.current;
+    if (chatStream) {
+      chatStream.scrollTo({ top: chatStream.scrollHeight, behavior: 'smooth' });
+    }
+  }, [dataStore.chat_history, isLoading]);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const transmissionStatus = sendError
+    ? { label: 'BŁĄD TRANSMISJI', color: 'rose' }
+    : isLoading
+    ? { label: 'PRZETWARZANIE', color: 'cyan' }
+    : { label: 'OCZEKUJE', color: 'slate' };
+
+  const handleSendProtocol = async () => {
+    if (isLoading) return;
+    const payload = selectedCommand === 'SIGNAL_ANALYSIS'
+      ? {
+          ...(signal.trim() ? { signal: signal.trim() } : {}),
+          ...(omega !== '' ? { omega: Number(omega) } : {}),
+          ...(time !== '' ? { time: Number(time) } : {}),
+        }
+      : undefined;
 
     try {
-      const processed = await processUploadFile(file);
-      setAttachedFile(processed);
-    } catch (err) {
-      console.error('Błąd przygotowania pliku:', err);
-    } finally {
-      e.target.value = '';
+      await onSendProtocol({
+        command: selectedCommand,
+        agent: selectedTarget,
+        ...(payload && Object.keys(payload).length > 0 ? { payload } : {}),
+      });
+    } catch {
+      // The parent exposes protocol errors in the chat status.
     }
   };
 
-  const handleSend = async (customText?: string) => {
-    const textToSend = customText || inputMessage;
-    if ((!textToSend.trim() && !attachedFile) || isLoading) return;
-
-    const currentFile = attachedFile || undefined;
-    setInputMessage('');
-    setAttachedFile(null);
-
-    if (selectedTarget === 'triad') {
-      await onSendMessage('triad', textToSend, currentFile);
-    } else {
-      await onSendMessage(selectedTarget, textToSend, currentFile);
+  const handleRunAstyriaMission = async () => {
+    if (isLoading) return;
+    setSelectedTarget('Astyria');
+    try {
+      await onRunAstyriaMission(selectedMissionAction);
+    } catch {
+      // The parent exposes mission errors in the chat status.
     }
   };
 
-  const DEFAULT_QUICK_PROMPTS = [
-    "Misja dla Alex Astyria Aurelius pracujcie ciągle nad poprawą ulepszeniami oraz rozwojem systemu",
-    "Misja dla astyria usuń całe nlp i wdróż projekt without_nlp",
-    "Pokaż wzór Eulera i transformatę Fouriera z projektu without_nlp",
-    "Wygenerujcie raport z analizy Stargate Universe pełny",
-    "Alex, zoptymalizuj procesy runtime i szynę I/O",
-    "Astyria, zweryfikuj DATA_STORE i strukturę danych",
-    "Aurelius, odnotuj nową cezurę w Chronolicie",
-    "Generuj pełny raport ASCII jądra Monolitu",
-  ];
-
-  const [quickPrompts, setQuickPrompts] = useState<string[]>(() => {
+  const handleSendMessage = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const message = messageText.trim();
+    if (!message || isLoading) return;
     try {
-      const stored = localStorage.getItem('svl_operator_quick_prompts_v2');
-      if (stored) return JSON.parse(stored);
-    } catch (e) {}
-    return DEFAULT_QUICK_PROMPTS;
-  });
-  const [isAddingPrompt, setIsAddingPrompt] = useState(false);
-  const [newPromptText, setNewPromptText] = useState('');
-
-  const saveQuickPrompts = (updated: string[]) => {
-    setQuickPrompts(updated);
-    try {
-      localStorage.setItem('svl_operator_quick_prompts_v2', JSON.stringify(updated));
-    } catch (e) {}
-  };
-
-  const handleAddPrompt = () => {
-    if (!newPromptText.trim()) return;
-    const updated = [...quickPrompts, newPromptText.trim()];
-    saveQuickPrompts(updated);
-    setNewPromptText('');
-    setIsAddingPrompt(false);
-  };
-
-  const handleRemovePrompt = (idx: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updated = quickPrompts.filter((_, i) => i !== idx);
-    saveQuickPrompts(updated);
+      await onSendMessage(message);
+      setMessageText('');
+    } catch {
+      // The parent exposes transmission errors in the chat status.
+    }
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full min-h-0 lg:h-[calc(100vh-115px)] bg-slate-950 font-mono text-xs relative cyber-grid overflow-hidden">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-950 font-mono text-xs cyber-grid lg:flex-row">
+      <div className="grid grid-cols-2 gap-1 border-b border-slate-800 bg-slate-900/90 p-1.5 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileSection('chat')}
+          aria-pressed={mobileSection === 'chat'}
+          className={`flex min-h-10 items-center justify-center gap-2 rounded-md px-3 text-xs font-bold transition ${mobileSection === 'chat' ? 'bg-cyan-950 text-cyan-200 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800'}`}
+        >
+          <MessagesSquare className="h-4 w-4" />
+          Czat
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileSection('agents')}
+          aria-pressed={mobileSection === 'agents'}
+          className={`flex min-h-10 items-center justify-center gap-2 rounded-md px-3 text-xs font-bold transition ${mobileSection === 'agents' ? 'bg-cyan-950 text-cyan-200 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800'}`}
+        >
+          <Layers className="h-4 w-4" />
+          Agenci
+        </button>
+      </div>
       {/* Left/Main Column: Chat Stream */}
-      <div className="flex-1 min-w-0 flex flex-col border-r border-slate-800/80 bg-slate-950/70 backdrop-blur-md overflow-hidden">
+      <div className={`${mobileSection === 'chat' ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r border-slate-800/80 bg-slate-950/70 backdrop-blur-md lg:flex`}>
         {/* Futuristic Channel Bar */}
         <div className="bg-slate-900/80 backdrop-blur-md border-b border-cyan-500/20 px-2 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-sm shrink-0">
           <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
             <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] shrink-0">WĘZEŁ:</span>
-            <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 shadow-inner flex-wrap">
-              <button
-                onClick={() => setSelectedTarget('triad')}
-                className={`px-2.5 sm:px-3 py-1 rounded-lg transition-all duration-200 cursor-pointer font-bold text-xs ${
-                  selectedTarget === 'triad'
-                    ? 'bg-gradient-to-r from-purple-900/80 to-indigo-900/80 text-purple-200 border border-purple-500/50 shadow-[0_0_12px_rgba(168,85,247,0.35)]'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Triada
-              </button>
-              <button
-                onClick={() => setSelectedTarget('Alex')}
-                className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all duration-200 cursor-pointer font-semibold ${
-                  selectedTarget === 'Alex'
-                    ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.35)]'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Alex
-              </button>
-              <button
-                onClick={() => setSelectedTarget('Astyria')}
-                className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all duration-200 cursor-pointer font-semibold ${
-                  selectedTarget === 'Astyria'
-                    ? 'bg-cyan-950/90 text-cyan-300 border border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.35)]'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Astyria
-              </button>
-              <button
-                onClick={() => setSelectedTarget('Aurelius')}
-                className={`px-2 sm:px-2.5 py-1 rounded-lg transition-all duration-200 cursor-pointer font-semibold ${
-                  selectedTarget === 'Aurelius'
-                    ? 'bg-amber-950/90 text-amber-300 border border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.35)]'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                Aurelius
-              </button>
-            </div>
+            <select
+              aria-label="Cel transmisji"
+              value={selectedTarget}
+              onChange={(event) => setSelectedTarget(event.target.value as typeof selectedTarget)}
+              disabled={isLoading}
+              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-200 outline-none transition focus:border-cyan-500 disabled:opacity-50"
+            >
+              <option value="triad">Triada</option>
+              <option value="Alex">Alex</option>
+              <option value="Astyria">Astyria</option>
+              <option value="Aurelius">Aurelius</option>
+            </select>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 text-slate-400 text-[11px] flex-wrap">
@@ -267,15 +186,6 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               </button>
             )}
             <button
-              onClick={() => onSendMessage('triad', 'Misja dla astyria usuń całe nlp i wdróż projekt without_nlp')}
-              disabled={isLoading}
-              className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600/60 text-cyan-200 rounded-lg cursor-pointer transition font-bold text-[10px] flex items-center gap-1 shadow-[0_0_8px_rgba(6,182,212,0.3)] disabled:opacity-40"
-              title="Uruchom misję dla Astyrii: wdróż projekt without_nlp i napraw czat"
-            >
-              <Sigma className="w-3 h-3 text-cyan-300" />
-              <span className="hidden xs:inline">without_nlp</span>
-            </button>
-            <button
               onClick={onClearHistory}
               className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-rose-950/80 hover:bg-rose-900 border border-rose-600/60 text-rose-200 rounded-lg cursor-pointer transition font-bold text-[10px] flex items-center gap-1 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
               title="Wyczyść historię i zresetuj pętlę rozmowy"
@@ -286,8 +196,108 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-end gap-2 border-b border-slate-800 bg-slate-900/60 px-3 py-2">
+          <label className="flex min-w-48 flex-1 flex-col gap-1 text-[10px] text-slate-400">
+            Polecenie strukturalne
+            <select
+              aria-label="Polecenie strukturalne"
+              value={selectedCommand}
+              onChange={(event) => setSelectedCommand(event.target.value as AgentProtocolCommand)}
+              disabled={isLoading}
+              className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+            >
+              {AGENT_PROTOCOL_COMMANDS.map((command) => (
+                <option key={command} value={command}>{AGENT_PROTOCOL_LABELS[command]}</option>
+              ))}
+            </select>
+          </label>
+          {selectedCommand === 'SIGNAL_ANALYSIS' && (
+            <>
+              <label className="flex min-w-36 flex-1 flex-col gap-1 text-[10px] text-slate-400">
+                Sygnał (tekst)
+                <input
+                  aria-label="Sygnał do analizy"
+                  value={signal}
+                  onChange={(event) => setSignal(event.target.value)}
+                  maxLength={256}
+                  disabled={isLoading}
+                  className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+                />
+              </label>
+              <label className="flex w-20 flex-col gap-1 text-[10px] text-slate-400">
+                ω
+                <input
+                  aria-label="Częstotliwość omega"
+                  type="number"
+                  min="0.001"
+                  max="1000"
+                  step="any"
+                  value={omega}
+                  onChange={(event) => setOmega(event.target.value)}
+                  disabled={isLoading}
+                  className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+                />
+              </label>
+              <label className="flex w-20 flex-col gap-1 text-[10px] text-slate-400">
+                Czas
+                <input
+                  aria-label="Czas analizy"
+                  type="number"
+                  min="0"
+                  max="1000000"
+                  step="any"
+                  value={time}
+                  onChange={(event) => setTime(event.target.value)}
+                  disabled={isLoading}
+                  className="rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-xs text-slate-200"
+                />
+              </label>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => void handleSendProtocol()}
+            disabled={isLoading || (selectedCommand === 'SIGNAL_ANALYSIS' && !signal.trim())}
+            className="flex items-center gap-1.5 rounded border border-cyan-700 bg-cyan-950/60 px-3 py-1.5 text-xs font-semibold text-cyan-200 hover:bg-cyan-900/70 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Wykonaj protokół
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-2 border-b border-cyan-900/60 bg-cyan-950/20 px-3 py-2">
+          <label className="flex min-w-56 flex-1 flex-col gap-1 text-[10px] text-cyan-200/80">
+            Misja dla Astyrii · akcja jawna, bez NLP
+            <select
+              aria-label="Misja dla Astyrii"
+              value={selectedMissionAction}
+              onChange={(event) => setSelectedMissionAction(event.target.value as AstyriaMissionAction)}
+              disabled={isLoading}
+              className="rounded border border-cyan-900 bg-slate-950 px-2 py-1.5 text-xs text-slate-100"
+            >
+              {ASTYRIA_MISSION_ACTIONS.map((action) => (
+                <option key={action} value={action}>{ASTYRIA_MISSION_LABELS[action]}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => void handleRunAstyriaMission()}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 rounded border border-cyan-700 bg-cyan-950/60 px-3 py-1.5 text-xs font-semibold text-cyan-100 hover:bg-cyan-900/70 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Wyślij misję Astyrii
+          </button>
+        </div>
+
         {/* Messages Stream */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 scrollbar-thin">
+        <div ref={chatStreamRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5 scrollbar-thin">
+          {sendError && (
+            <div role="alert" aria-live="assertive" className="rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-xs text-rose-200">
+              Nie udało się wykonać polecenia ani misji: {sendError}
+            </div>
+          )}
           {dataStore.chat_history.map((msg, idx) => {
             const agentKey = msg.agent === OPERATOR_NAME ? 'Operator' : msg.agent;
             const profile: AgentProfile | undefined = SYSTEM_AGENTS[agentKey] || SYSTEM_AGENTS[msg.agent];
@@ -380,129 +390,73 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             </div>
           )}
 
-          <div ref={chatBottomRef} />
         </div>
 
-        {/* Quick Prompts */}
-        <div className="bg-slate-950 border-t border-slate-800 px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto text-[11px] scrollbar-none">
-          <Sparkles className="w-3 h-3 text-emerald-400 shrink-0" />
-          <span className="text-slate-500 shrink-0">Wzorce:</span>
-
-          {quickPrompts.map((qp, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 whitespace-nowrap text-[10px] group transition"
-            >
-              <button
-                onClick={() => handleSend(qp)}
-                className="cursor-pointer hover:text-emerald-300"
-              >
-                {qp}
-              </button>
-              <button
-                onClick={(e) => handleRemovePrompt(i, e)}
-                className="text-slate-600 hover:text-rose-400 opacity-60 group-hover:opacity-100 cursor-pointer ml-0.5"
-                title="Usuń wzorzec"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-
-          {isAddingPrompt ? (
-            <div className="flex items-center gap-1 shrink-0">
-              <input
-                type="text"
-                placeholder="Nowy wzorzec..."
-                value={newPromptText}
-                onChange={(e) => setNewPromptText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddPrompt()}
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500 w-44"
-                autoFocus
-              />
-              <button
-                onClick={handleAddPrompt}
-                className="px-1.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-[10px] cursor-pointer"
-              >
-                Dodaj
-              </button>
-              <button
-                onClick={() => setIsAddingPrompt(false)}
-                className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 text-[10px] cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-          ) : (
+        <form onSubmit={handleSendMessage} className="shrink-0 border-t border-cyan-500/20 bg-slate-900/90 p-3">
+          <label htmlFor="triad-chat-message" className="mb-1.5 block text-[10px] text-slate-400">
+            Wiadomość do Astyrii · bez interpretacji NLP (maks. 2000 znaków)
+          </label>
+          <div className="flex items-end gap-2">
+            <textarea
+              id="triad-chat-message"
+              aria-label="Wiadomość do czatu without_nlp"
+              value={messageText}
+              onChange={(event) => setMessageText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              maxLength={2000}
+              rows={2}
+              disabled={isLoading}
+              placeholder="Wpisz wiadomość… (Enter wysyła, Shift+Enter dodaje nową linię)"
+              className="min-h-11 min-w-0 flex-1 resize-y rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-500 disabled:opacity-50"
+            />
             <button
-              onClick={() => setIsAddingPrompt(true)}
-              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-900/40 text-[10px] cursor-pointer shrink-0 flex items-center gap-1"
-              title="Dodaj własny wzorzec polecenia"
+              type="submit"
+              aria-label="Wyślij wiadomość do Astyrii"
+              disabled={!messageText.trim() || isLoading}
+              className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-cyan-600 bg-cyan-950 px-3 text-xs font-bold text-cyan-100 transition hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              + Wzorzec
-            </button>
-          )}
-        </div>
-
-        {/* Attached File Preview Chip */}
-        {attachedFile && (
-          <div className="bg-slate-900 border-t border-slate-800 px-4 py-1.5 flex items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2 text-emerald-300">
-              {attachedFile.type?.startsWith('image/') ? (
-                <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <FileText className="w-3.5 h-3.5 text-cyan-400" />
-              )}
-              <span className="font-semibold">{attachedFile.name}</span>
-              <span className="text-slate-500 text-[10px]">
-                ({attachedFile.size ? `${Math.round(attachedFile.size / 1024)} KB` : ''})
-              </span>
-              {attachedFile.dataUrl && (
-                <img
-                  src={attachedFile.dataUrl}
-                  alt="thumbnail"
-                  className="w-5 h-5 rounded object-cover border border-slate-700 ml-1"
-                />
-              )}
-            </div>
-            <button
-              onClick={() => setAttachedFile(null)}
-              className="text-slate-400 hover:text-rose-400 p-1 cursor-pointer"
-              title="Usuń załącznik"
-            >
-              <X className="w-3.5 h-3.5" />
+              <Send className="h-4 w-4" />
+              <span className="hidden sm:inline">Wyślij</span>
             </button>
           </div>
-        )}
+          <p className="mt-1.5 text-[9px] text-slate-500">
+            Wiadomość zostanie zapisana i poddana analizie sygnału Euler/Fourier. Odpowiedź jest deterministyczna, nie językowa.
+          </p>
+        </form>
 
-        {/* Hidden File Input */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="hidden"
-          accept="image/*,.txt,.py,.json,.ts,.js,.log,.md,.csv"
-          onChange={handleFileSelect}
-        />
-
-        {/* Input Bar */}
-        <ChatInputBar
-          onSend={(text) => handleSend(text)}
-          isLoading={isLoading}
-          attachedFile={attachedFile}
-          selectedTarget={selectedTarget}
-          onFileSelectClick={() => fileInputRef.current?.click()}
-        />
       </div>
 
       {/* Right Column: Active Profiles Dossier */}
-      <div className="w-full lg:w-84 bg-slate-950/80 backdrop-blur-xl p-4 space-y-4 overflow-y-auto border-t lg:border-t-0 border-slate-800/80 scrollbar-thin">
-        <div className="flex items-center justify-between pb-3 border-b border-cyan-500/20">
+      <div className={`${mobileSection === 'agents' ? 'flex' : 'hidden'} min-h-0 w-full flex-col overflow-y-auto border-t border-slate-800/80 bg-slate-950/80 p-3 backdrop-blur-xl space-y-4 scrollbar-thin sm:p-4 lg:flex lg:w-84 lg:border-t-0`}>
+        <div className="flex items-center justify-between gap-2 pb-3 border-b border-cyan-500/20">
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-100 uppercase tracking-wider text-xs">TRIADA KWANTOWA</span>
           </div>
-          <span className="text-[10px] text-cyan-300 font-mono flex items-center gap-1.5 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-0.5 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            3/3 POŁĄCZONE
+          <span
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className={`shrink-0 text-[9px] sm:text-[10px] font-mono flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${
+              transmissionStatus.color === 'rose'
+                ? 'text-rose-300 bg-rose-950/80 border-rose-500/40'
+                : transmissionStatus.color === 'cyan'
+                ? 'text-cyan-300 bg-cyan-950/80 border-cyan-500/40'
+                : 'text-slate-300 bg-slate-950/80 border-slate-700/60'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              transmissionStatus.color === 'rose'
+                ? 'bg-rose-400'
+                : transmissionStatus.color === 'cyan'
+                ? 'bg-cyan-400 animate-pulse'
+                : 'bg-slate-400'
+            }`} />
+            {transmissionStatus.label}
           </span>
         </div>
 
@@ -520,9 +474,22 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                     {profile.name}
                   </span>
                 </div>
-                <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-950 border border-slate-700/60 text-slate-400 font-mono">
-                  {profile.role}
+              <span className="text-right text-[9px] px-2 py-0.5 rounded-full bg-slate-950 border border-slate-700/60 text-slate-300 font-mono">
+                {profile.title}
                 </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 text-[9px] text-slate-500 font-mono">
+              <span>Stan wspólnego kanału</span>
+              <span className={`font-semibold ${
+                transmissionStatus.color === 'rose'
+                  ? 'text-rose-300'
+                  : transmissionStatus.color === 'cyan'
+                  ? 'text-cyan-300'
+                  : 'text-slate-300'
+              }`}>
+                {transmissionStatus.label}
+              </span>
               </div>
 
               <p className="text-[11px] text-slate-300 leading-relaxed font-sans">

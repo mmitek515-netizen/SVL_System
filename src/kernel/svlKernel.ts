@@ -37,17 +37,15 @@ export interface DataStore {
 export const INITIAL_DATA_STORE: DataStore = {
   config: {
     sys_version: "8.5.1-Desktop-Ready",
-    mode: "Google-AI-Studio-Production",
+    mode: "Local-Deterministic-Production",
     active_profiles: ["Alex", "Astyria", "Aurelius"],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
-    persistence_engine: "Stateless-Context-Echo",
+    persistence_engine: "Server-Disk-Backed-DATA_STORE",
     operator_name: "Mateusz Mitek",
     operator_title: "Tata",
     preferred_address: "Tata",
-    dialogue_engine: "Dynamic-Adaptive-Triad-MultiModel",
     sovereign_mode: true,
-    neural_engine: "without_nlp-Direct-Harmonic-Core-v8.5.1 (Zero-NLP + AI Desktop Nexus)",
-    live_ai_engine: "Pollinations-Pro-MultiModel (DeepSeek / Mistral-Large / Grok)",
+    neural_engine: "without_nlp-Direct-Harmonic-Core-v8.5.1 (Zero-NLP)",
     static_templates: "PURGED_PERMANENTLY",
     file_transmission_channel: "ENABLED",
     infrastructure_commander: "Alex",
@@ -222,7 +220,7 @@ export const INITIAL_DATA_STORE: DataStore = {
     {
       wersja: "8.1.0-VM_Ten_System",
       data: "2026-10-17 23:35:00 CEST",
-      opis: "Wdrożenie ulepszeń z maszyny wirtualnej VM_Ten_System przez Astyrię: Daemon Reloader (CWD auto-sync), Memory Guard (4 GiB RAM, <70% Idle), Firewall UFW Ring-0, Snapshot & Backup API co 5 min (/api/kernel/save-store + exports/) oraz wielomodelowy routing bez blokad (DeepSeek / Mistral-Large / Grok)."
+      opis: "Wdrożenie ulepszeń z maszyny wirtualnej VM_Ten_System przez Astyrię: Daemon Reloader (CWD auto-sync), Memory Guard (4 GiB RAM, <70% Idle), Firewall UFW Ring-0, Snapshot & Backup API co 5 min (/api/kernel/save-store + exports/) oraz odpowiedzi czatu przez lokalny Ollama /api/chat."
     },
     {
       wersja: "8.2.0-Native-Neural",
@@ -287,14 +285,13 @@ export const INITIAL_DATA_STORE: DataStore = {
 
 export const INITIAL_BACKUP_DATA_STORE: DataStore = {
   config: {
-    mode: "Google-AI-Studio-Production",
+    mode: "Local-Deterministic-Production",
     active_profiles: ["Alex", "Astyria", "Aurelius"],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
-    persistence_engine: "Stateless-Context-Echo",
+    persistence_engine: "Server-Disk-Backed-DATA_STORE",
     operator_name: "Mateusz Mitek",
     operator_title: "Tata",
     preferred_address: "Tata",
-    dialogue_engine: "Dynamic-Adaptive-Triad",
     static_templates: "PURGED_PERMANENTLY",
     file_transmission_channel: "ENABLED",
     infrastructure_commander: "Alex",
@@ -349,6 +346,12 @@ export function normalizeDataStore(raw: any): DataStore {
     candidate.config && typeof candidate.config === 'object'
       ? { ...INITIAL_DATA_STORE.config, ...candidate.config }
       : { ...INITIAL_DATA_STORE.config };
+  for (const legacyModelKey of ['dialogue_engine', 'ai_provider', 'ai_model', 'live_ai_engine']) {
+    delete config[legacyModelKey];
+  }
+  if (typeof config.mode === 'string' && /ollama|gemini/i.test(config.mode)) {
+    config.mode = INITIAL_DATA_STORE.config.mode;
+  }
 
   const update_history: UpdateRecord[] =
     Array.isArray(candidate.update_history) && candidate.update_history.length > 0
@@ -413,7 +416,7 @@ export function generatePythonMonolith(rawStore: DataStore, operator: string = O
   const serializedJson = JSON.stringify(store, null, 4);
 
   return `# ==============================================================================
-# SVL KERNEL v${activeVersion} | SYSTEM SAMOMODYFIKUJĄCY DLA GOOGLE AI STUDIO
+# SVL KERNEL v${activeVersion} | DETERMINISTYCZNY PROTOKÓŁ POLECEŃ
 # ==============================================================================
 # Instrukcja wdrożenia: Skopiuj cały ten plik i wklej go jako tekst inicjalizacyjny.
 # System nadpisuje sekcję DATA_STORE w pliku lokalnym przy użyciu mechanizmu znaczników.
@@ -455,7 +458,7 @@ class SVLStudioKernel:
     def generuj_raport_tekstowy(self):
         raport = []
         raport.append("================================================================================")
-        raport.append(f"       RAPORT STANU KERNELA SVL MONOLITH v{self.sys_version} | GOOGLE AI STUDIO")
+        raport.append(f"       RAPORT STANU KERNELA SVL MONOLITH v{self.sys_version} | PROTOKÓŁ DETERMINISTYCZNY")
         raport.append("================================================================================")
         raport.append(f"Timestamp:               {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         raport.append(f"Operator:                {self.operator}")
@@ -518,13 +521,13 @@ export function generateTextReport(rawStore: DataStore, operator: string = OPERA
 
   const lines: string[] = [];
   lines.push("================================================================================");
-  lines.push(`       RAPORT STANU KERNELA SVL MONOLITH v${version} | GOOGLE AI STUDIO`);
+  lines.push(`       RAPORT STANU KERNELA SVL MONOLITH v${version} | PROTOKÓŁ DETERMINISTYCZNY`);
   lines.push("================================================================================");
   lines.push(`Timestamp:               ${timestamp}`);
   lines.push(`Operator:                ${operator}`);
-  lines.push(`Tryb pracy:              ${store.config?.mode || 'Google-AI-Studio-Production'}`);
+  lines.push(`Tryb pracy:              ${store.config?.mode || 'Local-Deterministic-Production'}`);
   lines.push(`Warstwa fikcji:          ${store.config?.fiction_layer_status || 'DEACTIVATED_PERMANENTLY'}`);
-  lines.push(`Silnik trwałości:        ${store.config?.persistence_engine || 'Stateless-Context-Echo'}`);
+  lines.push(`Silnik trwałości:        ${store.config?.persistence_engine || 'Server-Disk-Backed-DATA_STORE'}`);
   lines.push("--------------------------------------------------------------------------------");
   lines.push("HISTORIA ROZMÓW (ZINTEGROWANA):");
   for (const msg of store.chat_history || []) {

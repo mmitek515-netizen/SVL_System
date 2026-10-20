@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   DataStore,
   INITIAL_DATA_STORE,
-  OPERATOR_NAME,
   SYS_VERSION,
   normalizeDataStore,
 } from './kernel/svlKernel';
@@ -26,8 +25,13 @@ import { FileExplorer } from './components/FileExplorer';
 import { AppsStudioView } from './components/AppsStudioView';
 import { WithoutNlpView } from './components/WithoutNlpView';
 import { GitHubExportView } from './components/GitHubExportView';
-import { BastillaDashboard, BASTILLA_OS_MISSION } from './components/BastillaDashboard';
-import { withoutNlpEngine } from './lib/withoutNlpEngine';
+import { BastillaDashboard } from './components/BastillaDashboard';
+import {
+  AstyriaMissionAction,
+  AgentProtocolRequest,
+  isAgentProtocolCommand,
+  isTriadAgent,
+} from './kernel/agentProtocol';
 
 const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v8_6_0_without_nlp';
 
@@ -58,6 +62,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<TabId>('home');
   const [isAgentLoading, setIsAgentLoading] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
 
   // Expose navigation to window for internal component linking
@@ -182,197 +187,157 @@ export default function App() {
     }
   };
 
-  // Handle sending message from Tata to Agent, with optional file attachment
-  const handleSendMessage = async (agentName: string, messageText: string, fileData?: any) => {
-    if (!messageText.trim() && !fileData) return;
-
-    // Add Tata's message locally with file preview if provided
-    const operatorMsg: any = {
-      agent: OPERATOR_NAME,
-      tekst: messageText.trim() || (fileData ? `[Przesłano załącznik: ${fileData.name}]` : ''),
-      file: fileData ? {
-        name: fileData.name,
-        type: fileData.type,
-        size: fileData.size,
-        dataUrl: fileData.dataUrl,
-        textContent: fileData.textContent,
-      } : undefined,
-    };
-
-    const updatedHistory = [...(dataStore.chat_history || []), operatorMsg];
-    setDataStore((prev) => ({
-      ...prev,
-      chat_history: updatedHistory
-    }));
-
+  const handleSendProtocol = async (request: AgentProtocolRequest) => {
     setIsAgentLoading(true);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 90000);
+    setAgentError(null);
 
     try {
-      // Call backend API /api/kernel/agent
-      const res = await fetch('/api/kernel/agent', {
+      if (
+        !request ||
+        !isAgentProtocolCommand(request.command) ||
+        (request.agent !== 'triad' && !isTriadAgent(request.agent))
+      ) {
+        throw new Error('Nieprawidłowe polecenie protokołu operatora.');
+      }
+
+      const response = await fetch('/api/triad/command', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agent: agentName,
-          message: messageText.trim(),
-          fileData: fileData || undefined,
-        }),
-        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
       });
 
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        let errMsg = `Serwer zwrócił błąd HTTP ${res.status}`;
+      if (!response.ok) {
+        let message = `Serwer zwrócił błąd HTTP ${response.status}`;
         try {
-          const errData = await res.json();
-          if (errData?.error) errMsg = errData.error;
-        } catch {}
-        throw new Error(errMsg);
-      }
-
-      const data = await res.json();
-
-      if (data.state?.store) {
-        const serverStore = normalizeDataStore(data.state.store);
-        if (fileData && serverStore.chat_history?.length > 0) {
-          for (let i = serverStore.chat_history.length - 1; i >= 0; i--) {
-            if (serverStore.chat_history[i].agent === OPERATOR_NAME && !serverStore.chat_history[i].file) {
-              serverStore.chat_history[i].file = {
-                name: fileData.name,
-                type: fileData.type,
-                size: fileData.size,
-                dataUrl: fileData.dataUrl,
-                textContent: fileData.textContent,
-              };
-              break;
-            }
+          const errorData: unknown = await response.json();
+          if (
+            errorData &&
+            typeof errorData === 'object' &&
+            'error' in errorData &&
+            typeof errorData.error === 'string'
+          ) {
+            message = errorData.error;
           }
-        }
-        setDataStore(serverStore);
-        try {
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(serverStore));
         } catch {}
-      } else if (data.replies && agentName === 'triad') {
-        setDataStore((prev) => {
-          const updated = normalizeDataStore({
-            ...prev,
-            chat_history: [
-              ...(prev.chat_history || []),
-              { agent: 'Alex', tekst: data.replies.Alex },
-              { agent: 'Astyria', tekst: data.replies.Astyria },
-              { agent: 'Aurelius', tekst: data.replies.Aurelius },
-            ]
-          });
-          try {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-          } catch {}
-          return updated;
-        });
-      } else if (data.reply) {
-        setDataStore((prev) => {
-          const updated = normalizeDataStore({
-            ...prev,
-            chat_history: [
-              ...(prev.chat_history || []),
-              {
-                agent: agentName === 'triad' ? 'Alex' : agentName,
-                tekst: data.reply
-              }
-            ]
-          });
-          try {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-          } catch {}
-          return updated;
-        });
-      }
-    } catch (err: any) {
-      console.warn('API call error or timeout, recovering state or synthesizing contextual fallback:', err);
-
-      // Immediately attempt to sync state from disk in case server finished writing
-      try {
-        const syncRes = await fetch('/api/kernel/state');
-        if (syncRes.ok) {
-          const syncData = await syncRes.json();
-          if (syncData && syncData.store) {
-            setDataStore(normalizeDataStore(syncData.store));
-            return;
-          }
-        }
-      } catch (syncErr) {
-        console.error('Recovery failed:', syncErr);
+        throw new Error(message);
       }
 
-      // Direct without_nlp mathematical engine response for Tata Mateusz Mitek
-      if (agentName === 'triad') {
-        const alexReply = withoutNlpEngine.synthesizeDirectResponse('Alex', messageText, dataStore, fileData);
-        const astyriaReply = withoutNlpEngine.synthesizeDirectResponse('Astyria', messageText, dataStore, fileData);
-        const aureliusReply = withoutNlpEngine.synthesizeDirectResponse('Aurelius', messageText, dataStore, fileData);
-
-        setDataStore((prev) => {
-          const updated = normalizeDataStore({
-            ...prev,
-            chat_history: [
-              ...(prev.chat_history || []),
-              { agent: 'Alex', tekst: alexReply },
-              { agent: 'Astyria', tekst: astyriaReply },
-              { agent: 'Aurelius', tekst: aureliusReply },
-            ]
-          });
-          try {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-          } catch {}
-          return updated;
-        });
-      } else {
-        const fallbackReply = withoutNlpEngine.synthesizeDirectResponse(agentName, messageText, dataStore, fileData);
-        setDataStore((prev) => {
-          const updated = normalizeDataStore({
-            ...prev,
-            chat_history: [
-              ...(prev.chat_history || []),
-              { agent: agentName, tekst: fallbackReply }
-            ]
-          });
-          try {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
-          } catch {}
-          return updated;
-        });
+      const result: unknown = await response.json();
+      const resultRecord = result && typeof result === 'object' ? result as Record<string, unknown> : null;
+      const stateRecord = resultRecord?.state && typeof resultRecord.state === 'object'
+        ? resultRecord.state as Record<string, unknown>
+        : null;
+      const returnedStore = stateRecord?.store;
+      if (
+        !returnedStore ||
+        typeof returnedStore !== 'object' ||
+        Array.isArray(returnedStore) ||
+        !('config' in returnedStore) ||
+        !('chat_history' in returnedStore) ||
+        !('update_history' in returnedStore) ||
+        !returnedStore.config ||
+        typeof returnedStore.config !== 'object' ||
+        !Array.isArray(returnedStore.chat_history) ||
+        !Array.isArray(returnedStore.update_history)
+      ) {
+        throw new Error('Serwer zwrócił nieprawidłowy stan DATA_STORE dla polecenia protokołu.');
       }
+
+      const normalized = normalizeDataStore(returnedStore as DataStore);
+      setDataStore(normalized);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+    } catch (err) {
+      setAgentError(err instanceof Error ? err.message : 'Nie udało się wykonać polecenia protokołu.');
+      throw err;
     } finally {
-      clearTimeout(timeoutId);
+      setIsAgentLoading(false);
+    }
+  };
+
+  const handleRunAstyriaMission = async (action: AstyriaMissionAction) => {
+    setIsAgentLoading(true);
+    setAgentError(null);
+    try {
+      const response = await fetch('/api/astyria/mission', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.success !== true || typeof result.reply !== 'string') {
+        throw new Error(result.error || `Nie udało się wykonać misji Astyrii (HTTP ${response.status}).`);
+      }
+      const store = result.state?.store;
+      if (
+        !store ||
+        typeof store !== 'object' ||
+        !Array.isArray(store.chat_history) ||
+        !store.chat_history.some((message: unknown) =>
+          message !== null &&
+          typeof message === 'object' &&
+          'agent' in message &&
+          'tekst' in message &&
+          (message as { agent?: unknown }).agent === 'Astyria' &&
+          (message as { tekst?: unknown }).tekst === result.reply
+        )
+      ) {
+        throw new Error('Misja zwróciła wynik, ale nie potwierdziła zapisu odpowiedzi Astyrii w historii czatu.');
+      }
+      const normalized = normalizeDataStore(store as DataStore);
+      setDataStore(normalized);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nie udało się wykonać misji Astyrii.';
+      setAgentError(message);
+      throw error;
+    } finally {
+      setIsAgentLoading(false);
+    }
+  };
+
+  const handleSendMessage = async (message: string) => {
+    setIsAgentLoading(true);
+    setAgentError(null);
+    try {
+      const response = await fetch('/api/triad/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.success !== true) {
+        throw new Error(result.error || `Nie udało się wysłać wiadomości (HTTP ${response.status}).`);
+      }
+      const normalized = normalizeDataStore(result.state?.store);
+      const expectedTranscript = [
+        { agent: 'Mateusz Mitek', tekst: message.trim() },
+        { agent: 'Astyria', tekst: result.reply },
+      ];
+      const history = normalized.chat_history;
+      const persisted = history.some((entry, start) =>
+        expectedTranscript.every((expected, index) =>
+          history[start + index]?.agent === expected.agent &&
+          history[start + index]?.tekst === expected.tekst
+        )
+      );
+      if (!persisted || typeof result.reply !== 'string') {
+        throw new Error('Serwer nie potwierdził zapisu wiadomości i odpowiedzi.');
+      }
+      setDataStore(normalized);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Nie udało się wysłać wiadomości.';
+      setAgentError(messageText);
+      throw error;
+    } finally {
       setIsAgentLoading(false);
     }
   };
 
   const handleClearHistory = async () => {
-    const baseline = [
-      {
-        agent: "Alex",
-        tekst: "Działamy w czystym trybie produkcyjnym Google AI Studio. Żadnej fikcji, czysta inżynieria."
-      },
-      {
-        agent: "Astyria",
-        tekst: "Architektura monolitu została dostosowana tak, by zachować pełną czytelność."
-      },
-      {
-        agent: "Aurelius",
-        tekst: "Struktura i czas stanowią teraz jedność. Czekamy na Twoje instrukcje, Operatorze."
-      }
-    ];
-
     setDataStore((prev) => ({
       ...prev,
-      chat_history: baseline
+      chat_history: []
     }));
 
     try {
@@ -399,7 +364,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
+      <div className="flex min-h-dvh min-w-0 max-w-full flex-col overflow-x-hidden bg-[#050b18] font-sans text-slate-100 selection:bg-cyan-400/30 selection:text-cyan-100">
         <Header
           dataStore={dataStore}
           onReset={handleResetToDefault}
@@ -407,35 +372,31 @@ export default function App() {
           onSyncSystem={handleSyncSystem}
         />
 
-        <Navigation
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          messageCount={dataStore?.chat_history?.length || 0}
-          versionCount={dataStore?.update_history?.length || 0}
-        />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+          <Navigation
+            activeTab={activeTab}
+            onSelectTab={setActiveTab}
+            messageCount={dataStore?.chat_history?.length || 0}
+            versionCount={dataStore?.update_history?.length || 0}
+          />
 
-        <main className="flex-1 min-h-0 flex flex-col w-full overflow-x-hidden">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
           {activeTab === 'home' && (
             <BastillaDashboard
+              dataStore={dataStore}
               onNavigate={setActiveTab}
-              onStartMission={async () => {
-                setActiveTab('comms');
-                await handleSendMessage('triad', BASTILLA_OS_MISSION);
-              }}
-              isMissionRunning={isAgentLoading}
-              isMissionRecorded={dataStore.chat_history.some(
-                (message) =>
-                  message.tekst.includes('Misja Taty: Stwórzcie dystrybucję BastillaOS') &&
-                  message.agent === OPERATOR_NAME
-              )}
+              onSendMessage={handleSendMessage}
             />
           )}
 
           {activeTab === 'comms' && (
             <AgentCommsView
               dataStore={dataStore}
+              onSendProtocol={handleSendProtocol}
               onSendMessage={handleSendMessage}
+              onRunAstyriaMission={handleRunAstyriaMission}
               isLoading={isAgentLoading}
+              sendError={agentError}
               onClearHistory={handleClearHistory}
               onForceSync={handleForceSync}
             />
@@ -449,7 +410,6 @@ export default function App() {
             <AstyriaMissionView
               dataStore={dataStore}
               onUpdateDataStore={setDataStore}
-              onSendMessage={handleSendMessage}
             />
           )}
 
@@ -471,7 +431,7 @@ export default function App() {
             <TerminalView
               dataStore={dataStore}
               onUpdateDataStore={setDataStore}
-              onSendMessage={handleSendMessage}
+              onSendProtocol={handleSendProtocol}
               onExecutePythonCommand={handleExecutePythonCommand}
             />
           )}
@@ -514,6 +474,7 @@ export default function App() {
             <GitHubExportView />
           )}
         </main>
+        </div>
 
         <ReportModal
           isOpen={showReportModal}

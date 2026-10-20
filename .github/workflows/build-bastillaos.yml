@@ -40,6 +40,9 @@ jobs:
           node-version: "22"
           cache: npm
 
+      - name: Check BastillaOS build contract
+        run: node bastillaos/check-build-config.cjs
+
       - name: Build BastillaOS bootable ISO
         run: bash bastillaos/build-iso.sh
 

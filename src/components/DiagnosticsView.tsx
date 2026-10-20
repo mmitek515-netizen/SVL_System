@@ -34,7 +34,7 @@ export const DiagnosticsView: React.FC<DiagnosticsViewProps> = ({ dataStore }) =
           <Activity className="w-5 h-5 text-emerald-400 animate-pulse" />
           <div>
             <h2 className="font-bold text-slate-100 text-sm">Diagnostyka & Telemetria Jądra SVL</h2>
-            <p className="text-slate-500 text-[11px]">Ciągła telemetria stanu środowiska produkcyjnego Google AI Studio</p>
+            <p className="text-slate-500 text-[11px]">Ciągła telemetria aplikacji, jądra i infrastruktury</p>
           </div>
         </div>
 
@@ -67,10 +67,10 @@ export const DiagnosticsView: React.FC<DiagnosticsViewProps> = ({ dataStore }) =
             <Zap className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-cyan-300 font-bold text-base">
-            Context-Echo
+            Server-Disk DATA_STORE
           </div>
           <p className="text-slate-500 text-[10px]">
-            Stateless-Context-Echo + Reaktywny LocalStorage Mirroring.
+            Zapis stanu na dysku serwera + lokalne lustrzane kopie LocalStorage.
           </p>
         </div>
 
@@ -112,8 +112,8 @@ export const DiagnosticsView: React.FC<DiagnosticsViewProps> = ({ dataStore }) =
           </div>
           <p className="text-slate-400 text-xs">
             {dataStore.config?.sovereign_mode !== false
-              ? 'SYSTEM NIEZALEŻNY: Działa w 100% lokalnie w jądrze (Zero zależności od Google/Gemini/Cloud).'
-              : 'TRYB CHMURY: Aktywne zewnętrzne modele AI.'}
+              ? 'SYSTEM NIEZALEŻNY: Operacje są wykonywane lokalnie przez jądro i deterministyczny protokół.'
+              : 'TRYB ZDALNY: Tryb niezależności jest wyłączony; protokół agentów pozostaje deterministyczny.'}
           </p>
         </div>
         <button
@@ -199,7 +199,7 @@ export const DiagnosticsView: React.FC<DiagnosticsViewProps> = ({ dataStore }) =
 
           <div className="p-3 bg-slate-950 rounded border border-slate-800 text-slate-300 leading-relaxed space-y-2 text-[11px]">
             <p>
-              <strong className="text-purple-300">1. Przeniesienie do Google AI Studio:</strong> Jądro SVL działa jako samowystarczalny monolit. Wszystkie stany konwersacji, konfiguracje i wydania są serializowane w oznaczonym bloku DATA_STORE.
+              <strong className="text-purple-300">1. Protokół i dane systemowe:</strong> Agenci przyjmują wyłącznie jawne polecenia; konfiguracje, historię wyników i wydania przechowuje DATA_STORE.
             </p>
             <p>
               <strong className="text-emerald-300">2. Mechanizm Samomodyfikacji:</strong> Metoda <code className="text-slate-200 bg-slate-900 px-1 py-0.5 rounded">synchronizuj_i_generuj_zrzut()</code> przetwarza nowe wpisy czatu i aktualizacje, generując natychmiast gotowy do wklejenia skrypt Pythona.

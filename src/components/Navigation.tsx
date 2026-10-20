@@ -125,39 +125,39 @@ export const Navigation: React.FC<NavigationProps> = ({
   ];
 
   return (
-    <nav className="border-b border-cyan-500/20 bg-slate-950/60 backdrop-blur-md px-2 sm:px-4 relative shrink-0">
-      <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
-      <div className="max-w-7xl mx-auto flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto py-1 sm:py-1.5 scrollbar-none">
+    <nav aria-label="Nawigacja BastillaOS" className="order-last flex h-14 w-full shrink-0 flex-row border-t border-blue-200/10 bg-[#07101e] lg:order-first lg:h-auto lg:w-60 lg:flex-col lg:border-r lg:border-t-0">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-row gap-1 overflow-x-auto p-1.5 scrollbar-none lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:p-3">
+        <div className="hidden px-3 pb-2 pt-1 text-[9px] font-mono font-bold tracking-[0.18em] text-blue-200/40 lg:block">
+          OBSZAR ROBOCZY
+        </div>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
+              type="button"
+              title={tab.label}
+              aria-label={tab.label}
+              aria-current={isActive ? 'page' : undefined}
               onClick={() => onSelectTab(tab.id)}
-              className={`flex items-center gap-2 px-3.5 py-2 text-xs font-mono font-medium rounded-t-lg transition-all duration-200 whitespace-nowrap cursor-pointer relative ${
+              className={`group relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-3 rounded-xl px-2 text-left transition-all duration-200 lg:min-h-11 lg:w-full lg:justify-start lg:px-3 ${
                 isActive
-                  ? 'text-cyan-200 bg-slate-900/90 border-t border-x border-cyan-500/40 shadow-[0_-4px_16px_rgba(6,182,212,0.15)]'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 border border-transparent'
+                  ? 'border border-cyan-300/15 bg-cyan-950/50 text-cyan-100 shadow-[inset_2px_0_0_#67e8f9,0_4px_18px_rgba(8,145,178,0.08)]'
+                  : 'border border-transparent text-slate-400 hover:bg-blue-950/50 hover:text-blue-100'
               }`}
             >
-              {isActive && (
-                <span className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-emerald-400 via-cyan-400 to-purple-400" />
-              )}
-              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.8)]' : 'text-slate-400'}`} />
-              <span className={isActive ? 'font-bold tracking-wide' : ''}>{tab.label}</span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold transition-all ${
-                  isActive
-                    ? 'bg-cyan-950/80 text-cyan-300 border border-cyan-500/50 shadow-[0_0_8px_rgba(6,182,212,0.3)]'
-                    : 'bg-slate-800/80 text-slate-400 border border-slate-700/50'
-                }`}
-              >
+              <Icon className={`h-4 w-4 shrink-0 transition ${isActive ? 'text-cyan-200' : 'text-slate-500 group-hover:text-cyan-200'}`} />
+              <span className="hidden min-w-0 flex-1 truncate text-[11px] font-medium lg:block">{tab.label}</span>
+              <span className={`hidden rounded-md px-1.5 py-0.5 text-[8px] font-mono font-bold xl:block ${isActive ? 'bg-cyan-900/70 text-cyan-200' : 'bg-slate-900 text-slate-500'}`}>
                 {tab.badge}
               </span>
             </button>
           );
         })}
+      </div>
+      <div className="hidden border-t border-blue-200/10 p-3 text-[9px] font-mono text-blue-200/40 lg:block">
+        BASTILLAOS · DEBIAN 13
       </div>
     </nav>
   );

@@ -8,12 +8,12 @@
     "start": "tsx server.ts",
     "maintenance": "node scripts/maintenance.mjs",
     "build": "vite build",
+    "build:server": "mkdir -p bastillaos/build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --target=node20 --outfile=bastillaos/build/server.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
     "@tailwindcss/vite": "^4.3.3",

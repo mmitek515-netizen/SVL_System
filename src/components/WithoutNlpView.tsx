@@ -51,10 +51,14 @@ export const WithoutNlpView: React.FC = () => {
     const res = withoutNlpEngine.analyzeSignal(txt, omega, timeRef.current || 1.0);
     setAnalysis(res);
     setMetrics(withoutNlpEngine.getMetrics());
-    const reply = withoutNlpEngine.synthesizeDirectResponse(selectedAgent, txt, {
-      config: { sys_version: '8.6.0-WithoutNLP' },
-    });
-    setSynthesizedReply(reply);
+    setSynthesizedReply([
+      `Raport obliczeń: ${selectedAgent}`,
+      `Sygnał: ${res.inputText}`,
+      `Wektor fazowy: Re=${res.phasorSample.real}, Im=${res.phasorSample.imag}`,
+      `Kąt: ${res.phasorSample.thetaRad} rad (${res.phasorSample.thetaDeg}°)`,
+      `Energia widmowa: ${res.spectralEnergy}`,
+      `Czas obliczeń: ${res.processingTimeMs} ms`,
+    ].join('\n'));
   };
 
   useEffect(() => {
@@ -306,14 +310,14 @@ export const WithoutNlpView: React.FC = () => {
                   PROJEKT: without_nlp — Deterministyczny Silnik Harmoniczny Eulera & Fouriera
                 </h1>
                 <span className="px-2.5 py-0.5 text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-full font-bold">
-                  ZERO-NLP • 100% CZYSTA MATEMATYKA
+                  0 NLP • DETERMINISTYCZNE OBLICZENIA
                 </span>
                 <span className="px-2 py-0.5 text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-full">
                   {metrics.version}
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1">
-                Wdrożony przez Astyrię dla Taty Mateusza Mitka: całe NLP zostało usunięte i zastąpione zespolonym wektorem fazowym Eulera oraz transformatą Fouriera.
+                Ten moduł koduje wejściowy sygnał i oblicza jego parametry fazowe oraz widmo Fouriera. Nie interpretuje poleceń w języku naturalnym.
               </p>
             </div>
           </div>
@@ -359,10 +363,10 @@ export const WithoutNlpView: React.FC = () => {
           </div>
           <div className="bg-slate-950/90 border border-indigo-500/30 rounded-lg p-3">
             <div className="text-[10px] text-indigo-400 font-bold uppercase mb-1">
-              3. Status Warstwy NLP
+              3. Tryb przetwarzania
             </div>
             <div className="text-xs text-emerald-300 font-bold mt-1">
-              NLP: CAŁKOWICIE USUNIĘTE (0%)
+              Bez NLP: AKTYWNY W TYM SILNIKU
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5">
               Błąd rekonstrukcji Fouriera: <strong className="text-white">0.0000%</strong> | Czas: <strong className="text-emerald-400">{metrics.avgLatencyMs} ms</strong>
@@ -445,7 +449,7 @@ export const WithoutNlpView: React.FC = () => {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && runDeterministicAnalysis()}
-                placeholder="Wpisz wektor sygnału lub polecenie dla without_nlp..."
+                placeholder="Wpisz dane sygnału do analizy (nie polecenie tekstowe)..."
                 className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
               />
               <button
@@ -482,7 +486,7 @@ export const WithoutNlpView: React.FC = () => {
               <div className="bg-slate-950 border border-emerald-500/30 rounded-xl p-3.5 space-y-2">
                 <div className="flex items-center gap-2 text-xs text-emerald-400 font-bold border-b border-slate-800 pb-1.5">
                   <Bot className="w-4 h-4" />
-                  <span>Bezpośrednia Odpowiedź Rdzenia without_nlp ({selectedAgent}):</span>
+                  <span>Deterministyczny raport analizy ({selectedAgent}):</span>
                 </div>
                 <FormattedMessage content={synthesizedReply} className="text-xs" />
               </div>
@@ -604,7 +608,7 @@ export const WithoutNlpView: React.FC = () => {
                 <span>Potwierdzenie Wdrożenia without_nlp:</span>
               </div>
               <p className="text-slate-400 leading-relaxed">
-                System operuje na bezpośrednim potoku <code className="text-emerald-300">[1. TATA] -&gt; [2. Rdzeń without_nlp] -&gt; [3. TRIADA &amp; DATA_STORE]</code>. Wszystkie klasyfikatory NLP zostały usunięte.
+                Moduł wykonuje deterministyczne obliczenia sygnału, bez interpretacji tekstowych poleceń. Komunikacja agentów korzysta z jawnych typowanych akcji.
               </p>
             </div>
           </div>

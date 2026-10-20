@@ -7,9 +7,10 @@ reskin.
 
 ## Build requirements
 
-- Linux or GitHub Actions runner with Docker Engine and permission to run
-  privileged build containers.
+- Linux amd64 host (or GitHub Actions runner) with Docker Engine access,
+  permission to run privileged build containers, and a glibc-based Node runtime.
 - Node.js 22 or later and npm.
+- Bash, `dpkg-deb`, and `sha256sum` on the host.
 - Internet access for Debian repositories, npm, and the Debian live-build
   container.
 - Approximately 20 GB of free build storage; a KDE installer ISO is large.
@@ -30,7 +31,7 @@ launches a privileged but disposable Debian build container. The host-side Node,
 npm, and Debian package preparation do not require running `npm` as root.
 
 The script builds the existing React application, compiles its production
-server, creates the `bastillaos-svl-system` Debian package, and builds the
+server, creates the `bastillaos-system` Debian package, and builds the
 Debian Live installer with the repository's live-build configuration. On
 success it produces:
 
@@ -47,8 +48,10 @@ GitHub Actions can build the same ISO on demand via **Build BastillaOS Debian
 Live ISO → Run workflow**. Pushing a `bastillaos-v*` tag also builds and
 publishes the ISO and checksum as a workflow artifact. CI does not commit
 generated binaries to the source repository. The workflow frees runner disk
-space and syntax-checks the build scripts before the full build; the build
-script removes root-owned live-build temporaries via the builder container.
+space and syntax/config-checks the build inputs before the full build; after a
+successful build, the build script removes root-owned live-build temporaries
+via the builder container. Failed builds retain that temporary tree for
+diagnosis.
 
 ## Boot and install
 
@@ -61,19 +64,33 @@ perform system-level changes. The root-privileged HTTP API is bound to
 `127.0.0.1:3000`; do not expose it to a network. Any local process that can
 reach this API can execute root commands. The desktop opens using Chromium.
 
-The Gemini and Pollinations credentials are not bundled into the ISO. To enable
-external AI services on an installed system, configure
-`/etc/bastillaos/system.env` as a root-owned file (`chmod 0600`) and restart
-`bastillaos-svl-system`. The service reads this file as root; never make it
-writable by the desktop user, and never put API secrets in a Git-tracked file or
-a public ISO. The service unit fixes its listener to `127.0.0.1:3000` after
-reading this file, so the bind address cannot be changed there.
+Configure `/etc/bastillaos/system.env` as a root-owned file (`chmod 0600`) and
+restart `bastillaos-svl-system` when setting optional runtime credentials. The
+service reads this file as root; never make it writable by the desktop user,
+and never put API secrets in a Git-tracked file or a public ISO. Optional
+Pollinations credentials are used only by the image-generation endpoint. The
+service unit fixes its listener to `127.0.0.1:3000` after reading this file, so
+the bind address cannot be changed there.
+
+## Deterministic agent protocol
+
+The local Triad command interface uses `POST /api/triad/command`. It accepts
+only the finite, structured command set declared in
+`src/kernel/agentProtocol.ts`: `SYSTEM_STATUS`, `DATA_STORE_AUDIT`,
+`VERSION_TIMELINE`, and `SIGNAL_ANALYSIS`. Requests include an `agent` value
+(`triad`, `Alex`, `Astyria`, or `Aurelius`); signal analysis also requires a
+typed `payload.signal` and accepts optional numeric `omega` and `time` fields.
+Unknown commands and fields are rejected. The protocol does not interpret
+free-form instructions or require a generative text provider. Successful
+responses contain structured agent replies and the resulting system state;
+the application persists the protocol transcript.
 
 ## Preserved SVL functionality
 
 The Debian package carries the existing built web system and writable runtime
-data, including the Triad chat, Astyria mission tooling, terminal, system
-diagnostics and telemetry, kernel and DATA_STORE, history and snapshots, file
-explorer, Apps Studio, without_nlp engine, 3D visualizations, and GitHub
-integration. The service binds to loopback only. Existing app data is preserved
-when the Debian package is upgraded.
+data, including the deterministic Triad command interface, Astyria mission
+tooling, terminal, system diagnostics and telemetry, kernel and DATA_STORE,
+history and snapshots, file explorer, Apps Studio, without_nlp engine, 3D
+visualizations, image generation, and GitHub integration. The service binds to
+loopback only. Existing app data is preserved when the Debian package is
+upgraded.

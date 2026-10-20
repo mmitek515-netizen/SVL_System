@@ -152,17 +152,144 @@ while [ "$attempt" -lt 30 ]; do
 done
 [ "$READY" -eq 1 ] || { cat "$WORK_DIR/server.log" >&2; echo "test-package: server did not become ready." >&2; exit 1; }
 node -e "
-fetch('http://127.0.0.1:$PORT/api/ai/status')
-  .then(async response => {
-    const status = await response.json();
-    if (!response.ok || status.provider !== 'Google Gemini' || typeof status.configured !== 'boolean') {
-      throw new Error('invalid AI status response');
+(async () => {
+  const baseUrl = 'http://127.0.0.1:$PORT';
+  const statusResponse = await fetch(baseUrl + '/api/ai/status');
+  const status = await statusResponse.json();
+  if (
+    !statusResponse.ok ||
+    status.enabled !== false ||
+    status.provider !== 'disabled' ||
+    status.protocol !== '/api/triad/command' ||
+    'apiKey' in status ||
+    'model' in status
+  ) {
+    throw new Error('text model status is not explicitly disabled');
+  }
+
+  for (const route of ['/api/kernel/agent', '/api/terminal/generate-script']) {
+    const response = await fetch(baseUrl + route, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'free text must remain disabled' }),
+    });
+    if (response.status !== 410) {
+      throw new Error(route + ' must return HTTP 410');
     }
-    if (!status.models?.Alex || !status.models?.Astyria || !status.models?.Aurelius || 'apiKey' in status) {
-      throw new Error('AI status is incomplete or exposes a credential');
+  }
+
+  const protocolResponse = await fetch(baseUrl + '/api/triad/command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: 'SYSTEM_STATUS', agent: 'triad' }),
+  });
+  const protocol = await protocolResponse.json();
+  if (
+    !protocolResponse.ok ||
+    protocol.success !== true ||
+    !protocol.triad ||
+    !protocol.replies?.Alex ||
+    !protocol.replies?.Astyria ||
+    !protocol.replies?.Aurelius
+  ) {
+    throw new Error('deterministic Triad command failed');
+  }
+
+  const missionResponse = await fetch(baseUrl + '/api/astyria/mission', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'deep_scan' }),
+  });
+  const mission = await missionResponse.json();
+  const astyriaReplyPersisted = mission.state?.store?.chat_history?.some(
+    message => message.agent === 'Astyria' && message.tekst === mission.reply
+  );
+  if (
+    !missionResponse.ok ||
+    mission.success !== true ||
+    typeof mission.reply !== 'string' ||
+    !astyriaReplyPersisted
+  ) {
+    throw new Error('Astyria mission did not return and persist its reply in chat history');
+  }
+
+  const messageText = 'Wiadomość smoke-test: Zażółć gęślą jaźń.';
+  const messageResponse = await fetch(baseUrl + '/api/triad/message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: messageText }),
+  });
+  const messageResult = await messageResponse.json();
+  const messagePersisted = messageResult.state?.store?.chat_history?.some(
+    message => message.agent === 'Mateusz Mitek' && message.tekst === messageText
+  );
+  const deterministicReplyPersisted = messageResult.state?.store?.chat_history?.some(
+    message => message.agent === 'Astyria' && message.tekst === messageResult.reply
+  );
+  if (
+    !messageResponse.ok ||
+    messageResult.success !== true ||
+    !messageResult.reply?.includes('nie jest interpretowana językowo') ||
+    messageResult.analysis?.decodedText !== messageText ||
+    !messagePersisted ||
+    !deterministicReplyPersisted
+  ) {
+    throw new Error('without_nlp chat did not analyze and persist both sides of the message');
+  }
+
+  const emptyMessageResponse = await fetch(baseUrl + '/api/triad/message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: '   ' }),
+  });
+  if (emptyMessageResponse.status !== 400) {
+    throw new Error('without_nlp chat must reject empty messages');
+  }
+
+  const createPythonResponse = await fetch(baseUrl + '/api/apps/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: 'smoke-python', type: 'python-microservice' }),
+  });
+  if (!createPythonResponse.ok) {
+    throw new Error('Python application fixture could not be created');
+  }
+
+  try {
+    const pythonPreviewResponse = await fetch(baseUrl + '/api/apps/preview/smoke-python/');
+    const pythonPreview = await pythonPreviewResponse.text();
+    if (!pythonPreviewResponse.ok || !pythonPreview.includes('Mikroserwis Python')) {
+      throw new Error('Python application preview did not load its HTML entrypoint');
     }
-  })
-  .catch(error => { console.error(error); process.exitCode = 1; });
+  } finally {
+    await fetch(baseUrl + '/api/apps/smoke-python', { method: 'DELETE' });
+  }
+
+  const assetResponse = await fetch(baseUrl + '/api/apps/preview/matrix-telemetry/index.html');
+  const assetHtml = await assetResponse.text();
+  if (!assetResponse.ok || !assetHtml.includes('ASTYRIA QUANTUM TELEMETRY')) {
+    throw new Error('application preview asset route did not serve the app file');
+  }
+
+  const launchResponse = await fetch(baseUrl + '/api/apps/matrix-telemetry/launch', { method: 'POST' });
+  const launch = await launchResponse.json();
+  if (
+    !launchResponse.ok ||
+    launch.success !== true ||
+    launch.status !== 'running' ||
+    launch.previewUrl !== '/api/apps/preview/matrix-telemetry/'
+  ) {
+    throw new Error('application launch endpoint did not return a working preview');
+  }
+
+  const missingLaunchResponse = await fetch(baseUrl + '/api/apps/not-installed/launch', { method: 'POST' });
+  if (missingLaunchResponse.status !== 404) {
+    throw new Error('launch endpoint must report missing applications');
+  }
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
 "
 kill "$SERVER_PID"
 wait "$SERVER_PID" 2>/dev/null || true

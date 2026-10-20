@@ -65,31 +65,31 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
   };
 
   return (
-    <header className="border-b border-cyan-500/20 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-40 shadow-[0_4px_30px_rgba(0,0,0,0.5)] shrink-0 w-full overflow-hidden">
+    <header className="sticky top-0 z-40 w-full shrink-0 overflow-hidden border-b border-blue-200/10 bg-[#050b18]/95 shadow-[0_8px_30px_rgba(0,0,0,0.24)] backdrop-blur-xl">
       {/* Top Banner Bar */}
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 py-1.5 sm:py-2 flex flex-wrap items-center justify-between gap-2 sm:gap-3 text-xs w-full">
+      <div className="mx-auto flex w-full min-w-0 flex-wrap items-center justify-between gap-2 px-2 py-2 text-xs sm:gap-3 sm:px-4">
         {/* Brand & Kernel identity */}
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2.5 w-2.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 shadow-[0_0_10px_#10b981]" />
             </span>
-            <span className="font-mono font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-300 to-purple-400 text-sm">
-              SVL KERNEL
+            <span             className="bg-gradient-to-r from-blue-100 via-cyan-200 to-blue-300 bg-clip-text font-mono text-sm font-extrabold tracking-[0.16em] text-transparent">
+            BASTILLA OS
             </span>
-            <span className="font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-2 py-0.5 rounded text-[11px] font-bold shadow-[0_0_10px_rgba(6,182,212,0.25)]">
+            <span className="rounded border border-blue-200/15 bg-blue-950/50 px-2 py-0.5 font-mono text-[10px] font-bold text-blue-100/75">
               {formattedVersion}
             </span>
-            <span className="hidden lg:inline-flex items-center gap-1 font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px]">
+            <span className="hidden items-center gap-1 rounded border border-emerald-400/15 bg-emerald-950/30 px-2 py-0.5 font-mono text-[9px] text-emerald-300 lg:inline-flex">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              RING-0 QUANTUM SYNC: OK
+            DEBIAN · SVL READY
             </span>
           </div>
 
           <span className="text-slate-700 hidden sm:inline" aria-hidden="true">|</span>
 
-          <div className="flex items-center gap-2 text-slate-300">
+          <div className="hidden sm:flex items-center gap-2 text-slate-300">
             <span className="text-slate-400 font-mono text-[11px]">TWÓRCA:</span>
             <span className="font-semibold text-purple-200 bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-500/40 font-mono flex items-center gap-1.5 shadow-[0_0_12px_rgba(168,85,247,0.25)]">
               <span>{OPERATOR_NAME}</span>
@@ -101,16 +101,16 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
         </div>
 
         {/* Runtime State Indicators */}
-        <div className="flex items-center flex-wrap gap-2 text-[11px] font-mono text-slate-400">
+        <div className="flex w-full min-w-0 items-center flex-nowrap gap-2 overflow-x-auto text-[11px] font-mono text-slate-400 sm:w-auto sm:max-w-full">
           {dataStore.config?.root_privileges && (
-            <div className="flex items-center gap-1.5 bg-red-950/80 border border-red-500/60 px-2.5 py-1 rounded text-red-300 font-bold shadow-[0_0_12px_rgba(239,68,68,0.3)]">
+            <div className="hidden items-center gap-1.5 bg-red-950/80 border border-red-500/60 px-2.5 py-1 rounded text-red-300 font-bold shadow-[0_0_12px_rgba(239,68,68,0.3)] sm:flex">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               <span>ROOT: RING-0 (TRIADA)</span>
             </div>
           )}
 
           {/* Commander Alex Badge */}
-          <div className="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 px-2.5 py-1 rounded text-emerald-300 font-bold shadow-[0_0_10px_rgba(16,185,129,0.25)]">
+          <div className="hidden items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 px-2.5 py-1 rounded text-emerald-300 font-bold shadow-[0_0_10px_rgba(16,185,129,0.25)] sm:flex">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>INFRA: DOWÓDCA ALEX</span>
           </div>
@@ -120,13 +120,13 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
             <span>ASTYRIA AUTO-REPAIR: ON</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur">
+          <div className="hidden items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur md:flex">
             <Cpu className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-slate-500">RDZEŃ:</span>
             <span className="text-slate-200 font-medium">{dataStore.config?.neural_engine || 'SVL-Sovereign-Neural-Core-v8.0'}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur">
+          <div className="hidden items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur lg:flex">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-slate-500">WARSTWA FIKCJI:</span>
             <span className="text-emerald-400 font-medium">DEZAKTYWOWANA</span>
@@ -138,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
           </div>
 
           {/* Quick Action buttons */}
-          <div className="flex items-center gap-1 ml-1">
+          <div className="flex shrink-0 items-center gap-1 ml-1">
             {onSyncSystem && (
               <button
                 onClick={handleTriggerSync}

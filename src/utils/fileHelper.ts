@@ -7,9 +7,7 @@ export interface ProcessedFile {
 }
 
 /**
- * Safely processes and optimizes uploaded files.
- * Images are scaled if larger than 1920px to prevent browser tab freezing and huge payloads,
- * while maintaining high visual fidelity for Gemini and UI preview.
+ * Safely processes and optimizes uploaded files for UI preview and text extraction.
  * Text files are read up to 50,000 characters.
  */
 export async function processUploadFile(file: File): Promise<ProcessedFile> {
