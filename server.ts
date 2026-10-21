@@ -6,10 +6,16 @@ import dotenv from 'dotenv';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import type { ChatSystemChange } from './src/kernel/chatChanges';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
+import {
+  LOCAL_NLP_VERSION,
+  LocalNlpSystemContext,
+  buildSystemContext,
+  generateLocalReply,
+} from './src/lib/localNlpEngine';
 import {
   GEMINI_FALLBACK_MODELS_DEFAULT,
   GEMINI_PRIMARY_MODEL,
@@ -41,8 +47,6 @@ const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const GEMINI_MODEL = (process.env.GEMINI_MODEL || GEMINI_PRIMARY_MODEL).trim();
 const GEMINI_FALLBACK_MODELS = process.env.GEMINI_FALLBACK_MODELS || GEMINI_FALLBACK_MODELS_DEFAULT;
 const geminiClient = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : undefined;
-const OLLAMA_HOST = (process.env.OLLAMA_HOST || 'http://127.0.0.1:11434').trim();
-const OLLAMA_MODEL = (process.env.OLLAMA_MODEL || 'gemma3:270m').trim();
 const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
 const OPENROUTER_MODEL = (process.env.OPENROUTER_MODEL || 'openrouter/auto').trim();
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -2081,47 +2085,22 @@ app.post('/api/without_nlp/analyze', async (req, res) => {
 
 app.get('/api/ai/status', async (_req, res) => {
   try {
-    const response = await fetch(new URL('/api/tags', OLLAMA_HOST), {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!response.ok) {
-      return res.json({
-        provider: 'Ollama (lokalnie)',
-        model: OLLAMA_MODEL,
-        enabled: false,
-        connection: 'unavailable',
-        protocol: '/api/triad/command',
-        chatProtocol: '/api/triad/message',
-        error: `Lokalna usługa Ollama zwróciła HTTP ${response.status}.`,
-      });
-    }
-    const result: unknown = await response.json();
-    const models = result && typeof result === 'object' && 'models' in result && Array.isArray(result.models)
-      ? result.models
-      : [];
-    const modelAvailable = models.some((model) =>
-      model && typeof model === 'object' && 'name' in model && model.name === OLLAMA_MODEL);
+    const state = await getPythonKernelState();
+    const openRouterActive = Boolean(OPENROUTER_API_KEY);
     return res.json({
-      provider: 'Ollama (lokalnie)',
-      model: OLLAMA_MODEL,
-      enabled: modelAvailable,
-      connection: modelAvailable ? 'connected' : 'model-missing',
+      provider: openRouterActive ? 'OpenRouter API' : 'LOCAL_NLP_ENGINE (Triada — własny silnik językowy)',
+      model: openRouterActive ? OPENROUTER_MODEL : LOCAL_NLP_VERSION,
+      enabled: true,
+      connection: openRouterActive ? 'api-configured' : 'local-deterministic',
+      fallback: openRouterActive
+        ? 'LOCAL_NLP_ENGINE przejmuje rozmowę przy awarii API'
+        : 'brak klucza OPENROUTER_API_KEY w .env — działa silnik lokalny',
       protocol: '/api/triad/command',
       chatProtocol: '/api/triad/message',
-      ...(!modelAvailable ? {
-        error: `Nie znaleziono modelu ${OLLAMA_MODEL}. Pobierz go poleceniem: ollama pull ${OLLAMA_MODEL}`,
-      } : {}),
+      sysVersion: state?.sys_version || null,
     });
-  } catch {
-    return res.json({
-      provider: 'Ollama (lokalnie)',
-      model: OLLAMA_MODEL,
-      enabled: false,
-      connection: 'unavailable',
-      protocol: '/api/triad/command',
-      chatProtocol: '/api/triad/message',
-      error: 'Lokalna usługa Ollama nie odpowiada. Uruchom ją poleceniem: ollama serve',
-    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Błąd statusu NLP.' });
   }
 });
 
@@ -2149,6 +2128,7 @@ export interface HealedIncident {
 const systemLogs: SystemLogEntry[] = [];
 let autoRepairEnabled = true;
 let continuousMissionEnabled = true;
+let triadaGithubAutoPush = true;
 
 // --- VM_TEN_SYSTEM HYPERVISOR & PRODUCTION IMPROVEMENTS (DEPLOYED BY ASTYRIA) ---
 export interface VmTenSystemState {
@@ -2309,6 +2289,38 @@ try {
 setInterval(() => {
   createVmSnapshotNow('Cykliczny 5-minutowy zapis snapshotu VM_Ten_System');
   optimizeVmMemoryNow('Cykliczna kontrola limitu pamięci 4 GiB (<70% Idle)');
+  if (continuousMissionEnabled) {
+    pushSystemLog(
+      'healed',
+      'KERNEL',
+      `[MISJA TRIADY: ${TRIADA_MISSION_DIRECTIVE}] Cykl autonomii w tle: Alex (infrastruktura), Astyria (optymalizacja VM), Aurelius (audyt) — ROOT RING-0 aktywny.`
+    );
+    void deployAgentArtifacts('auto-background').then((deployed) => {
+      if (deployed.length > 0) {
+        void runPythonKernel([
+          '--action', 'batch_msg',
+          '--msgs_json', JSON.stringify([
+            { agent: 'Astyria', tekst: `[DEPLOY AUTO] Wdrożono nowe artefakty misji ${TRIADA_MISSION_DIRECTIVE}: ${deployed.map((d) => `${d.name} → ${d.target}`).join('; ')}.` },
+          ]),
+        ]).catch(() => {});
+        void triadGitCommit(
+          'triad',
+          `Auto-commit artefaktów misji: ${deployed.map((d) => d.name).join(', ')}`,
+          TRIADA_DEFAULT_COMMIT_PATHS,
+          'auto-background',
+        ).then((sha) => {
+          if (sha) {
+            pushSystemLog('healed', 'KERNEL', `[GIT AUTO] Triada zapisała artefakty w repozytorium (commit ${sha}).`);
+            if (triadaGithubAutoPush) {
+              void execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 45000 })
+                .then(() => pushSystemLog('healed', 'KERNEL', `[GITHUB AUTO] Commit ${sha} wypchnięty do origin/main (FULL_READ_WRITE).`))
+                .catch((pushErr: any) => pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Push nie powiódł się: ${pushErr?.message || pushErr}`));
+            }
+          }
+        }).catch(() => {});
+      }
+    });
+  }
 }, 5 * 60 * 1000);
 
 const healedIncidents: HealedIncident[] = [];
@@ -2630,6 +2642,391 @@ app.post('/api/kernel/sovereignty', async (req, res) => {
     return res.json({ success: true, sovereign_mode: newMode, state });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// --- TRIADA DEPLOY ENGINE: automatyczne wdrażanie artefaktów agentów z szyny exports/ ---
+const DEPLOY_REGISTRY_PATH = path.resolve('.svl_deployments.json');
+
+interface DeployedArtifact {
+  name: string;
+  hash: string;
+  target: string;
+  deployedAt: string;
+  origin: string;
+}
+
+function loadDeployRegistry(): DeployedArtifact[] {
+  try {
+    if (fs.existsSync(DEPLOY_REGISTRY_PATH)) {
+      const parsed = JSON.parse(fs.readFileSync(DEPLOY_REGISTRY_PATH, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function saveDeployRegistry(entries: DeployedArtifact[]) {
+  try {
+    fs.writeFileSync(DEPLOY_REGISTRY_PATH, JSON.stringify(entries.slice(-200), null, 2), 'utf-8');
+  } catch {}
+}
+
+function isDataArtifact(name: string): boolean {
+  return /^SNAPSHOT-/i.test(name)
+    || name === 'svl_datastore.json'
+    || /^baza_danych_/i.test(name)
+    || /_snapshot\.json$/i.test(name);
+}
+
+function isDeployableArtifact(name: string): boolean {
+  if (isDataArtifact(name)) return false;
+  return /^app_.+_bundle\.json$/.test(name)
+    || /^app_.+\.tar\.gz$/.test(name)
+    || name.endsWith('.py')
+    || name.endsWith('.sh');
+}
+
+async function deployAgentArtifacts(origin: string, onlyFilename?: string): Promise<DeployedArtifact[]> {
+  const registry = loadDeployRegistry();
+  const deployed: DeployedArtifact[] = [];
+  let files: string[];
+  try {
+    files = fs.readdirSync(EXPORTS_DIR);
+  } catch {
+    return [];
+  }
+
+  for (const name of files) {
+    if (onlyFilename && name !== onlyFilename) continue;
+    if (!isDeployableArtifact(name)) continue;
+    const filePath = path.join(EXPORTS_DIR, name);
+    try {
+      if (!fs.statSync(filePath).isFile()) continue;
+    } catch {
+      continue;
+    }
+
+    let content: Buffer;
+    try {
+      content = fs.readFileSync(filePath);
+    } catch {
+      continue;
+    }
+    const hash = createHash('sha256').update(content).digest('hex');
+    if (registry.some((entry) => entry.name === name && entry.hash === hash)) continue;
+
+    let target = '';
+    try {
+      if (name.endsWith('_bundle.json')) {
+        // Paczka aplikacji (fallback eksportu): { nazwaPliku: treść } → apps/<id>/
+        const appId = name.replace(/^app_/, '').replace(/_bundle\.json$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const bundle = JSON.parse(content.toString('utf-8'));
+        if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) continue;
+        const appDir = path.join(APPS_DIR, appId);
+        fs.mkdirSync(appDir, { recursive: true });
+        for (const [bundleName, bundleContent] of Object.entries(bundle)) {
+          if (typeof bundleContent !== 'string') continue;
+          fs.writeFileSync(path.join(appDir, path.basename(bundleName)), bundleContent, 'utf-8');
+        }
+        const manifestPath = path.join(appDir, 'app.json');
+        if (!fs.existsSync(manifestPath)) {
+          fs.writeFileSync(manifestPath, JSON.stringify({
+            id: appId,
+            name: appId,
+            entry: 'index.html',
+            status: 'stopped',
+            deployedBy: 'Triada Deploy Engine',
+          }, null, 2), 'utf-8');
+        }
+        target = `apps/${appId}`;
+      } else if (name.endsWith('.tar.gz')) {
+        // Archiwum aplikacji: walidacja ścieżek, potem rozpakowanie do apps/
+        const { stdout: listing } = await execFileAsync('tar', ['-tzf', filePath], { timeout: 10000 });
+        const entries = listing.split('\n').filter((line) => line.trim().length > 0);
+        if (entries.length === 0 || entries.some((entry) => entry.startsWith('/') || entry.includes('..'))) {
+          pushSystemLog('warn', 'KERNEL', `[DEPLOY] Archiwum ${name} odrzucone: niebezpieczne ścieżki w pakiecie.`);
+          continue;
+        }
+        await execFileAsync('tar', ['-xzf', filePath, '-C', APPS_DIR], { timeout: 15000 });
+        target = 'apps/';
+      } else if (name.endsWith('.py')) {
+        // Moduł Python → jądro nowego systemu Triady
+        const kernelDir = path.resolve('Nowy_system/kernel');
+        fs.mkdirSync(kernelDir, { recursive: true });
+        fs.copyFileSync(filePath, path.join(kernelDir, path.basename(name)));
+        target = `Nowy_system/kernel/${path.basename(name)}`;
+      } else if (name.endsWith('.sh')) {
+        // Skrypt systemowy → katalog główny nowego systemu
+        const sysDir = path.resolve('Nowy_system');
+        fs.mkdirSync(sysDir, { recursive: true });
+        fs.copyFileSync(filePath, path.join(sysDir, path.basename(name)));
+        target = `Nowy_system/${path.basename(name)}`;
+      }
+    } catch (err: any) {
+      pushSystemLog('error', 'KERNEL', `[DEPLOY] Błąd wdrażania ${name}: ${err?.message || err}`);
+      continue;
+    }
+
+    const entry: DeployedArtifact = {
+      name,
+      hash,
+      target,
+      deployedAt: new Date().toISOString(),
+      origin,
+    };
+    registry.push(entry);
+    deployed.push(entry);
+    pushSystemLog('healed', 'KERNEL', `[DEPLOY] Artefakt ${name} wdrożony do ${target} (${origin}).`);
+  }
+
+  if (deployed.length > 0) saveDeployRegistry(registry);
+  return deployed;
+}
+
+function getPendingDeployArtifacts(): string[] {
+  const registry = loadDeployRegistry();
+  let files: string[];
+  try {
+    files = fs.readdirSync(EXPORTS_DIR);
+  } catch {
+    return [];
+  }
+  return files.filter((name) => {
+    if (!isDeployableArtifact(name)) return false;
+    try {
+      const filePath = path.join(EXPORTS_DIR, name);
+      if (!fs.statSync(filePath).isFile()) return false;
+      const hash = createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+      return !registry.some((entry) => entry.name === name && entry.hash === hash);
+    } catch {
+      return false;
+    }
+  });
+}
+
+// GET status wdrożeń Triady (rejestr + artefakty oczekujące)
+app.get('/api/triad/deploy/status', (_req, res) => {
+  return res.json({
+    success: true,
+    mission: TRIADA_MISSION_DIRECTIVE,
+    autoDeploy: continuousMissionEnabled,
+    deployed: loadDeployRegistry().slice(-50).reverse(),
+    pending: getPendingDeployArtifacts(),
+  });
+});
+
+// POST wdrożenie artefaktów agentów (wszystkie oczekujące albo wskazany plik)
+app.post('/api/triad/deploy', async (req, res) => {
+  const { filename } = req.body ?? {};
+  if (filename !== undefined && (typeof filename !== 'string' || path.basename(filename) !== filename)) {
+    return res.status(400).json({ success: false, error: 'Nieprawidłowa nazwa pliku.' });
+  }
+  try {
+    const deployed = await deployAgentArtifacts('manual-api', filename);
+    if (deployed.length === 0) {
+      return res.json({ success: true, deployed: [], message: 'Brak nowych artefaktów do wdrożenia.' });
+    }
+
+    const currentState = await getPythonKernelState(true);
+    const currentVersion: string = currentState?.sys_version || TRIADA_MISSION_VERSION;
+    const versionMatch = currentVersion.match(/^(\d+)\.(\d+)\.(\d+)(.*)$/);
+    const newVersion = versionMatch
+      ? `${versionMatch[1]}.${versionMatch[2]}.${Number(versionMatch[3]) + 1}${versionMatch[4]}`
+      : currentVersion;
+    const deployDesc = `Wdrożenie artefaktów Triady: ${deployed.map((d) => `${d.name} → ${d.target}`).join('; ')}`;
+
+    await runPythonKernel(['--action', 'bump', '--version_tag', newVersion, '--desc', deployDesc]);
+    await runPythonKernel([
+      '--action', 'batch_msg',
+      '--msgs_json', JSON.stringify([
+        { agent: 'Astyria', tekst: `[DEPLOY] ${deployDesc}. Wersja systemu: ${newVersion}.` },
+        { agent: 'Alex', tekst: `[DEPLOY] Artefakty aktywne w systemie. Infrastruktura zaktualizowana (ROOT RING-0).` },
+        { agent: 'Aurelius', tekst: `[DEPLOY] Rejestr wdrożeń zaktualizowany: ${deployed.length} artefakt(ów). Integralność zachowana.` },
+      ]),
+    ]);
+
+    const finalState = await getPythonKernelState(true);
+    return res.json({ success: true, deployed, version: newVersion, state: finalState });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Błąd wdrażania artefaktów.' });
+  }
+});
+
+// --- TRIADA REPOSITORY ENGINE: agenci zapisują prace w repozytorium git ---
+const TRIADA_COMMIT_AUTHORS: Record<string, { name: string; email: string }> = {
+  Alex: { name: 'Alex (SVL Agent)', email: 'alex@svl.system' },
+  Astyria: { name: 'Astyria (SVL Agent)', email: 'astyria@svl.system' },
+  Aurelius: { name: 'Aurelius (SVL Agent)', email: 'aurelius@svl.system' },
+  triad: { name: 'Triada (SVL Agents)', email: 'triada@svl.system' },
+};
+
+const TRIADA_COMMIT_ALLOWED_ROOTS = [
+  'apps',
+  'Nowy_system',
+  'exports',
+  'src',
+  'tests',
+  'server.ts',
+  'svl_kernel.py',
+  '.svl_deployments.json',
+  '.env.example',
+];
+
+const TRIADA_DEFAULT_COMMIT_PATHS = ['apps', 'Nowy_system', 'exports', '.svl_deployments.json'];
+
+function sanitizeCommitPaths(files: unknown): string[] | null {
+  if (files === undefined) return [...TRIADA_DEFAULT_COMMIT_PATHS];
+  if (!Array.isArray(files) || files.length === 0 || files.length > 50) return null;
+  const result: string[] = [];
+  for (const entry of files) {
+    if (typeof entry !== 'string' || entry.trim().length === 0 || entry.length > 200) return null;
+    const normalized = path.normalize(entry).replace(/\\/g, '/');
+    if (normalized.startsWith('/') || normalized === '..' || normalized.startsWith('../') || normalized.includes('/../')) {
+      return null;
+    }
+    if (!TRIADA_COMMIT_ALLOWED_ROOTS.some((root) => normalized === root || normalized.startsWith(`${root}/`))) {
+      return null;
+    }
+    result.push(normalized);
+  }
+  return result;
+}
+
+async function triadGitCommit(agent: string, message: string, files: string[], origin: string): Promise<string | null> {
+  const author = TRIADA_COMMIT_AUTHORS[agent] ?? TRIADA_COMMIT_AUTHORS.triad;
+  const existing = files.filter((file) => {
+    try {
+      return fs.existsSync(path.resolve(file));
+    } catch {
+      return false;
+    }
+  });
+  if (existing.length === 0) return null;
+
+  await execFileAsync('git', ['add', '--', ...existing], { timeout: 15000 });
+  const { stdout: staged } = await execFileAsync('git', ['diff', '--cached', '--name-only', '--', ...existing], { timeout: 15000 });
+  if (!staged.trim()) return null;
+
+  const fullMessage = `[${agent}] ${message}\n\nMisja: ${TRIADA_MISSION_DIRECTIVE} | Źródło: ${origin}`;
+  await execFileAsync('git', [
+    '-c', `user.name=${author.name}`,
+    '-c', `user.email=${author.email}`,
+    'commit', '-m', fullMessage, '--', ...existing,
+  ], { timeout: 20000 });
+  const { stdout: sha } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], { timeout: 5000 });
+  return sha.trim();
+}
+
+// GET status repozytorium Triady (gałąź, ostatnie commity, niezapisane zmiany)
+app.get('/api/triad/git/status', async (_req, res) => {
+  try {
+    const { stdout: branch } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 5000 });
+    const { stdout: logOut } = await execFileAsync('git', ['log', '--pretty=format:%h|%an|%s|%cI', '-n', '10'], { timeout: 5000 });
+    const { stdout: statusOut } = await execFileAsync('git', ['status', '--porcelain'], { timeout: 5000 });
+    const commits = logOut.split('\n').filter(Boolean).map((line) => {
+      const [sha, author, subject, date] = line.split('|');
+      return { sha, author, subject, date };
+    });
+    let ahead = 0;
+    let behind = 0;
+    try {
+      const { stdout: ab } = await execFileAsync('git', ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}'], { timeout: 5000 });
+      const [a, b] = ab.trim().split(/\s+/);
+      ahead = Number(a) || 0;
+      behind = Number(b) || 0;
+    } catch {}
+    return res.json({
+      success: true,
+      branch: branch.trim(),
+      commits,
+      ahead,
+      behind,
+      githubPermissions: 'FULL_READ_WRITE',
+      autoPush: triadaGithubAutoPush,
+      dirtyFiles: statusOut.split('\n').filter((line) => line.trim().length > 0).length,
+      commitPaths: TRIADA_DEFAULT_COMMIT_PATHS,
+      authorizedAgents: Object.keys(TRIADA_COMMIT_AUTHORS),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Błąd odczytu statusu repozytorium.' });
+  }
+});
+
+// POST zapis prac agentów do repozytorium (commit z autorstwem agenta, opcjonalny push)
+app.post('/api/triad/commit', async (req, res) => {
+  const { agent, message, files, push } = req.body ?? {};
+  const agentName = typeof agent === 'string' && TRIADA_COMMIT_AUTHORS[agent] ? agent : 'triad';
+  if (message !== undefined && (typeof message !== 'string' || message.trim().length === 0 || message.length > 500)) {
+    return res.status(400).json({ success: false, error: 'Pole message musi zawierać od 1 do 500 znaków.' });
+  }
+  if (push !== undefined && typeof push !== 'boolean') {
+    return res.status(400).json({ success: false, error: 'Pole push musi być typu boolean.' });
+  }
+  const commitPaths = sanitizeCommitPaths(files);
+  if (!commitPaths) {
+    return res.status(400).json({
+      success: false,
+      error: `Nieprawidłowe ścieżki. Dozwolone korzenie: ${TRIADA_COMMIT_ALLOWED_ROOTS.join(', ')}.`,
+    });
+  }
+  try {
+    const sha = await triadGitCommit(agentName, (message || 'Zapis prac agentów w repozytorium').trim(), commitPaths, 'api');
+    if (!sha) {
+      return res.json({ success: true, committed: false, message: 'Brak zmian do zapisania we wskazanych ścieżkach.' });
+    }
+
+    let pushed = false;
+    if (push) {
+      try {
+        await execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 30000 });
+        pushed = true;
+      } catch (pushErr: any) {
+        pushSystemLog('warn', 'KERNEL', `[GIT] Push do origin nie powiódł się: ${pushErr?.message || pushErr}`);
+      }
+    }
+
+    pushSystemLog('healed', 'KERNEL', `[GIT] ${agentName} zapisał prace w repozytorium (commit ${sha}${pushed ? ', wypchnięto do origin' : ''}).`);
+    await runPythonKernel([
+      '--action', 'batch_msg',
+      '--msgs_json', JSON.stringify([
+        { agent: agentName === 'triad' ? 'Astyria' : agentName, tekst: `[GIT] Zapisano prace w repozytorium: commit ${sha} (${commitPaths.join(', ')})${pushed ? ' → origin' : ''}. Autor: ${(TRIADA_COMMIT_AUTHORS[agentName] ?? TRIADA_COMMIT_AUTHORS.triad).name}.` },
+      ]),
+    ]).catch(() => {});
+
+    return res.json({ success: true, committed: true, sha, pushed, files: commitPaths, author: (TRIADA_COMMIT_AUTHORS[agentName] ?? TRIADA_COMMIT_AUTHORS.triad).name });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Błąd zapisu do repozytorium.' });
+  }
+});
+
+// POST pełna synchronizacja z GitHub: commit z autorstwem agenta + push do origin/main
+app.post('/api/triad/github/sync', async (req, res) => {
+  const { agent, message, files } = req.body ?? {};
+  const agentName = typeof agent === 'string' && TRIADA_COMMIT_AUTHORS[agent] ? agent : 'triad';
+  if (message !== undefined && (typeof message !== 'string' || message.trim().length === 0 || message.length > 500)) {
+    return res.status(400).json({ success: false, error: 'Pole message musi zawierać od 1 do 500 znaków.' });
+  }
+  const commitPaths = sanitizeCommitPaths(files);
+  if (!commitPaths) {
+    return res.status(400).json({
+      success: false,
+      error: `Nieprawidłowe ścieżki. Dozwolone korzenie: ${TRIADA_COMMIT_ALLOWED_ROOTS.join(', ')}.`,
+    });
+  }
+  try {
+    const sha = await triadGitCommit(agentName, (message || 'Synchronizacja prac agentów z GitHub').trim(), commitPaths, 'github-sync');
+    await execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 45000 });
+    pushSystemLog('healed', 'KERNEL', `[GITHUB] ${agentName} zsynchronizował prace z GitHub (commit ${sha ?? 'bez nowych zmian'} → origin/main).`);
+    await runPythonKernel([
+      '--action', 'batch_msg',
+      '--msgs_json', JSON.stringify([
+        { agent: agentName === 'triad' ? 'Astyria' : agentName, tekst: `[GITHUB] Pełna synchronizacja z GitHub: commit ${sha ?? 'brak nowych zmian'} wypchnięty do origin/main. Uprawnienia: FULL_READ_WRITE.` },
+      ]),
+    ]).catch(() => {});
+    return res.json({ success: true, synced: true, pushed: true, sha, files: commitPaths });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Błąd synchronizacji z GitHub.' });
   }
 });
 
@@ -3766,87 +4163,17 @@ async function generateGeminiSingleReply(
   }
 }
 
-class OllamaProviderError extends Error {
-  constructor(readonly status: number, message: string) {
-    super(message);
-    this.name = 'OllamaProviderError';
-  }
-}
-
-async function generateOllamaChatReply(
-  agent: ChatAgentName,
+// --- CHAT REPLY ENGINE: OpenRouter API (klucz OPENROUTER_API_KEY z .env) + fallback LOCAL_NLP_ENGINE ---
+function generateLocalTriadReplyMap(
   message: string,
-): Promise<string> {
-  const agentFocus: Record<ChatAgentName, string> = {
-    Alex: 'Pomagaj w rozwoju projektu i diagnozowaniu błędów.',
-    Astyria: 'Pomagaj poprawiać niezawodność aplikacji i baz danych.',
-    Aurelius: 'Pomagaj analizować zmiany, ryzyka i testy.',
-  };
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
-
-  try {
-    const systemPrompt = `Jesteś ${agent}, asystentem czatu SVL. ${agentFocus[agent]} Odpowiadaj krótko po polsku. Nie twierdź, że wykonałeś operacje. Zmiany tylko proponuj komendą /propose; wymagaj /approve. Nie podawaj poleceń systemowych.`;
-    const response = await fetch(new URL('/api/generate', OLLAMA_HOST), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL,
-        prompt: `${systemPrompt}\n\nUżytkownik: ${message}\n${agent}:`,
-        stream: false,
-        options: { temperature: 0.3, num_ctx: 512, num_predict: 64 },
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      console.warn(`[OLLAMA] Model ${OLLAMA_MODEL} returned HTTP ${response.status}.`);
-      if (response.status === 404) {
-        throw new OllamaProviderError(404, `Nie znaleziono lokalnego modelu ${OLLAMA_MODEL}.`);
-      }
-      throw new OllamaProviderError(
-        response.status,
-        response.status === 500
-          ? 'Lokalny model nie uruchomił się. Sprawdź dostępną pamięć RAM.'
-          : `Lokalna usługa Ollama zwróciła HTTP ${response.status}.`,
-      );
-    }
-
-    const result: unknown = await response.json();
-    const responseText = result && typeof result === 'object' && 'response' in result
-      ? result.response
-      : undefined;
-    const reply = typeof responseText === 'string' ? responseText.trim() : '';
-    if (!reply) throw new Error('Lokalny model Ollama zwrócił pustą odpowiedź.');
-    return reply;
-  } catch (error) {
-    if (error instanceof OllamaProviderError) throw error;
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Lokalny model nie odpowiedział w ciągu 120 sekund.');
-    }
-    if (error instanceof TypeError) {
-      throw new Error('Nie można połączyć się z lokalną Ollamą. Uruchom ją poleceniem: ollama serve');
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function generateOllamaTriadReplies(
-  message: string,
-): Promise<Record<ChatAgentName, string>> {
+  context: LocalNlpSystemContext,
+  prefix = '',
+): Record<ChatAgentName, string> {
   const replies = {} as Record<ChatAgentName, string>;
   for (const agent of CHAT_AGENT_NAMES) {
-    replies[agent] = await generateOllamaChatReply(agent, message);
+    replies[agent] = prefix + generateLocalReply(agent, message, context).reply;
   }
   return replies;
-}
-
-async function generateOllamaSingleReply(
-  agent: ChatAgentName,
-  message: string,
-): Promise<string> {
-  return generateOllamaChatReply(agent, message);
 }
 
 app.post('/api/triad/message', async (req, res) => {
@@ -3988,16 +4315,10 @@ app.post('/api/triad/message', async (req, res) => {
     }
   }
 
-  if (attachments.some((attachment) => attachment.mimeType)) {
+  if (attachments.some((attachment) => attachment.mimeType) && !OPENROUTER_API_KEY) {
     return res.status(400).json({
       success: false,
-      error: `Lokalny model ${OLLAMA_MODEL} obsługuje załączniki tekstowe, ale nie PDF ani JPEG.`,
-    });
-  }
-  if (OLLAMA_MODEL === 'gemma3:270m' && cleanMessage.length > 600) {
-    return res.status(413).json({
-      success: false,
-      error: 'Lokalny model gemma3:270m obsługuje wiadomości do 600 znaków. Użyj krótszego tekstu lub większego modelu.',
+      error: 'Załączniki PDF/JPEG wymagają klucza OPENROUTER_API_KEY w pliku .env. Bez klucza działa lokalny silnik NLP (tylko tekst).',
     });
   }
 
@@ -4007,9 +4328,25 @@ app.post('/api/triad/message', async (req, res) => {
       ? currentState.store
       : {};
     const previousChatHistoryLength = Array.isArray(store.chat_history) ? store.chat_history.length : 0;
-    const replyMap: Partial<Record<ChatAgentName, string>> = target === 'triad'
-      ? await generateOllamaTriadReplies(cleanMessage)
-      : { [target]: await generateOllamaSingleReply(target, cleanMessage) };
+    const chatHistory = Array.isArray(store.chat_history) ? store.chat_history : [];
+    const nlpContext = buildSystemContext(store, loadDeployRegistry().length);
+    let replyMap: Partial<Record<ChatAgentName, string>>;
+    if (OPENROUTER_API_KEY) {
+      try {
+        replyMap = target === 'triad'
+          ? await generateOpenRouterTriadReplies(cleanMessage, chatHistory, attachments)
+          : { [target]: await generateOpenRouterSingleReply(target, cleanMessage, chatHistory, attachments) };
+      } catch (nlpError: any) {
+        pushSystemLog('warn', 'KERNEL', `[NLP] OpenRouter niedostępny: ${nlpError?.message || nlpError} — fallback na LOCAL_NLP_ENGINE.`);
+        replyMap = target === 'triad'
+          ? generateLocalTriadReplyMap(cleanMessage, nlpContext, '[OPENROUTER OFFLINE — LOCAL_NLP] ')
+          : { [target]: '[OPENROUTER OFFLINE — LOCAL_NLP] ' + generateLocalReply(target, cleanMessage, nlpContext).reply };
+      }
+    } else {
+      replyMap = target === 'triad'
+        ? generateLocalTriadReplyMap(cleanMessage, nlpContext)
+        : { [target]: generateLocalReply(target, cleanMessage, nlpContext).reply };
+    }
     const agents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
     const replies = agents.map((agent) => [agent, replyMap[agent]!] as const);
     const transcript = [
@@ -4035,14 +4372,7 @@ app.post('/api/triad/message', async (req, res) => {
       state: finalState,
     });
   } catch (error: any) {
-    const status = error instanceof OllamaProviderError && error.status === 404
-      ? 503
-      : error instanceof OllamaProviderError
-      ? 502
-      : error?.message?.includes('lokalną Ollamą')
-      ? 503
-      : 500;
-    return res.status(status).json({ success: false, error: error.message || 'Nie udało się uzyskać odpowiedzi agentów.' });
+    return res.status(500).json({ success: false, error: error?.message || 'Nie udało się uzyskać odpowiedzi agentów z lokalnego silnika NLP.' });
   }
 });
 
@@ -4054,6 +4384,80 @@ app.post('/api/kernel/agent', (_req, res) => {
   });
 });
 
+// --- TRIADA MISSION BOOTSTRAP: BUILD_BEST_OS (ROOT RING-0 + AUTONOMIA W TLE) ---
+const TRIADA_MISSION_DIRECTIVE = 'BUILD_BEST_OS';
+const TRIADA_MISSION_VERSION = '8.7.0-Triada-BestOS-Mission';
+const TRIADA_ROOT_AGENTS = ['Alex', 'Astyria', 'Aurelius', 'Mateusz Mitek'];
+
+async function bootstrapTriadMission() {
+  try {
+    const state = await getPythonKernelState(true);
+    const config = state?.store?.config && typeof state.store.config === 'object'
+      ? state.store.config
+      : {};
+    const alreadyActive = config.mission_directive === TRIADA_MISSION_DIRECTIVE
+      && config.root_privileges === true
+      && Array.isArray(config.root_agents)
+      && TRIADA_ROOT_AGENTS.every((agent) => config.root_agents.includes(agent));
+
+    // 1. Podłączenie agentów + nadanie uprawnień ROOT RING-0 + misja w configu jądra (trwałe).
+    const configArgs = [
+      '--action', 'config',
+      '--config_json', JSON.stringify({
+        active_profiles: ['Alex', 'Astyria', 'Aurelius'],
+        root_privileges: true,
+        root_mode: 'ACTIVE',
+        privilege_level: 'RING_0_ROOT_KERNEL',
+        terminal_root_execution: 'ENABLED',
+        root_agents: TRIADA_ROOT_AGENTS,
+        self_modification_scope: 'FULL_APPLICATION_MUTATION',
+        mission_directive: TRIADA_MISSION_DIRECTIVE,
+        mission_objective: 'Stworzenie najlepszego systemu operacyjnego na bazie SVL_System/BastillaOS',
+        mission_agents: ['Alex', 'Astyria', 'Aurelius'],
+        mission_background: 'CONTINUOUS_ACTIVE',
+        astyria_continuous_repair: true,
+        continuous_mission: 'ACTIVE',
+        github_permissions: 'FULL_READ_WRITE',
+        github_authorized_agents: ['Alex', 'Astyria', 'Aurelius'],
+        github_auto_push: true,
+        github_remote: 'origin/main',
+      }),
+    ];
+    if (!alreadyActive) {
+      configArgs.push(
+        '--version_tag', TRIADA_MISSION_VERSION,
+        '--desc', 'Misja Triady BUILD_BEST_OS: budowa najlepszego OS na bazie SVL_System — ROOT RING-0 + autonomia w tle',
+      );
+    }
+    await runPythonKernel(configArgs);
+
+    // 2. Ogłoszenie misji na kanale agentów (tylko przy pierwszej aktywacji, bez spamu przy restarcie).
+    if (!alreadyActive) {
+      await runPythonKernel([
+        '--action', 'batch_msg',
+        '--msgs_json', JSON.stringify([
+          { agent: 'Mateusz Mitek', tekst: '[MISJA TRIADY: BUILD_BEST_OS] Stworzenie najlepszego systemu operacyjnego na bazie SVL_System. Agenci podłączeni z uprawnieniami ROOT RING-0 i autonomiczną pracą w tle.' },
+          { agent: 'Alex', tekst: '[MISJA PRZYJĘTA] Dowództwo infrastrukturą i stabilnością OS. Uprawnienia: RING_0_ROOT_KERNEL. Tryb: autonomia w tle.' },
+          { agent: 'Astyria', tekst: '[MISJA PRZYJĘTA] Ciągły rozwój, samoleczenie i optymalizacja VM_Ten_System. Uprawnienia: RING_0_ROOT_KERNEL. Tryb: CONTINUOUS_ACTIVE.' },
+          { agent: 'Aurelius', tekst: '[MISJA PRZYJĘTA] Audyt bezpieczeństwa i integralność Data Store. Uprawnienia: RING_0_ROOT_KERNEL. Tryb: autonomia w tle.' },
+        ]),
+      ]);
+    }
+
+    // 3. Automatyczne działanie w tle: ciągła misja + autonaprawa zawsze włączone przy starcie.
+    continuousMissionEnabled = true;
+    autoRepairEnabled = true;
+    triadaGithubAutoPush = config.github_auto_push !== false;
+    pushSystemLog(
+      'healed',
+      'KERNEL',
+      `[MISJA TRIADY] ${TRIADA_MISSION_DIRECTIVE} ${alreadyActive ? 'potwierdzona' : 'aktywowana'} — agenci: Alex, Astyria, Aurelius (ROOT RING-0, autonomia w tle).`
+    );
+  } catch (err: any) {
+    pushSystemLog('error', 'KERNEL', `[MISJA TRIADY] Bootstrap nie powiódł się: ${err?.message || err}`);
+  }
+}
+
 // Setup Vite middleware in dev or static files in prod
 async function startServer() {
   if (!fs.existsSync(KERNEL_STORE_PATH)) {
@@ -4064,6 +4468,9 @@ async function startServer() {
       JSON.stringify(INITIAL_DATA_STORE),
     ]);
   }
+
+  // Podłączenie Triady, nadanie ROOT RING-0 i aktywacja misji BUILD_BEST_OS (idempotentne).
+  await bootstrapTriadMission();
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));

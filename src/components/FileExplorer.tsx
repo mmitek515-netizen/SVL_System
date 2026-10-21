@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, FileArchive, FileText, RefreshCw, FolderOpen, ShieldCheck } from 'lucide-react';
+import { Download, FileArchive, FileText, RefreshCw, FolderOpen, ShieldCheck, Rocket, GitBranch, UploadCloud } from 'lucide-react';
 
 interface FileInfo {
   name: string;
@@ -11,6 +11,61 @@ interface FileInfo {
 export const FileExplorer: React.FC = () => {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendingDeploys, setPendingDeploys] = useState<string[]>([]);
+  const [deploying, setDeploying] = useState<string | 'all' | null>(null);
+  const [deployMessage, setDeployMessage] = useState<string | null>(null);
+  const [committing, setCommitting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleGithubSync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setDeployMessage(null);
+    try {
+      const res = await fetch('/api/triad/github/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent: 'triad', message: 'Synchronizacja prac Triady z GitHub' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDeployMessage(`Wysłano na GitHub: commit ${data.sha ?? 'bez nowych zmian'} → origin/main`);
+      } else {
+        setDeployMessage(`Błąd synchronizacji z GitHub: ${data.error || `HTTP ${res.status}`}`);
+      }
+    } catch (e: any) {
+      setDeployMessage(`Błąd synchronizacji z GitHub: ${e?.message || 'brak połączenia'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleCommit = async () => {
+    if (committing) return;
+    setCommitting(true);
+    setDeployMessage(null);
+    try {
+      const res = await fetch('/api/triad/commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent: 'triad', message: 'Zapis prac Triady (artefakty, aplikacje, eksporty)' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDeployMessage(
+          data.committed
+            ? `Zapisano w repozytorium: commit ${data.sha} · autor: ${data.author}`
+            : data.message || 'Brak zmian do zapisania.'
+        );
+      } else {
+        setDeployMessage(`Błąd zapisu do repo: ${data.error || `HTTP ${res.status}`}`);
+      }
+    } catch (e: any) {
+      setDeployMessage(`Błąd zapisu do repo: ${e?.message || 'brak połączenia'}`);
+    } finally {
+      setCommitting(false);
+    }
+  };
 
   const fetchFiles = async () => {
     try {
@@ -26,9 +81,52 @@ export const FileExplorer: React.FC = () => {
     }
   };
 
+  const fetchDeployStatus = async () => {
+    try {
+      const res = await fetch('/api/triad/deploy/status');
+      if (res.ok) {
+        const data = await res.json();
+        setPendingDeploys(Array.isArray(data.pending) ? data.pending : []);
+      }
+    } catch {}
+  };
+
+  const handleDeploy = async (filename?: string) => {
+    if (deploying) return;
+    setDeploying(filename ?? 'all');
+    setDeployMessage(null);
+    try {
+      const res = await fetch('/api/triad/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filename ? { filename } : {}),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDeployMessage(
+          data.deployed?.length > 0
+            ? `Wdrożono: ${data.deployed.map((d: { name: string }) => d.name).join(', ')}${data.version ? ` · v${data.version}` : ''}`
+            : data.message || 'Brak nowych artefaktów do wdrożenia.'
+        );
+      } else {
+        setDeployMessage(`Błąd wdrożenia: ${data.error || `HTTP ${res.status}`}`);
+      }
+    } catch (e: any) {
+      setDeployMessage(`Błąd wdrożenia: ${e?.message || 'brak połączenia'}`);
+    } finally {
+      setDeploying(null);
+      await fetchDeployStatus();
+      await fetchFiles();
+    }
+  };
+
   useEffect(() => {
     fetchFiles();
-    const interval = setInterval(fetchFiles, 5000);
+    fetchDeployStatus();
+    const interval = setInterval(() => {
+      fetchFiles();
+      fetchDeployStatus();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -50,11 +148,44 @@ export const FileExplorer: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800 border border-slate-700 text-[10px] text-slate-400">
             <ShieldCheck className="w-3 h-3 text-emerald-500" />
-            UPRAWNIENIA: POBIERANIE AKTYWNE
+            UPRAWNIENIA: POBIERANIE + WDRAŻANIE (ROOT RING-0)
           </div>
+          <button
+            onClick={() => handleDeploy()}
+            disabled={deploying !== null || pendingDeploys.length === 0}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-cyan-950/70 border border-cyan-700/60 text-cyan-300 text-[10px] font-bold hover:bg-cyan-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+            title="Wdróż wszystkie nowe artefakty Triady do systemu"
+          >
+            <Rocket className={`w-3.5 h-3.5 ${deploying === 'all' ? 'animate-bounce' : ''}`} />
+            WDRÓŻ NOWE ({pendingDeploys.length})
+          </button>
+          <button
+            onClick={handleCommit}
+            disabled={committing}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-purple-950/70 border border-purple-700/60 text-purple-300 text-[10px] font-bold hover:bg-purple-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+            title="Zapisz prace agentów w repozytorium git (commit z autorstwem Triady)"
+          >
+            <GitBranch className={`w-3.5 h-3.5 ${committing ? 'animate-pulse' : ''}`} />
+            {committing ? 'ZAPISUJĘ...' : 'ZAPISZ W REPO'}
+          </button>
+          <button
+            onClick={handleGithubSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-indigo-950/70 border border-indigo-700/60 text-indigo-300 text-[10px] font-bold hover:bg-indigo-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+            title="Pełna synchronizacja z GitHub: commit + push do origin/main (FULL_READ_WRITE)"
+          >
+            <UploadCloud className={`w-3.5 h-3.5 ${syncing ? 'animate-bounce' : ''}`} />
+            {syncing ? 'WYSYŁAM...' : 'WYŚLIJ NA GITHUB'}
+          </button>
           {loading && <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin" />}
         </div>
       </div>
+
+      {deployMessage && (
+        <div className="mx-4 mt-3 px-3 py-2 rounded-lg border border-cyan-800/60 bg-cyan-950/30 text-[11px] text-cyan-200" role="status">
+          {deployMessage}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-4">
         {files.length === 0 && !loading ? (
@@ -83,6 +214,16 @@ export const FileExplorer: React.FC = () => {
                     <span className="truncate">{new Date(file.ctime).toLocaleString('pl-PL')}</span>
                   </div>
                 </div>
+                {pendingDeploys.includes(file.name) && (
+                  <button
+                    onClick={() => handleDeploy(file.name)}
+                    disabled={deploying !== null}
+                    className="p-2 bg-slate-950 border border-cyan-800 text-cyan-400 hover:bg-cyan-600 hover:text-slate-950 hover:border-cyan-500 rounded-md transition-all active:scale-90 disabled:opacity-40"
+                    title="Wdróż ten artefakt do systemu (apps/ lub Nowy_system/)"
+                  >
+                    <Rocket className={`w-4 h-4 ${deploying === file.name ? 'animate-bounce' : ''}`} />
+                  </button>
+                )}
                 <a 
                   href={`/api/explorer/download/${file.name}`} 
                   className="p-2 bg-slate-950 border border-slate-800 text-emerald-400 hover:bg-emerald-600 hover:text-slate-950 hover:border-emerald-500 rounded-md transition-all active:scale-90"
