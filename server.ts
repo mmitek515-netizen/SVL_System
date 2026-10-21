@@ -21,6 +21,8 @@ import {
   GEMINI_FALLBACK_MODELS_DEFAULT,
   GEMINI_PRIMARY_MODEL,
   getGeminiVmStatus,
+  parseGeminiModelChain,
+  runWithGeminiFallback,
 } from './src/kernel/geminiVm';
 import {
   buildAgentProtocolReplies,
@@ -49,6 +51,7 @@ const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const GEMINI_MODEL = (process.env.GEMINI_MODEL || GEMINI_PRIMARY_MODEL).trim();
 const GEMINI_FALLBACK_MODELS = process.env.GEMINI_FALLBACK_MODELS || GEMINI_FALLBACK_MODELS_DEFAULT;
 const geminiClient = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : undefined;
+const GEMINI_MODEL_CHAIN = parseGeminiModelChain(GEMINI_MODEL, GEMINI_FALLBACK_MODELS).models;
 const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
 const OPENROUTER_MODEL = (process.env.OPENROUTER_MODEL || 'openrouter/auto').trim();
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -2092,23 +2095,27 @@ app.post('/api/without_nlp/analyze', async (req, res) => {
 app.get('/api/ai/status', async (_req, res) => {
   try {
     const state = await getPythonKernelState();
+    const geminiActive = Boolean(GEMINI_API_KEY);
     const openRouterActive = Boolean(OPENROUTER_API_KEY);
     const fallbackActive = Boolean(FALLBACK_NLP_API_KEY);
     return res.json({
-      provider: openRouterActive
+      provider: geminiActive
+        ? 'Google Gemini API'
+        : openRouterActive
         ? 'OpenRouter API'
         : fallbackActive
         ? 'Fallback API (Groq/xAI)'
         : 'LOCAL_NLP_ENGINE (Triada — własny silnik językowy)',
-      model: openRouterActive ? OPENROUTER_MODEL : fallbackActive ? FALLBACK_NLP_MODEL : LOCAL_NLP_VERSION,
+      model: geminiActive ? GEMINI_MODEL : openRouterActive ? OPENROUTER_MODEL : fallbackActive ? FALLBACK_NLP_MODEL : LOCAL_NLP_VERSION,
       enabled: true,
-      connection: openRouterActive || fallbackActive ? 'api-configured' : 'local-deterministic',
+      connection: geminiActive || openRouterActive || fallbackActive ? 'api-configured' : 'local-deterministic',
       chain: [
+        geminiActive ? `Google Gemini (${GEMINI_MODEL_CHAIN.join(' → ')})` : null,
         openRouterActive ? `OpenRouter (${OPENROUTER_MODEL})` : null,
         fallbackActive ? `Fallback API ${FALLBACK_NLP_BASE_URL} (${FALLBACK_NLP_MODEL})` : null,
         `LOCAL_NLP_ENGINE (${LOCAL_NLP_VERSION}) — ostateczny fallback`,
       ].filter(Boolean),
-      fallback: openRouterActive || fallbackActive
+      fallback: geminiActive || openRouterActive || fallbackActive
         ? 'Przy awarii API łańcuch przechodzi na kolejny provider, na końcu LOCAL_NLP_ENGINE'
         : 'brak kluczy API w .env — działa silnik lokalny',
       protocol: '/api/triad/command',
@@ -4306,27 +4313,55 @@ async function generateGeminiChatReply(
     }
   }
 
+  return generateGeminiText(
+    [...history, { role: 'user', parts: userParts }],
+    `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_SAFETY_BOUNDARIES}`,
+    signal,
+  );
+}
+
+function getGeminiErrorStatus(error: unknown): number | undefined {
+  return error && typeof error === 'object' && 'status' in error
+    && typeof (error as { status: unknown }).status === 'number'
+    ? (error as { status: number }).status
+    : undefined;
+}
+
+// Wspólne wywołanie Gemini z łańcuchem modeli (GEMINI_MODEL → GEMINI_FALLBACK_MODELS).
+async function generateGeminiText(
+  contents: Array<{ role: 'user' | 'model'; parts: Array<Record<string, unknown>> }>,
+  systemInstruction: string,
+  signal: AbortSignal,
+  maxOutputTokens = 1200,
+): Promise<string> {
+  if (!geminiClient) {
+    throw new Error('Brak GEMINI_API_KEY. Dodaj klucz Google Gemini do pliku .env i uruchom serwer ponownie.');
+  }
   try {
-    const response = await geminiClient.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [...history, { role: 'user', parts: userParts }],
-      config: {
-        systemInstruction: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_SAFETY_BOUNDARIES}`,
-        temperature: 0.7,
-        maxOutputTokens: 1200,
-        abortSignal: signal,
+    const { result } = await runWithGeminiFallback(
+      GEMINI_MODEL_CHAIN,
+      async (model) => {
+        const response = await geminiClient.models.generateContent({
+          model,
+          contents: contents as any,
+          config: { systemInstruction, temperature: 0.7, maxOutputTokens, abortSignal: signal },
+        });
+        const reply = response.text?.trim() || '';
+        if (!reply) throw new Error(`Google Gemini (${model}) zwrócił pustą odpowiedź.`);
+        return reply;
       },
-    });
-    const reply = response.text?.trim() || '';
-    if (!reply) throw new Error('Google Gemini zwrócił pustą odpowiedź. Spróbuj ponownie.');
-    return reply;
+      (error) => {
+        if (signal.aborted) return false;
+        const status = getGeminiErrorStatus(error);
+        // Inny model może zadziałać przy limicie, braku modelu lub awarii serwera — nie przy złym kluczu.
+        return status === undefined || status === 404 || status === 429 || status >= 500;
+      },
+    );
+    return result;
   } catch (error) {
-    const status = error && typeof error === 'object' && 'status' in error
-      && typeof error.status === 'number'
-      ? error.status
-      : undefined;
+    const status = getGeminiErrorStatus(error);
     if (status !== undefined) {
-      console.warn(`[GEMINI] Model ${GEMINI_MODEL} returned HTTP ${status}.`);
+      console.warn(`[GEMINI] Łańcuch ${GEMINI_MODEL_CHAIN.join(' → ')} zwrócił HTTP ${status}.`);
       throw new GeminiProviderError(status, getGeminiProviderError(status));
     }
     throw error;
@@ -4421,7 +4456,7 @@ app.post('/api/hyperos/console', async (req, res) => {
     }
   }
 
-  // 3. Każde polecenie przez NLP: OpenRouter → fallback API (Groq/xAI) → HyperspaceOS + LOCAL_NLP
+  // 3. Każde polecenie przez NLP: Gemini → OpenRouter → fallback API (Groq/xAI) → HyperspaceOS + LOCAL_NLP
   let reply = '';
   let nlpProvider = '';
   const hyperMessages = [
@@ -4431,7 +4466,19 @@ app.post('/api/hyperos/console', async (req, res) => {
       content: `[Hiperprzestrzeń: intencja=${resolution.intent}, podobieństwo=${(resolution.score * 100).toFixed(1)}%]\nPolecenie Operatora: ${clean}${kernelOutput ? `\n\nWynik jądra SVL:\n${kernelOutput.slice(0, 800)}` : ''}`,
     },
   ];
-  if (OPENROUTER_API_KEY) {
+  if (GEMINI_API_KEY) {
+    try {
+      reply = await generateGeminiText(
+        [{ role: 'user', parts: [{ text: hyperMessages[1].content }] }],
+        HYPEROS_SYSTEM_PROMPT,
+        AbortSignal.timeout(65000),
+      );
+      nlpProvider = `Google Gemini (${GEMINI_MODEL})`;
+    } catch (err: any) {
+      pushSystemLog('warn', 'KERNEL', `[HYPEROS] Gemini niedostępny: ${err?.message || err} — próbuję OpenRouter.`);
+    }
+  }
+  if (!reply && OPENROUTER_API_KEY) {
     try {
       reply = await generateOpenRouterContent(hyperMessages, AbortSignal.timeout(65000));
       nlpProvider = `OpenRouter (${OPENROUTER_MODEL})`;
@@ -4720,10 +4767,10 @@ app.post('/api/triad/message', async (req, res) => {
     }
   }
 
-  if (attachments.some((attachment) => attachment.mimeType) && !OPENROUTER_API_KEY) {
+  if (attachments.some((attachment) => attachment.mimeType) && !GEMINI_API_KEY && !OPENROUTER_API_KEY) {
     return res.status(400).json({
       success: false,
-      error: 'Załączniki PDF/JPEG wymagają klucza OPENROUTER_API_KEY w pliku .env. Bez klucza działa lokalny silnik NLP (tylko tekst).',
+      error: 'Załączniki PDF/JPEG wymagają klucza GEMINI_API_KEY (lub OPENROUTER_API_KEY) w pliku .env. Bez klucza działa lokalny silnik NLP (tylko tekst).',
     });
   }
 
@@ -4736,9 +4783,18 @@ app.post('/api/triad/message', async (req, res) => {
     const chatHistory = Array.isArray(store.chat_history) ? store.chat_history : [];
     const nlpContext = buildSystemContext(store, loadDeployRegistry().length);
     const targetAgents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
-    // Łańcuch NLP: OpenRouter → fallback API (Groq/xAI) → LOCAL_NLP_ENGINE
+    // Łańcuch NLP: Google Gemini → OpenRouter → fallback API (Groq/xAI) → LOCAL_NLP_ENGINE
     let replyMap: Partial<Record<ChatAgentName, string>> | null = null;
-    if (OPENROUTER_API_KEY) {
+    if (GEMINI_API_KEY) {
+      try {
+        replyMap = target === 'triad'
+          ? await generateGeminiTriadReplies(cleanMessage, chatHistory, attachments)
+          : { [target]: await generateGeminiSingleReply(target, cleanMessage, chatHistory, attachments) };
+      } catch (nlpError: any) {
+        pushSystemLog('warn', 'KERNEL', `[NLP] Google Gemini niedostępny: ${nlpError?.message || nlpError} — próbuję OpenRouter.`);
+      }
+    }
+    if (!replyMap && OPENROUTER_API_KEY) {
       try {
         replyMap = target === 'triad'
           ? await generateOpenRouterTriadReplies(cleanMessage, chatHistory, attachments)
@@ -4759,7 +4815,7 @@ app.post('/api/triad/message', async (req, res) => {
       }
     }
     if (!replyMap) {
-      const prefix = OPENROUTER_API_KEY || FALLBACK_NLP_API_KEY ? '[API OFFLINE — LOCAL_NLP] ' : '';
+      const prefix = GEMINI_API_KEY || OPENROUTER_API_KEY || FALLBACK_NLP_API_KEY ? '[API OFFLINE — LOCAL_NLP] ' : '';
       replyMap = Object.fromEntries(
         targetAgents.map((agent) => [agent, prefix + generateLocalReply(agent, cleanMessage, nlpContext).reply]),
       ) as Partial<Record<ChatAgentName, string>>;
