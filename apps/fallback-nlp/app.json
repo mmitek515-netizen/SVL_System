@@ -1,0 +1,16 @@
+{
+  "id": "fallback-nlp",
+  "name": "Fallback Nlp",
+  "type": "node-api",
+  "version": "1.0.0",
+  "author": "SVL Chat Approval",
+  "description": "Aplikacja typu node-api utworzona w Studio Aplikacji przez terminal.",
+  "entry": "server.js",
+  "status": "ready",
+  "created_at": "2026-10-21T16:06:26.124Z",
+  "files": [
+    "app.json",
+    "README.md",
+    "server.js"
+  ]
+}
