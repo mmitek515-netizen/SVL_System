@@ -72,6 +72,24 @@ Pollinations credentials are used only by the image-generation endpoint. The
 service unit fixes its listener to `127.0.0.1:3000` after reading this file, so
 the bind address cannot be changed there.
 
+## without_nlp engine
+
+The deterministic Euler & Fourier harmonic engine (`apps/without_nlp`) is
+installed as a native system component by the `bastillaos-system` package:
+
+- `/usr/bin/without-nlp` — command-line engine (Python 3 standard library
+  only, no network, no NLP/LLM model). Examples:
+  `without-nlp "Tekst"`, `echo Tekst | without-nlp -`,
+  `without-nlp --omega 2.0 --t 0.5 Tekst`, `without-nlp --decode 0.6797`,
+  `without-nlp --status`.
+- KDE menu entry **without_nlp**, which opens the BastillaOS desktop directly
+  on the engine view (`http://127.0.0.1:3000/?view=without_nlp`).
+- The local API keeps serving `GET /api/without_nlp/status` and
+  `POST /api/without_nlp/analyze`.
+
+The Python and TypeScript engines encode Unicode code points identically, so
+the CLI, API and desktop view return the same coefficients and harmonics.
+
 ## Deterministic agent protocol
 
 The local Triad command interface uses `POST /api/triad/command`. It accepts

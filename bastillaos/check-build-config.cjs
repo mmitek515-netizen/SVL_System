@@ -37,6 +37,9 @@ const requiredPaths = [
   'bastillaos/system-package/build-package.sh',
   'bastillaos/branding/usr/share',
   'bastillaos/security/includes.chroot',
+  'apps/without_nlp/engine.py',
+  'bastillaos/system-package/bin/without-nlp',
+  'bastillaos/branding/usr/share/applications/BastillaOS-without_nlp.desktop',
 ];
 for (const relativePath of requiredPaths) {
   if (!fs.existsSync(path.join(root, relativePath))) {
@@ -58,6 +61,10 @@ if (!isoScript.includes('BastillaOS-13-amd64.iso')) {
 const packageBuilder = read('bastillaos/system-package/build-package.sh');
 if (!packageBuilder.includes(expectedBundle)) {
   fail(`system package builder must consume ${expectedBundle}.`);
+}
+
+if (!packageBuilder.includes('usr/bin/without-nlp')) {
+  fail('system package builder must install the without-nlp system command.');
 }
 
 const workflow = read('.github/workflows/build-bastillaos.yml');

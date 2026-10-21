@@ -8,7 +8,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-$REPO_ROOT/bastillaos/build}"
 SERVER_BUNDLE="${SERVER_BUNDLE:-$REPO_ROOT/bastillaos/build/server.mjs}"
 WORK_DIR="$PACKAGE_DIR/.build-work"
 PACKAGE_NAME=bastillaos-system
-PACKAGE_VERSION=1.0.0
+PACKAGE_VERSION=1.1.0
 PACKAGE_ARCH=amd64
 DEB_NAME="${PACKAGE_NAME}_${PACKAGE_VERSION}_${PACKAGE_ARCH}.deb"
 
@@ -17,7 +17,7 @@ fail() {
   exit 1
 }
 
-for tool in node dpkg-deb; do
+for tool in node dpkg-deb python3; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     fail "required build tool not found: $tool"
   fi
@@ -29,6 +29,7 @@ done
 [[ -f "$SERVER_BUNDLE" ]] || fail "production server bundle is missing: $SERVER_BUNDLE (run npm run build:server first)."
 [[ -d "$REPO_ROOT/apps" ]] || fail "apps/ source data is missing."
 [[ -f "$REPO_ROOT/svl_kernel.py" ]] || fail "svl_kernel.py is missing."
+[[ -f "$REPO_ROOT/apps/without_nlp/engine.py" ]] || fail "apps/without_nlp/engine.py is missing."
 [[ "$(node -p 'process.platform')" == linux && "$(node -p 'process.arch')" == x64 ]] \
   || fail "the BastillaOS ISO package target is Debian amd64; build on Linux x86_64."
 [[ -n "$(node -p 'process.report.getReport().header.glibcVersionRuntime || ""')" ]] \
@@ -41,7 +42,7 @@ RUNTIME="$ROOT/usr/lib/bastillaos/system"
 DEFAULTS="$ROOT/usr/share/bastillaos/system-defaults"
 DEBIAN="$ROOT/DEBIAN"
 mkdir -p "$RUNTIME" "$DEFAULTS" "$DEBIAN" "$ROOT/usr/libexec/bastillaos" \
-  "$ROOT/usr/lib/systemd/system"
+  "$ROOT/usr/lib/systemd/system" "$ROOT/usr/lib/bastillaos/without_nlp" "$ROOT/usr/bin"
 chmod 0755 "$DEBIAN"
 
 cp "$PACKAGE_DIR/debian/control" "$DEBIAN/control"
@@ -53,6 +54,11 @@ cp "$PACKAGE_DIR/systemd/bastillaos-system.service" \
   "$ROOT/usr/lib/systemd/system/bastillaos-system.service"
 cp "$PACKAGE_DIR/libexec/system-service" "$ROOT/usr/libexec/bastillaos/system-service"
 chmod 0755 "$ROOT/usr/libexec/bastillaos/system-service"
+
+# without_nlp: deterministic harmonic engine as a native system command.
+cp "$REPO_ROOT/apps/without_nlp/engine.py" "$ROOT/usr/lib/bastillaos/without_nlp/engine.py"
+cp "$PACKAGE_DIR/bin/without-nlp" "$ROOT/usr/bin/without-nlp"
+chmod 0755 "$ROOT/usr/lib/bastillaos/without_nlp/engine.py" "$ROOT/usr/bin/without-nlp"
 
 cp -a "$REPO_ROOT/dist" "$RUNTIME/dist"
 cp "$SERVER_BUNDLE" "$RUNTIME/server.mjs"
@@ -89,6 +95,9 @@ for required_file in \
   usr/lib/bastillaos/system/node_modules/vite/package.json \
   usr/libexec/bastillaos/system-service \
   usr/lib/systemd/system/bastillaos-system.service \
+  usr/lib/bastillaos/without_nlp/engine.py \
+  usr/bin/without-nlp \
+  usr/share/bastillaos/system-defaults/apps/without_nlp/engine.py \
   usr/share/bastillaos/system-defaults/.gitignore \
   usr/share/bastillaos/system-defaults/src/App.tsx \
   usr/share/bastillaos/system-defaults/apps/matrix-telemetry/app.json \
@@ -104,5 +113,10 @@ fi
 if find "$VERIFY_DIR" -type f -perm /002 -print -quit | grep -q .; then
   fail "built .deb contains world-writable files."
 fi
+
+engine_check="$(python3 -I "$VERIFY_DIR/usr/lib/bastillaos/without_nlp/engine.py" BASTILLA)" \
+  || fail "packaged without_nlp engine does not run."
+grep -q '"decoded_text": "BASTILLA"' <<<"$engine_check" \
+  || fail "packaged without_nlp engine did not decode losslessly."
 
 printf 'Built and validated %s\n' "$DEB_PATH"

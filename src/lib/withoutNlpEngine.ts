@@ -86,7 +86,7 @@ export class WithoutNlpHarmonicEngine {
    */
   public fourierEncode(text: string): number[] {
     if (!text) return [];
-    return Array.from(text).map((ch) => Math.round((ch.charCodeAt(0) / 128.0) * 10000) / 10000);
+    return Array.from(text).map((ch) => Math.round(((ch.codePointAt(0) ?? 0) / 128.0) * 10000) / 10000);
   }
 
   /**
@@ -94,7 +94,10 @@ export class WithoutNlpHarmonicEngine {
    */
   public fourierDecode(coeffs: number[]): string {
     if (!Array.isArray(coeffs)) return '';
-    return coeffs.map((c) => String.fromCharCode(Math.round(c * 128.0))).join('');
+    return coeffs
+      .map((c) => Math.round(c * 128.0))
+      .map((code) => (Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '\uFFFD'))
+      .join('');
   }
 
   /**

@@ -6,7 +6,7 @@ import {
   normalizeDataStore,
 } from './kernel/svlKernel';
 import { Header } from './components/Header';
-import { Navigation, TabId } from './components/Navigation';
+import { Navigation, TabId, initialTabFromLocation } from './components/Navigation';
 import { TerminalView } from './components/TerminalView';
 import { AgentCommsView } from './components/AgentCommsView';
 import { MonolithView } from './components/MonolithView';
@@ -65,7 +65,7 @@ export default function App() {
     });
   }, []);
 
-  const [activeTab, setActiveTab] = useState<TabId>('home');
+  const [activeTab, setActiveTab] = useState<TabId>(initialTabFromLocation);
   const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [chatSystemChange, setChatSystemChange] = useState<ChatSystemChange | null>(null);

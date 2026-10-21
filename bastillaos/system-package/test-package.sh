@@ -32,7 +32,7 @@ if [ -z "${SERVER_BUNDLE:-}" ]; then
 fi
 SERVER_BUNDLE="$SERVER_BUNDLE" OUTPUT_DIR="$WORK_DIR/out" \
   "$PACKAGE_DIR/build-package.sh"
-DEB="$WORK_DIR/out/bastillaos-system_1.0.0_amd64.deb"
+DEB="$WORK_DIR/out/bastillaos-system_1.1.0_amd64.deb"
 [ -f "$DEB" ] || { echo "test-package: package was not built." >&2; exit 1; }
 
 PACKAGE_INFO=$(dpkg-deb -f "$DEB")
@@ -52,6 +52,9 @@ for required in \
   usr/lib/bastillaos/system/node_modules/vite/package.json \
   usr/libexec/bastillaos/system-service \
   usr/lib/systemd/system/bastillaos-system.service \
+  usr/lib/bastillaos/without_nlp/engine.py \
+  usr/bin/without-nlp \
+  usr/share/bastillaos/system-defaults/apps/without_nlp/engine.py \
   usr/share/bastillaos/system-defaults/svl_kernel.py \
   usr/share/bastillaos/system-defaults/apps/matrix-telemetry/app.json \
   usr/share/bastillaos/system-defaults/src/App.tsx \
@@ -67,6 +70,16 @@ for required in \
 done
 
 DEFAULTS="$ROOT/usr/share/bastillaos/system-defaults"
+[ -x "$ROOT/usr/bin/without-nlp" ]
+grep -q '/usr/lib/bastillaos/without_nlp/engine.py' "$ROOT/usr/bin/without-nlp"
+WITHOUT_NLP_OUT=$(python3 -I "$ROOT/usr/lib/bastillaos/without_nlp/engine.py" --omega 2 --t 0.5 'Zażółć 🚀')
+printf '%s\n' "$WITHOUT_NLP_OUT" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+assert d["decoded_text"] == "Zażółć 🚀", d["decoded_text"]
+assert d["error_rate"] == 0.0 and d["fundamental_omega"] == 2.0 and d["harmonics"]
+'
+python3 -I "$ROOT/usr/lib/bastillaos/without_nlp/engine.py" --status | grep -q '"ACTIVE_PURE_MATH"'
 ! find "$DEFAULTS" \( -path '*/windows-update-agent/*' -o -name 'WindowsUpdateView.tsx' -o -name 'BastillaWindowsUpdateAgent.ps1' \) | grep -q .
 ! find "$DEFAULTS" \( -type d \( -name .git -o -name node_modules -o -name dist -o -name build \) \
   -o -type f \( -name '.env*' -o -name '.github_credentials.json' -o -name 'svl_datastore.json' \) \) | grep -q .

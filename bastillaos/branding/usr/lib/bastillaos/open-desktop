@@ -6,6 +6,18 @@ host=${BASTILLAOS_HOST:-127.0.0.1}
 port=${BASTILLAOS_PORT:-3000}
 url="http://$host:$port"
 
+# Optional first argument opens a specific BastillaOS view, e.g. without_nlp.
+view=${1:-}
+if [ -n "$view" ]; then
+    case "$view" in
+        *[!a-z_]*)
+            printf 'BastillaOS: nieprawidłowy widok: %s\n' "$view" >&2
+            exit 2
+            ;;
+    esac
+    url="$url/?view=$view"
+fi
+
 notify_error() {
     if command -v kdialog >/dev/null 2>&1; then
         kdialog --title BastillaOS --error "$1" >/dev/null 2>&1 || true

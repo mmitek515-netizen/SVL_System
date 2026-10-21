@@ -18,6 +18,22 @@ export type TabId =
   | 'without_nlp'
   | 'github';
 
+export const TAB_IDS: readonly TabId[] = [
+  'home', 'comms', 'process_matrix', 'astyria_mission', 'schema_graph', 'temporal',
+  'terminal', 'monolith', 'datastore', 'diagnostics', 'visualizer', 'file_explorer',
+  'apps', 'without_nlp', 'github',
+];
+
+/** Widok startowy z adresu, np. /?view=without_nlp (launchery KDE w BastillaOS). */
+export function initialTabFromLocation(): TabId {
+  try {
+    const view = new URLSearchParams(window.location.search).get('view');
+    return view && (TAB_IDS as readonly string[]).includes(view) ? (view as TabId) : 'home';
+  } catch {
+    return 'home';
+  }
+}
+
 interface NavigationProps {
   activeTab: TabId;
   onSelectTab: (tab: TabId) => void;
