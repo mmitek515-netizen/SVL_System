@@ -511,7 +511,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           </button>
           </div>
           <p className="mt-1 px-1 text-[9px] text-slate-500">
-            Pliki tekstowe: 40 KB/plik. Silnik without_nlp analizuje tylko tekst — PDF/JPG nie są obsługiwane.
+            Tekst: 40 KB/plik. PDF/JPG: 5 MB/plik, maks. 12 MB łącznie — trafiają do Gemini (zdjęcia także do xAI).
           </p>
         </form>
 

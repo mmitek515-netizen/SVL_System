@@ -86,12 +86,13 @@ installed as a native system component by the `bastillaos-system` package:
   on the engine view (`http://127.0.0.1:3000/?view=without_nlp`).
 - The local API keeps serving `GET /api/without_nlp/status` and
   `POST /api/without_nlp/analyze`.
-- Triad chat (`POST /api/triad/message`) is answered by without_nlp: Astyria
-  reports the Euler phasor and reconstruction, Alex the Fourier harmonics,
-  Aurelius the integrity audit. No language model or network is used; the
-  response includes the full `analysis`. Text attachments are analysed,
-  PDF/JPEG attachments are rejected. Operator `/propose`, `/approve` and
-  `/exec` commands keep working as before.
+- Triad chat (`POST /api/triad/message`) is free conversation with the Triad:
+  Google Gemini answers first (`GEMINI_API_KEY`, primary model plus
+  `GEMINI_FALLBACK_MODELS`), xAI Grok is the fallback (`XAI_API_KEY`; when
+  `XAI_MODEL` is rejected the server picks a current Grok model from
+  `/v1/models`). Each agent falls back independently. Without keys or when
+  both APIs fail, without_nlp answers locally and deterministically. Put the
+  keys in `/etc/bastillaos/system.env` (root-owned, `chmod 0600`).
 
 The Python and TypeScript engines encode Unicode code points identically, so
 the CLI, API and desktop view return the same coefficients and harmonics.

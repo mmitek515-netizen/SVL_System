@@ -298,7 +298,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                 <Sparkles className="h-4 w-4 text-cyan-300" /> Polecenia Triady
               </div>
               <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                Pisz do wybranego agenta lub całej Triady. Odpowiedzi liczy lokalnie silnik without_nlp (Euler &amp; Fourier, bez modeli językowych).
+                Rozmawiaj swobodnie z wybranym agentem lub całą Triadą. Odpowiada Gemini, przy awarii xAI (Grok), a bez dostępu do API — lokalny silnik without_nlp.
               </p>
             </div>
             <button
@@ -467,7 +467,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   <Send className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="mt-1 px-1 text-[9px] text-slate-500">Pliki tekstowe: 40 KB/plik. Silnik without_nlp analizuje tylko tekst — PDF/JPG nie są obsługiwane.</p>
+              <p className="mt-1 px-1 text-[9px] text-slate-500">Tekst: 40 KB/plik. PDF/JPG: 5 MB/plik, maks. 12 MB łącznie — trafiają do Gemini (zdjęcia także do xAI).</p>
             </form>
           </section>
         </div>
