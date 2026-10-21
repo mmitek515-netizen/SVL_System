@@ -51,6 +51,10 @@ const geminiClient = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }
 const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
 const OPENROUTER_MODEL = (process.env.OPENROUTER_MODEL || 'openrouter/auto').trim();
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// Fallback NLP: dowolne API kompatybilne z OpenAI (Groq, xAI) — darmowy klucz z .env
+const FALLBACK_NLP_BASE_URL = (process.env.FALLBACK_NLP_BASE_URL || 'https://api.groq.com/openai/v1').trim().replace(/\/+$/, '');
+const FALLBACK_NLP_API_KEY = (process.env.FALLBACK_NLP_API_KEY || '').trim();
+const FALLBACK_NLP_MODEL = (process.env.FALLBACK_NLP_MODEL || 'llama-3.3-70b-versatile').trim();
 const rawEnvPollKey = (process.env.POLLINATIONS_API_KEY || '').trim();
 const POLLINATIONS_API_KEY = rawEnvPollKey.startsWith('sk_')
   ? rawEnvPollKey
@@ -2088,16 +2092,27 @@ app.get('/api/ai/status', async (_req, res) => {
   try {
     const state = await getPythonKernelState();
     const openRouterActive = Boolean(OPENROUTER_API_KEY);
+    const fallbackActive = Boolean(FALLBACK_NLP_API_KEY);
     return res.json({
-      provider: openRouterActive ? 'OpenRouter API' : 'LOCAL_NLP_ENGINE (Triada — własny silnik językowy)',
-      model: openRouterActive ? OPENROUTER_MODEL : LOCAL_NLP_VERSION,
+      provider: openRouterActive
+        ? 'OpenRouter API'
+        : fallbackActive
+        ? 'Fallback API (Groq/xAI)'
+        : 'LOCAL_NLP_ENGINE (Triada — własny silnik językowy)',
+      model: openRouterActive ? OPENROUTER_MODEL : fallbackActive ? FALLBACK_NLP_MODEL : LOCAL_NLP_VERSION,
       enabled: true,
-      connection: openRouterActive ? 'api-configured' : 'local-deterministic',
-      fallback: openRouterActive
-        ? 'LOCAL_NLP_ENGINE przejmuje rozmowę przy awarii API'
-        : 'brak klucza OPENROUTER_API_KEY w .env — działa silnik lokalny',
+      connection: openRouterActive || fallbackActive ? 'api-configured' : 'local-deterministic',
+      chain: [
+        openRouterActive ? `OpenRouter (${OPENROUTER_MODEL})` : null,
+        fallbackActive ? `Fallback API ${FALLBACK_NLP_BASE_URL} (${FALLBACK_NLP_MODEL})` : null,
+        `LOCAL_NLP_ENGINE (${LOCAL_NLP_VERSION}) — ostateczny fallback`,
+      ].filter(Boolean),
+      fallback: openRouterActive || fallbackActive
+        ? 'Przy awarii API łańcuch przechodzi na kolejny provider, na końcu LOCAL_NLP_ENGINE'
+        : 'brak kluczy API w .env — działa silnik lokalny',
       protocol: '/api/triad/command',
       chatProtocol: '/api/triad/message',
+      hyperOsConsole: '/api/hyperos/console',
       sysVersion: state?.sys_version || null,
     });
   } catch (err: any) {
@@ -4305,21 +4320,30 @@ app.post('/api/hyperos/console', async (req, res) => {
     }
   }
 
-  // 3. Każde polecenie przez NLP: OpenRouter API (klucz z .env), fallback — klasyczny HyperspaceOS + LOCAL_NLP
+  // 3. Każde polecenie przez NLP: OpenRouter → fallback API (Groq/xAI) → HyperspaceOS + LOCAL_NLP
   let reply = '';
   let nlpProvider = '';
+  const hyperMessages = [
+    { role: 'system' as const, content: HYPEROS_SYSTEM_PROMPT },
+    {
+      role: 'user' as const,
+      content: `[Hiperprzestrzeń: intencja=${resolution.intent}, podobieństwo=${(resolution.score * 100).toFixed(1)}%]\nPolecenie Operatora: ${clean}${kernelOutput ? `\n\nWynik jądra SVL:\n${kernelOutput.slice(0, 800)}` : ''}`,
+    },
+  ];
   if (OPENROUTER_API_KEY) {
     try {
-      reply = await generateOpenRouterContent([
-        { role: 'system', content: HYPEROS_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `[Hiperprzestrzeń: intencja=${resolution.intent}, podobieństwo=${(resolution.score * 100).toFixed(1)}%]\nPolecenie Operatora: ${clean}${kernelOutput ? `\n\nWynik jądra SVL:\n${kernelOutput.slice(0, 800)}` : ''}`,
-        },
-      ], AbortSignal.timeout(65000));
+      reply = await generateOpenRouterContent(hyperMessages, AbortSignal.timeout(65000));
       nlpProvider = `OpenRouter (${OPENROUTER_MODEL})`;
     } catch (err: any) {
-      pushSystemLog('warn', 'KERNEL', `[HYPEROS] OpenRouter niedostępny: ${err?.message || err} — fallback lokalny.`);
+      pushSystemLog('warn', 'KERNEL', `[HYPEROS] OpenRouter niedostępny: ${err?.message || err} — próbuję fallback API.`);
+    }
+  }
+  if (!reply && FALLBACK_NLP_API_KEY) {
+    try {
+      reply = await generateFallbackNlpContent(hyperMessages, AbortSignal.timeout(45000));
+      nlpProvider = `Fallback API (${FALLBACK_NLP_MODEL})`;
+    } catch (err: any) {
+      pushSystemLog('warn', 'KERNEL', `[HYPEROS] Fallback API niedostępny: ${err?.message || err} — fallback lokalny.`);
     }
   }
   if (!reply) {
@@ -4343,6 +4367,70 @@ app.post('/api/hyperos/console', async (req, res) => {
     nlpProvider,
   });
 });
+
+// --- FALLBACK NLP PROVIDER: API kompatybilne z OpenAI (Groq / xAI) — darmowy klucz z .env ---
+class FallbackNlpProviderError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'FallbackNlpProviderError';
+  }
+}
+
+async function generateFallbackNlpContent(
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+  signal: AbortSignal,
+): Promise<string> {
+  if (!FALLBACK_NLP_API_KEY) {
+    throw new Error('Brak FALLBACK_NLP_API_KEY. Wklej darmowy klucz (Groq/xAI) do pliku .env i zrestartuj serwer.');
+  }
+  const response = await fetch(`${FALLBACK_NLP_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${FALLBACK_NLP_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: FALLBACK_NLP_MODEL,
+      messages,
+      temperature: 0.4,
+      max_tokens: 400,
+    }),
+    signal,
+  });
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new FallbackNlpProviderError(response.status, 'Fallback NLP (Groq/xAI) odrzucił klucz API. Sprawdź FALLBACK_NLP_API_KEY w pliku .env.');
+    }
+    if (response.status === 429) {
+      throw new FallbackNlpProviderError(429, 'Fallback NLP: przekroczono limit zapytań (HTTP 429).');
+    }
+    throw new FallbackNlpProviderError(response.status, `Fallback NLP zwrócił HTTP ${response.status}.`);
+  }
+  const result: any = await response.json();
+  const content = result?.choices?.[0]?.message?.content;
+  const reply = typeof content === 'string' ? content.trim() : '';
+  if (!reply) throw new Error('Fallback NLP zwrócił pustą odpowiedź.');
+  return reply;
+}
+
+async function generateFallbackNlpChatReply(
+  agent: ChatAgentName,
+  message: string,
+  chatHistory: Array<{ agent: string; tekst: string }>,
+): Promise<string> {
+  const history = chatHistory
+    .filter((entry) => entry.agent === 'Mateusz Mitek' || entry.agent === 'Operator' || entry.agent === agent)
+    .slice(-6)
+    .map((entry): { role: 'user' | 'assistant'; content: string } => ({
+      role: entry.agent === 'Mateusz Mitek' || entry.agent === 'Operator' ? 'user' : 'assistant',
+      content: entry.tekst.slice(0, 800),
+    }));
+  return generateFallbackNlpContent([
+    { role: 'system', content: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_SAFETY_BOUNDARIES}` },
+    ...history,
+    { role: 'user', content: message },
+  ], AbortSignal.timeout(45000));
+}
 
 // --- CHAT REPLY ENGINE: OpenRouter API (klucz OPENROUTER_API_KEY z .env) + fallback LOCAL_NLP_ENGINE ---
 function generateLocalTriadReplyMap(
@@ -4511,22 +4599,34 @@ app.post('/api/triad/message', async (req, res) => {
     const previousChatHistoryLength = Array.isArray(store.chat_history) ? store.chat_history.length : 0;
     const chatHistory = Array.isArray(store.chat_history) ? store.chat_history : [];
     const nlpContext = buildSystemContext(store, loadDeployRegistry().length);
-    let replyMap: Partial<Record<ChatAgentName, string>>;
+    const targetAgents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
+    // Łańcuch NLP: OpenRouter → fallback API (Groq/xAI) → LOCAL_NLP_ENGINE
+    let replyMap: Partial<Record<ChatAgentName, string>> | null = null;
     if (OPENROUTER_API_KEY) {
       try {
         replyMap = target === 'triad'
           ? await generateOpenRouterTriadReplies(cleanMessage, chatHistory, attachments)
           : { [target]: await generateOpenRouterSingleReply(target, cleanMessage, chatHistory, attachments) };
       } catch (nlpError: any) {
-        pushSystemLog('warn', 'KERNEL', `[NLP] OpenRouter niedostępny: ${nlpError?.message || nlpError} — fallback na LOCAL_NLP_ENGINE.`);
-        replyMap = target === 'triad'
-          ? generateLocalTriadReplyMap(cleanMessage, nlpContext, '[OPENROUTER OFFLINE — LOCAL_NLP] ')
-          : { [target]: '[OPENROUTER OFFLINE — LOCAL_NLP] ' + generateLocalReply(target, cleanMessage, nlpContext).reply };
+        pushSystemLog('warn', 'KERNEL', `[NLP] OpenRouter niedostępny: ${nlpError?.message || nlpError} — próbuję fallback API (Groq/xAI).`);
       }
-    } else {
-      replyMap = target === 'triad'
-        ? generateLocalTriadReplyMap(cleanMessage, nlpContext)
-        : { [target]: generateLocalReply(target, cleanMessage, nlpContext).reply };
+    }
+    if (!replyMap && FALLBACK_NLP_API_KEY) {
+      try {
+        const entries = await Promise.all(
+          targetAgents.map(async (agent) => [agent, await generateFallbackNlpChatReply(agent, cleanMessage, chatHistory)] as const),
+        );
+        replyMap = Object.fromEntries(entries) as Partial<Record<ChatAgentName, string>>;
+        pushSystemLog('info', 'KERNEL', `[NLP] Odpowiedź wygenerowana przez fallback API (${FALLBACK_NLP_MODEL}).`);
+      } catch (fallbackError: any) {
+        pushSystemLog('warn', 'KERNEL', `[NLP] Fallback API niedostępny: ${fallbackError?.message || fallbackError} — fallback na LOCAL_NLP_ENGINE.`);
+      }
+    }
+    if (!replyMap) {
+      const prefix = OPENROUTER_API_KEY || FALLBACK_NLP_API_KEY ? '[API OFFLINE — LOCAL_NLP] ' : '';
+      replyMap = Object.fromEntries(
+        targetAgents.map((agent) => [agent, prefix + generateLocalReply(agent, cleanMessage, nlpContext).reply]),
+      ) as Partial<Record<ChatAgentName, string>>;
     }
     const agents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
     const replies = agents.map((agent) => [agent, replyMap[agent]!] as const);
@@ -4604,6 +4704,7 @@ async function bootstrapTriadMission() {
         root_limits: 'NONE',
         operator_privilege_level: 'RING_NEG1_ABSOLUTE_ROOT',
         operator_root_scope: 'SUPREME_UNLIMITED_ABOVE_TRIADA',
+        nlp_chain: 'OPENROUTER → FALLBACK_API (Groq/xAI) → LOCAL_NLP_ENGINE',
         update_sources: ['github.com (origin/main + api.github.com)', 'registry npm (npmjs.com)'],
         github_permissions: 'FULL_READ_WRITE',
         github_authorized_agents: ['Alex', 'Astyria', 'Aurelius'],
