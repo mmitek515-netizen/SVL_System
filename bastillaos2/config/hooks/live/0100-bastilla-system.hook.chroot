@@ -1,0 +1,26 @@
+#!/bin/sh
+# Konfiguracja systemu BastillaOS 2 wewnątrz chroota budowania.
+set -eu
+
+chmod 0755 /usr/bin/triadctl /usr/lib/bastilla/triad/triad.py
+
+# Usługi Triady i bezpieczeństwo włączone od pierwszego startu.
+systemctl enable bastilla-alex.timer bastilla-astyria.timer bastilla-aurelius.timer
+systemctl enable ufw.service unattended-upgrades.service apparmor.service
+systemctl enable grub-btrfsd.service || true
+sed -i 's/^ENABLED=.*/ENABLED=yes/' /etc/ufw/ufw.conf
+sed -i 's/^DEFAULT_INPUT_POLICY=.*/DEFAULT_INPUT_POLICY="DROP"/' /etc/default/ufw
+
+# Calamares: domyślnie Btrfs (podstawa snapshotów Astyrii).
+partition_conf=/etc/calamares/modules/partition.conf
+if [ -f "$partition_conf" ]; then
+	if grep -q '^defaultFileSystemType' "$partition_conf"; then
+		sed -i 's/^defaultFileSystemType:.*/defaultFileSystemType: "btrfs"/' "$partition_conf"
+	else
+		printf 'defaultFileSystemType: "btrfs"\n' >> "$partition_conf"
+	fi
+fi
+
+# Język i układ klawiatury.
+sed -i 's/^# *pl_PL.UTF-8 UTF-8/pl_PL.UTF-8 UTF-8/' /etc/locale.gen
+locale-gen

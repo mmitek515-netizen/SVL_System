@@ -1,0 +1,34 @@
+# Warstwa systemowa BastillaOS 2.
+systemd-sysv
+linux-image-amd64
+firmware-linux-free
+firmware-linux-nonfree
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-misc-nonfree
+sudo
+ca-certificates
+curl
+git
+python3
+locales
+console-setup
+network-manager
+wpasupplicant
+# Bezpieczeństwo: zapora, AppArmor, automatyczne poprawki.
+ufw
+apparmor
+apparmor-utils
+unattended-upgrades
+# Btrfs + snapshoty z wyborem w GRUB (cofanie systemu).
+btrfs-progs
+snapper
+grub-btrfs
+inotify-tools
+# Narzędzia.
+rsync
+nano
+less
+pciutils
+usbutils

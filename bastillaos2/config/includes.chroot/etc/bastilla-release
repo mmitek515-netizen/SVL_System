@@ -1,0 +1,6 @@
+NAME="BastillaOS"
+VERSION="2.0"
+VERSION_ID="2.0"
+PRETTY_NAME="BastillaOS 2.0"
+BASE="Debian GNU/Linux 13 (trixie)"
+HOME_URL="https://github.com/mmitek515-netizen/SVL_System"

@@ -1,0 +1,15 @@
+# Pulpit: lekki KDE Plasma 6 zamiast pełnego kde-full z wersji 1.
+kde-plasma-desktop
+sddm
+plasma-nm
+plasma-pa
+konsole
+dolphin
+kate
+firefox-esr
+pipewire-audio
+wireplumber
+fonts-noto
+# Instalator graficzny Calamares (zamiast debian-installer z wersji 1).
+calamares
+calamares-settings-debian

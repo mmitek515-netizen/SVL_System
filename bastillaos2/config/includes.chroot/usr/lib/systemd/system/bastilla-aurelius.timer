@@ -1,0 +1,11 @@
+[Unit]
+Description=BastillaOS Triada: Codzienny audyt bezpieczeństwa
+
+[Timer]
+OnBootSec=2min
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

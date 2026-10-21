@@ -1,0 +1,11 @@
+[Unit]
+Description=BastillaOS Triada: Raport zdrowia co 5 minut
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:0/5
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

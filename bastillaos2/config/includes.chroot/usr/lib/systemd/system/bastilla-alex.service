@@ -1,0 +1,13 @@
+[Unit]
+Description=BastillaOS Triada: Alex — zdrowie systemu
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/lib/bastilla/triad/triad.py run alex
+StateDirectory=bastilla/triad
+Nice=10
+IOSchedulingClass=idle
+ProtectHome=read-only
+PrivateTmp=yes

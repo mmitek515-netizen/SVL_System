@@ -8,3 +8,4 @@ coverage/
 !.env.example
 .svl_kernel_store.json
 bastillaos/vm-gemini-4/data/
+bastillaos2/out/

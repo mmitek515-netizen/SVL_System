@@ -1,0 +1,55 @@
+name: Build BastillaOS 2 ISO
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "bastillaos2-v*"
+  pull_request:
+    paths:
+      - "bastillaos2/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bastillaos2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Testy BastillaOS 2
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: check.sh
+        run: bash bastillaos2/check.sh
+
+  build-iso:
+    name: Obraz ISO BastillaOS 2 (Debian 13, amd64)
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zwolnij miejsce na runnerze
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Zbuduj ISO
+        run: bash bastillaos2/build.sh
+
+      - name: Wyślij ISO i sumę kontrolną
+        uses: actions/upload-artifact@v4
+        with:
+          name: BastillaOS-2.0-amd64
+          path: |
+            bastillaos2/out/BastillaOS-2.0-amd64.iso
+            bastillaos2/out/BastillaOS-2.0-amd64.iso.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
