@@ -4993,13 +4993,19 @@ async function bootstrapTriadMission() {
 
 // --- AUTONOMIA TRIADY: rzeczywista pętla misji BUILD_BEST_OS (Alex → Astyria → Aurelius) ---
 const AUTONOMY_EXECUTOR: AutonomyExecutor = parseExecutor(process.env.TRIAD_AUTONOMY_EXECUTOR);
-const AUTONOMY_INTERVAL_MS = Math.max(1, Number(process.env.TRIAD_AUTONOMY_INTERVAL_MIN) || 10) * 60 * 1000;
+const AUTONOMY_INTERVAL_RAW = Number(process.env.TRIAD_AUTONOMY_INTERVAL_MIN ?? 10);
+// 0 = tryb ciągły: kolejny cykl startuje zaraz po zakończeniu poprzedniego.
+const AUTONOMY_INTERVAL_MS = Math.max(1, Number.isFinite(AUTONOMY_INTERVAL_RAW) && AUTONOMY_INTERVAL_RAW > 0 ? AUTONOMY_INTERVAL_RAW : 10) * 60 * 1000;
+const AUTONOMY_CONTINUOUS_PAUSE_MS = 5000;
+const AUTONOMY_ERROR_BACKOFF_MS = 2 * 60 * 1000;
 const AUTONOMY_MAX_CYCLES_PER_DAY = Math.max(1, Number(process.env.TRIAD_AUTONOMY_MAX_CYCLES_PER_DAY) || 48);
 const AUTONOMY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const AUTONOMY_COMMIT_PATHS = [AUTONOMY_TARGET_DIR];
 
 const autonomyState = {
   enabled: (process.env.TRIAD_AUTONOMY || 'on').trim().toLowerCase() !== 'off',
+  continuous: AUTONOMY_INTERVAL_RAW === 0
+    || (process.env.TRIAD_AUTONOMY_CONTINUOUS || '').trim().toLowerCase() === 'on',
   running: false,
   cycle: 0,
   cyclesToday: 0,
@@ -5009,6 +5015,7 @@ const autonomyState = {
   log: [] as AutonomyLogEntry[],
 };
 let autonomyTimer: ReturnType<typeof setInterval> | null = null;
+let autonomyLoopActive = false;
 
 function autonomyProviderAvailable(): boolean {
   return Boolean(GEMINI_API_KEY || OPENROUTER_API_KEY || FALLBACK_NLP_API_KEY);
@@ -5189,10 +5196,39 @@ async function runAutonomyCycle(origin: string): Promise<string> {
   }
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Tryb ciągły: cykle jeden po drugim, aż do zatrzymania, dziennego limitu lub braku API.
+async function runContinuousAutonomy() {
+  if (autonomyLoopActive) return;
+  autonomyLoopActive = true;
+  try {
+    await sleep(15000);
+    while (autonomyState.enabled && autonomyState.continuous) {
+      if (autonomyState.running) {
+        await sleep(AUTONOMY_CONTINUOUS_PAUSE_MS);
+        continue;
+      }
+      const summary = await runAutonomyCycle('timer');
+      if (/dzienny limit|Brak klucza API/.test(summary)) {
+        pushSystemLog('warn', 'KERNEL', `[AUTONOMIA] Tryb ciągły wstrzymany: ${summary}`);
+        break;
+      }
+      await sleep(/przerwany/.test(summary) ? AUTONOMY_ERROR_BACKOFF_MS : AUTONOMY_CONTINUOUS_PAUSE_MS);
+    }
+  } finally {
+    autonomyLoopActive = false;
+  }
+}
+
 function scheduleAutonomy() {
   if (autonomyTimer) clearInterval(autonomyTimer);
   autonomyTimer = null;
   if (!autonomyState.enabled) return;
+  if (autonomyState.continuous) {
+    void runContinuousAutonomy();
+    return;
+  }
   autonomyTimer = setInterval(() => {
     if (autonomyState.enabled) void runAutonomyCycle('timer');
   }, AUTONOMY_INTERVAL_MS);
@@ -5209,6 +5245,7 @@ app.get('/api/triad/autonomy', (_req, res) => {
     executor: AUTONOMY_EXECUTOR,
     executorDescription: describeExecutor(AUTONOMY_EXECUTOR),
     intervalMinutes: AUTONOMY_INTERVAL_MS / 60000,
+    continuous: autonomyState.continuous,
     cycle: autonomyState.cycle,
     cyclesToday: autonomyState.cyclesToday,
     maxCyclesPerDay: AUTONOMY_MAX_CYCLES_PER_DAY,
@@ -5221,14 +5258,17 @@ app.get('/api/triad/autonomy', (_req, res) => {
 });
 
 app.post('/api/triad/autonomy', (req, res) => {
-  const enabled = req.body?.enabled;
-  if (typeof enabled !== 'boolean') {
-    return res.status(400).json({ success: false, error: 'Pole "enabled" musi być wartością logiczną.' });
+  const { enabled, continuous } = req.body ?? {};
+  if ((enabled !== undefined && typeof enabled !== 'boolean')
+    || (continuous !== undefined && typeof continuous !== 'boolean')
+    || (enabled === undefined && continuous === undefined)) {
+    return res.status(400).json({ success: false, error: 'Pola "enabled" i "continuous" muszą być wartościami logicznymi.' });
   }
-  autonomyState.enabled = enabled;
+  if (typeof enabled === 'boolean') autonomyState.enabled = enabled;
+  if (typeof continuous === 'boolean') autonomyState.continuous = continuous;
   scheduleAutonomy();
-  pushSystemLog('info', 'KERNEL', `[AUTONOMIA] Autonomiczna praca Triady ${enabled ? 'włączona' : 'zatrzymana'} przez Operatora.`);
-  return res.json({ success: true, enabled });
+  pushSystemLog('info', 'KERNEL', `[AUTONOMIA] Triada: ${autonomyState.enabled ? 'włączona' : 'zatrzymana'}, tryb ${autonomyState.continuous ? 'ciągły' : `co ${AUTONOMY_INTERVAL_MS / 60000} min`} (Operator).`);
+  return res.json({ success: true, enabled: autonomyState.enabled, continuous: autonomyState.continuous });
 });
 
 app.post('/api/triad/autonomy/run', async (_req, res) => {

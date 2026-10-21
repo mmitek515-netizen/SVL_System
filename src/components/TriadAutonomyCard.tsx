@@ -22,6 +22,7 @@ interface AutonomyStatus {
   executor: 'docker' | 'host';
   executorDescription: string;
   intervalMinutes: number;
+  continuous: boolean;
   cycle: number;
   cyclesToday: number;
   maxCyclesPerDay: number;
@@ -55,7 +56,7 @@ export const TriadAutonomyCard: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const toggle = async () => {
+  const update = async (change: { enabled?: boolean; continuous?: boolean }) => {
     if (!status) return;
     setBusy(true);
     setError(null);
@@ -63,7 +64,7 @@ export const TriadAutonomyCard: React.FC = () => {
       const res = await fetch('/api/triad/autonomy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !status.enabled }),
+        body: JSON.stringify(change),
       });
       if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
       await refresh();
@@ -97,7 +98,7 @@ export const TriadAutonomyCard: React.FC = () => {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={runNow}
             disabled={busy || !status || status.running}
@@ -107,7 +108,19 @@ export const TriadAutonomyCard: React.FC = () => {
             {status?.running ? 'Cykl trwa' : 'Cykl teraz'}
           </button>
           <button
-            onClick={toggle}
+            onClick={() => update({ continuous: !status?.continuous })}
+            disabled={busy || !status}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-bold disabled:opacity-40 ${
+              status?.continuous
+                ? 'border-fuchsia-500/60 bg-fuchsia-950/70 text-fuchsia-300'
+                : 'border-slate-600 bg-slate-900 text-slate-400'
+            }`}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {status?.continuous ? 'Ciągły' : 'Co ' + (status?.intervalMinutes ?? 10) + ' min'}
+          </button>
+          <button
+            onClick={() => update({ enabled: !status?.enabled })}
             disabled={busy || !status}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-bold disabled:opacity-40 ${
               status?.enabled
@@ -125,7 +138,7 @@ export const TriadAutonomyCard: React.FC = () => {
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
           <span>Cykl: <b className="text-white">{status.cycle}</b></span>
           <span>Dziś: <b className="text-white">{status.cyclesToday}/{status.maxCyclesPerDay}</b></span>
-          <span>Co <b className="text-white">{status.intervalMinutes} min</b></span>
+          <span>Tryb: <b className="text-white">{status.continuous ? 'ciągły' : `co ${status.intervalMinutes} min`}</b></span>
           <span>Środowisko: <b className={status.executor === 'host' ? 'text-amber-300' : 'text-white'}>{status.executor}</b></span>
           {!status.providerConfigured && <span className="text-amber-300">Brak GEMINI_API_KEY w .env</span>}
         </div>
