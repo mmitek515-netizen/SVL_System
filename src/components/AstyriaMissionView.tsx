@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DataStore, SYS_VERSION } from '../kernel/svlKernel';
 import { FormattedMessage } from './FormattedMessage';
+import { TriadAutonomyCard } from './TriadAutonomyCard';
 import {
   GitBranch,
   Wrench,
@@ -221,6 +222,9 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Autonomia Triady — pętla BUILD_BEST_OS */}
+      <TriadAutonomyCard />
 
       {/* VM_Ten_System Dedicated Hypervisor Panel */}
       <div className="bg-gradient-to-r from-purple-950/40 via-slate-900/80 to-cyan-950/30 border border-purple-500/40 rounded-2xl p-3 sm:p-5 space-y-4 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.6)]">

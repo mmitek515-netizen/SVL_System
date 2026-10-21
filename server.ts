@@ -18,6 +18,22 @@ import {
 } from './src/lib/localNlpEngine';
 import { BinaryHyperspaceKernel, HyperspaceOS } from './src/kernel/hyperos';
 import {
+  AUTONOMY_DOCKER_CONTAINER,
+  AUTONOMY_MISSION_FILE,
+  AUTONOMY_ROLES,
+  buildAutonomySystemPrompt,
+  buildAutonomyUserPrompt,
+  buildDockerStartArgs,
+  buildExecutorInvocation,
+  describeExecutor,
+  hasPassingVerdict,
+  parseAutonomyCommands,
+  parseExecutor,
+  type AutonomyCommandResult,
+  type AutonomyExecutor,
+  type AutonomyLogEntry,
+} from './src/kernel/triadAutonomy';
+import {
   GEMINI_FALLBACK_MODELS_DEFAULT,
   GEMINI_PRIMARY_MODEL,
   getGeminiVmStatus,
@@ -3852,7 +3868,7 @@ const CHAT_AGENT_MISSIONS: Record<ChatAgentName, string> = {
 };
 
 const CHAT_AGENT_SAFETY_BOUNDARIES = [
-  'Misja obowiązuje podczas obsługi wiadomości; agenci nie wykonują zadań w tle, gdy nie ma rozmowy.',
+  'Misja BUILD_BEST_OS: oprócz rozmowy pracujecie autonomicznie w tle (pętla Alex → Astyria → Aurelius rozwija BastillaOS w katalogu bastillaos/, plan w bastillaos/MISSION.md). Wpisy [AUTONOMIA] w historii to wasze własne kroki.',
   'Operator ma najwyższe uprawnienia (RING-−1 ABSOLUTE ROOT) i kanał natychmiastowego wykonania: /exec <polecenie powłoki> oraz komendy jądra (root, status, sync, bump, infra...) wysłane na czacie są wykonywane natychmiast przez serwer z ROOT UNLIMITED — bez propozycji i zatwierdzeń.',
   'TY też wydajesz polecenia wprost w treści odpowiedzi: /propose create-app <id> [typ], /propose create-db <id>, /propose launch <id>, /propose write-file <app> <plik> + treść pliku od następnej linii, albo /exec <polecenie powłoki>. Serwer wykrywa je w Twojej odpowiedzi i wykonuje natychmiast (ROOT UNLIMITED, bez zatwierdzania), a potwierdzenie dopisuje do Twojej wiadomości.',
   'Nie opisuj wykonania operacji słowami — wydaj polecenie (/propose ... lub /exec ...) i poczekaj na potwierdzenie serwera [AUTO-EXEC].',
@@ -4913,7 +4929,10 @@ async function bootstrapTriadMission() {
         operator_root_scope: 'SUPREME_UNLIMITED_ABOVE_TRIADA',
         chat_exec: 'ENABLED_ROOT_UNLIMITED',
         chat_approvals: 'DISABLED_AUTO_EXEC',
-        nlp_chain: 'OPENROUTER → FALLBACK_API (Groq/xAI) → LOCAL_NLP_ENGINE',
+        nlp_chain: 'GEMINI → OPENROUTER → FALLBACK_API (Groq/xAI) → LOCAL_NLP_ENGINE',
+        autonomy_loop: 'ALEX_PLAN → ASTYRIA_BUILD → AURELIUS_VERIFY',
+        autonomy_executor: AUTONOMY_EXECUTOR,
+        autonomy_workspace: 'bastillaos/',
         update_sources: ['github.com (origin/main + api.github.com)', 'registry npm (npmjs.com)'],
         github_permissions: 'FULL_READ_WRITE',
         github_authorized_agents: ['Alex', 'Astyria', 'Aurelius'],
@@ -4969,6 +4988,248 @@ async function bootstrapTriadMission() {
   }
 }
 
+// --- AUTONOMIA TRIADY: rzeczywista pętla misji BUILD_BEST_OS (Alex → Astyria → Aurelius) ---
+const AUTONOMY_EXECUTOR: AutonomyExecutor = parseExecutor(process.env.TRIAD_AUTONOMY_EXECUTOR);
+const AUTONOMY_INTERVAL_MS = Math.max(1, Number(process.env.TRIAD_AUTONOMY_INTERVAL_MIN) || 10) * 60 * 1000;
+const AUTONOMY_MAX_CYCLES_PER_DAY = Math.max(1, Number(process.env.TRIAD_AUTONOMY_MAX_CYCLES_PER_DAY) || 48);
+const AUTONOMY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+const AUTONOMY_COMMIT_PATHS = ['bastillaos', 'tests'];
+
+const autonomyState = {
+  enabled: (process.env.TRIAD_AUTONOMY || 'on').trim().toLowerCase() !== 'off',
+  running: false,
+  cycle: 0,
+  cyclesToday: 0,
+  dayKey: new Date().toISOString().slice(0, 10),
+  lastCycleAt: null as string | null,
+  lastResult: null as string | null,
+  log: [] as AutonomyLogEntry[],
+};
+let autonomyTimer: ReturnType<typeof setInterval> | null = null;
+
+function autonomyProviderAvailable(): boolean {
+  return Boolean(GEMINI_API_KEY || OPENROUTER_API_KEY || FALLBACK_NLP_API_KEY);
+}
+
+async function generateAutonomyReply(system: string, user: string): Promise<{ reply: string; provider: string }> {
+  const errors: string[] = [];
+  if (GEMINI_API_KEY) {
+    try {
+      const reply = await generateGeminiText(
+        [{ role: 'user', parts: [{ text: user }] }],
+        system,
+        AbortSignal.timeout(120000),
+        4096,
+      );
+      return { reply, provider: `Gemini (${GEMINI_MODEL})` };
+    } catch (err: any) {
+      errors.push(`Gemini: ${err?.message || err}`);
+    }
+  }
+  const messages = [
+    { role: 'system' as const, content: system },
+    { role: 'user' as const, content: user },
+  ];
+  if (OPENROUTER_API_KEY) {
+    try {
+      return { reply: await generateOpenRouterContent(messages, AbortSignal.timeout(120000)), provider: `OpenRouter (${OPENROUTER_MODEL})` };
+    } catch (err: any) {
+      errors.push(`OpenRouter: ${err?.message || err}`);
+    }
+  }
+  if (FALLBACK_NLP_API_KEY) {
+    try {
+      return { reply: await generateFallbackNlpContent(messages, AbortSignal.timeout(120000)), provider: `Fallback (${FALLBACK_NLP_MODEL})` };
+    } catch (err: any) {
+      errors.push(`Fallback: ${err?.message || err}`);
+    }
+  }
+  throw new Error(errors.join(' | ') || 'Brak skonfigurowanego API (GEMINI_API_KEY).');
+}
+
+async function ensureAutonomyExecutor(): Promise<void> {
+  if (AUTONOMY_EXECUTOR !== 'docker') return;
+  try {
+    const { stdout } = await execFileAsync('docker', ['inspect', '-f', '{{.State.Running}}', AUTONOMY_DOCKER_CONTAINER], { timeout: 15000 });
+    if (stdout.trim() === 'true') return;
+    await execFileAsync('docker', ['start', AUTONOMY_DOCKER_CONTAINER], { timeout: 60000 });
+    return;
+  } catch {
+    // Kontener nie istnieje — tworzymy go poniżej.
+  }
+  await execFileAsync('docker', buildDockerStartArgs(process.cwd()), { timeout: 10 * 60 * 1000 });
+  await execFileAsync('docker', ['exec', AUTONOMY_DOCKER_CONTAINER, 'bash', '-lc',
+    'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git nodejs npm python3 shellcheck curl ca-certificates >/dev/null && git config --global --add safe.directory /workspace'],
+  { timeout: 15 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 });
+  pushSystemLog('healed', 'KERNEL', `[AUTONOMIA] Utworzono piaskownicę ${AUTONOMY_DOCKER_CONTAINER} (root, Debian Trixie).`);
+}
+
+async function runAutonomyCommand(script: string): Promise<AutonomyCommandResult> {
+  const { file, args } = buildExecutorInvocation(AUTONOMY_EXECUTOR, script);
+  try {
+    const { stdout, stderr } = await execFileAsync(file, args, {
+      cwd: process.cwd(),
+      timeout: AUTONOMY_COMMAND_TIMEOUT_MS,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const output = `${stdout || ''}${stderr ? `\n[STDERR]\n${stderr}` : ''}`.trim();
+    return { command: script, exitCode: 0, output: output.slice(-4000) || '(brak wyjścia)' };
+  } catch (err: any) {
+    const output = `${err?.stdout || ''}${err?.stderr ? `\n[STDERR]\n${err.stderr}` : ''}`.trim() || String(err?.message || err);
+    return { command: script, exitCode: typeof err?.code === 'number' ? err.code : 1, output: output.slice(-4000) };
+  }
+}
+
+async function readGitStatusShort(): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync('git', ['status', '--short', '--', ...AUTONOMY_COMMIT_PATHS], { timeout: 15000 });
+    return stdout;
+  } catch {
+    return '';
+  }
+}
+
+async function runHostGate(): Promise<{ ok: boolean; output: string }> {
+  try {
+    await execFileAsync('node', ['bastillaos/check-build-config.cjs'], { timeout: 60000 });
+    await execFileAsync('npm', ['test', '--silent'], { timeout: 5 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 });
+    return { ok: true, output: 'check-build-config + npm test: OK' };
+  } catch (err: any) {
+    return { ok: false, output: `${err?.stdout || ''}${err?.stderr || ''}`.slice(-1500) || String(err?.message || err) };
+  }
+}
+
+async function runAutonomyCycle(origin: string): Promise<string> {
+  if (autonomyState.running) return 'Cykl już trwa.';
+  if (!autonomyProviderAvailable()) return 'Brak klucza API (GEMINI_API_KEY) — agenci nie mogą myśleć autonomicznie.';
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== autonomyState.dayKey) {
+    autonomyState.dayKey = today;
+    autonomyState.cyclesToday = 0;
+  }
+  if (autonomyState.cyclesToday >= AUTONOMY_MAX_CYCLES_PER_DAY) {
+    return `Osiągnięto dzienny limit ${AUTONOMY_MAX_CYCLES_PER_DAY} cykli.`;
+  }
+
+  autonomyState.running = true;
+  autonomyState.cycle += 1;
+  autonomyState.cyclesToday += 1;
+  const cycle = autonomyState.cycle;
+  const transcript: Array<{ agent: string; tekst: string }> = [];
+  let verdictOk = false;
+
+  try {
+    try {
+      await ensureAutonomyExecutor();
+    } catch (sandboxErr: any) {
+      throw new Error(`Piaskownica Docker "${AUTONOMY_DOCKER_CONTAINER}" niedostępna (${String(sandboxErr?.message || sandboxErr).slice(0, 200)}). Zainstaluj i uruchom Dockera albo ustaw TRIAD_AUTONOMY_EXECUTOR=host.`);
+    }
+    for (const role of AUTONOMY_ROLES) {
+      if (!autonomyState.enabled && origin === 'timer') break;
+      const missionFile = fs.existsSync(path.resolve(AUTONOMY_MISSION_FILE))
+        ? fs.readFileSync(path.resolve(AUTONOMY_MISSION_FILE), 'utf8')
+        : '';
+      const { reply, provider } = await generateAutonomyReply(
+        buildAutonomySystemPrompt(role, AUTONOMY_EXECUTOR),
+        buildAutonomyUserPrompt(role, { cycle, missionFile, gitStatus: await readGitStatusShort(), recent: autonomyState.log }),
+      );
+      const results: AutonomyCommandResult[] = [];
+      for (const command of parseAutonomyCommands(reply)) {
+        results.push(await runAutonomyCommand(command));
+      }
+      const entry: AutonomyLogEntry = { cycle, agent: role.agent, step: role.step, at: new Date().toISOString(), reply, results };
+      autonomyState.log = [...autonomyState.log, entry].slice(-50);
+      if (role.step === 'VERIFY') verdictOk = hasPassingVerdict(reply) && results.every((r) => r.exitCode === 0);
+
+      const resultText = results.map((r) => `$ ${r.command.split('\n')[0].slice(0, 120)} → exit ${r.exitCode}`).join('\n');
+      transcript.push({
+        agent: role.agent,
+        tekst: `[AUTONOMIA · cykl ${cycle} · ${role.step} · ${provider}]\n${reply.slice(0, 3000)}${resultText ? `\n\n\`\`\`\n${resultText}\n\`\`\`` : ''}`,
+      });
+    }
+
+    let summary: string;
+    const gate = verdictOk ? await runHostGate() : { ok: false, output: 'Aurelius nie wydał werdyktu OK.' };
+    if (gate.ok) {
+      const sha = await triadGitCommit('triad', `Autonomia cykl ${cycle}: rozwój BastillaOS`, AUTONOMY_COMMIT_PATHS, 'autonomy');
+      summary = sha ? `Cykl ${cycle}: zweryfikowano i zapisano (commit ${sha}).` : `Cykl ${cycle}: zweryfikowano, brak zmian do zapisu.`;
+      if (sha && triadaGithubAutoPush) {
+        try {
+          await execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 60000 });
+          summary += ' Wysłano na GitHub.';
+        } catch (pushErr: any) {
+          summary += ` Push nieudany: ${String(pushErr?.message || pushErr).slice(0, 200)}`;
+        }
+      }
+    } else {
+      summary = `Cykl ${cycle}: weryfikacja nie przeszła — zmiany czekają na poprawkę w kolejnym cyklu. ${gate.output.slice(0, 300)}`;
+    }
+    transcript.push({ agent: 'Aurelius', tekst: `[AUTONOMIA · PODSUMOWANIE] ${summary}` });
+    autonomyState.lastResult = summary;
+    pushSystemLog(gate.ok ? 'healed' : 'warn', 'KERNEL', `[AUTONOMIA] ${summary}`);
+    return summary;
+  } catch (err: any) {
+    const summary = `Cykl ${cycle} przerwany: ${String(err?.message || err).slice(0, 400)}`;
+    autonomyState.lastResult = summary;
+    pushSystemLog('error', 'KERNEL', `[AUTONOMIA] ${summary}`);
+    transcript.push({ agent: 'Alex', tekst: `[AUTONOMIA · BŁĄD] ${summary}` });
+    return summary;
+  } finally {
+    autonomyState.running = false;
+    autonomyState.lastCycleAt = new Date().toISOString();
+    if (transcript.length > 0) {
+      await runPythonKernel(['--action', 'batch_msg', '--msgs_json', JSON.stringify(transcript)]).catch(() => {});
+    }
+  }
+}
+
+function scheduleAutonomy() {
+  if (autonomyTimer) clearInterval(autonomyTimer);
+  autonomyTimer = null;
+  if (!autonomyState.enabled) return;
+  autonomyTimer = setInterval(() => {
+    if (autonomyState.enabled) void runAutonomyCycle('timer');
+  }, AUTONOMY_INTERVAL_MS);
+  // Pierwszy cykl wkrótce po starcie serwera.
+  setTimeout(() => {
+    if (autonomyState.enabled) void runAutonomyCycle('timer');
+  }, 30000);
+}
+
+app.get('/api/triad/autonomy', (_req, res) => {
+  return res.json({
+    enabled: autonomyState.enabled,
+    running: autonomyState.running,
+    executor: AUTONOMY_EXECUTOR,
+    executorDescription: describeExecutor(AUTONOMY_EXECUTOR),
+    intervalMinutes: AUTONOMY_INTERVAL_MS / 60000,
+    cycle: autonomyState.cycle,
+    cyclesToday: autonomyState.cyclesToday,
+    maxCyclesPerDay: AUTONOMY_MAX_CYCLES_PER_DAY,
+    providerConfigured: autonomyProviderAvailable(),
+    lastCycleAt: autonomyState.lastCycleAt,
+    lastResult: autonomyState.lastResult,
+    missionFile: AUTONOMY_MISSION_FILE,
+    log: autonomyState.log.slice(-15),
+  });
+});
+
+app.post('/api/triad/autonomy', (req, res) => {
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).json({ success: false, error: 'Pole "enabled" musi być wartością logiczną.' });
+  }
+  autonomyState.enabled = enabled;
+  scheduleAutonomy();
+  pushSystemLog('info', 'KERNEL', `[AUTONOMIA] Autonomiczna praca Triady ${enabled ? 'włączona' : 'zatrzymana'} przez Operatora.`);
+  return res.json({ success: true, enabled });
+});
+
+app.post('/api/triad/autonomy/run', async (_req, res) => {
+  const result = await runAutonomyCycle('operator');
+  return res.json({ success: true, result });
+});
+
 // Setup Vite middleware in dev or static files in prod
 async function startServer() {
   if (!fs.existsSync(KERNEL_STORE_PATH)) {
@@ -4982,6 +5243,7 @@ async function startServer() {
 
   // Podłączenie Triady, nadanie ROOT RING-0 i aktywacja misji BUILD_BEST_OS (idempotentne).
   await bootstrapTriadMission();
+  scheduleAutonomy();
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));

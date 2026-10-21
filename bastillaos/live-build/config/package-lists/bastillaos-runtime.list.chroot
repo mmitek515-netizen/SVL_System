@@ -8,6 +8,8 @@ ca-certificates
 curl
 git
 ufw
+# Piaskownica autonomicznej pracy Triady (kontener triada-forge).
+docker.io
 unattended-upgrades
 
 # Wi-Fi support and desktop network management.
