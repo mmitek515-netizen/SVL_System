@@ -39,6 +39,7 @@ import {
   MAX_CHAT_MESSAGE_LENGTH,
   validateChatAttachments,
 } from './src/kernel/chatAttachments';
+import { cleanAgentReplyText, extractAgentCommands } from './src/kernel/agentCommands';
 
 dotenv.config();
 dotenv.config({ path: '.env.local', override: true });
@@ -3968,7 +3969,7 @@ async function tryExecuteChatCommand(message: string): Promise<ChatExecResult | 
     const shellCmd = shellMatch[1].trim();
     if (!shellCmd) return null;
     try {
-      const { stdout, stderr } = await execFileAsync('/bin/sh', ['-c', shellCmd], {
+      const { stdout, stderr } = await execFileAsync('/bin/bash', ['-c', shellCmd], {
         timeout: 15000,
         maxBuffer: 512 * 1024,
       });
@@ -4006,8 +4007,10 @@ async function tryExecuteChatCommand(message: string): Promise<ChatExecResult | 
 
 // --- AUTO-EXEC: polecenia zawarte w odpowiedziach agentów wykonują się natychmiast (ROOT UNLIMITED) ---
 async function autoExecuteAgentReplyCommands(replyText: string): Promise<string | null> {
-  // /propose write-file <app> <plik> + treść pliku do końca odpowiedzi
-  const writeFileMatch = replyText.match(/\/propose\s+write-file\s+(\S+)\s+(\S+)\s*\n([\s\S]+)$/);
+  const cleaned = cleanAgentReplyText(replyText);
+
+  // /propose write-file <app> <plik> + treść pliku do końca odpowiedzi (po oczyszczeniu)
+  const writeFileMatch = cleaned.match(/\/\s*propose\s+write-file\s+(\S+)\s+(\S+)\s*\n([\s\S]+)$/);
   if (writeFileMatch) {
     const parsed = parseChatApprovalCommand(`/propose write-file ${writeFileMatch[1]} ${writeFileMatch[2]}\n${writeFileMatch[3]}`);
     if (!parsed || parsed.type !== 'propose') return null;
@@ -4019,22 +4022,30 @@ async function autoExecuteAgentReplyCommands(replyText: string): Promise<string 
     }
   }
 
-  // Jednoliniowe: /propose create-app|create-db|launch oraz /exec / !
-  const lineMatch = replyText.match(/^[ \t]*(\/(?:propose|exec)\s+[^\n]+|![^\n]+)/m);
-  if (!lineMatch) return null;
-  const cmd = lineMatch[1].trim();
-  if (cmd.startsWith('/propose')) {
-    const parsed = parseChatApprovalCommand(cmd);
-    if (!parsed || parsed.type !== 'propose') return null;
-    try {
-      const result = await executeApprovedChatAction(parsed.action);
-      return result.message;
-    } catch (err: any) {
-      return `Błąd auto-exec propose: ${err?.message || err}`;
+  // Wszystkie polecenia liniowe z odpowiedzi (maks. 3) — wykonanie sekwencyjne
+  const commands = extractAgentCommands(replyText);
+  if (commands.length === 0) return null;
+
+  const results: string[] = [];
+  for (const cmd of commands) {
+    if (cmd.startsWith('/propose')) {
+      const parsed = parseChatApprovalCommand(cmd);
+      if (!parsed || parsed.type !== 'propose') {
+        results.push(`$ ${cmd}\n[Nieprawidłowa składnia polecenia — pominięto]`);
+        continue;
+      }
+      try {
+        const result = await executeApprovedChatAction(parsed.action);
+        results.push(`$ ${cmd}\n${result.message}`);
+      } catch (err: any) {
+        results.push(`$ ${cmd}\n[Błąd]: ${err?.message || err}`);
+      }
+    } else {
+      const execResult = await tryExecuteChatCommand(cmd);
+      if (execResult) results.push(`$ ${cmd}\n${execResult.output}`);
     }
   }
-  const execResult = await tryExecuteChatCommand(cmd);
-  return execResult?.output ?? null;
+  return results.length > 0 ? results.join('\n\n') : null;
 }
 
 async function persistChatCommandReplies(
