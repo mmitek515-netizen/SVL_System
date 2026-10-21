@@ -19,8 +19,10 @@ import {
 import { BinaryHyperspaceKernel, HyperspaceOS } from './src/kernel/hyperos';
 import {
   AUTONOMY_DOCKER_CONTAINER,
+  AUTONOMY_CHECK_SCRIPT,
   AUTONOMY_MISSION_FILE,
   AUTONOMY_ROLES,
+  AUTONOMY_TARGET_DIR,
   buildAutonomySystemPrompt,
   buildAutonomyUserPrompt,
   buildDockerStartArgs,
@@ -3868,7 +3870,7 @@ const CHAT_AGENT_MISSIONS: Record<ChatAgentName, string> = {
 };
 
 const CHAT_AGENT_SAFETY_BOUNDARIES = [
-  'Misja BUILD_BEST_OS: oprócz rozmowy pracujecie autonomicznie w tle (pętla Alex → Astyria → Aurelius rozwija BastillaOS w katalogu bastillaos/, plan w bastillaos/MISSION.md). Wpisy [AUTONOMIA] w historii to wasze własne kroki.',
+  'Misja BUILD_BEST_OS: oprócz rozmowy pracujecie autonomicznie w tle (pętla Alex → Astyria → Aurelius buduje od podstaw zupełnie nowy system BastillaOS 2 w katalogu bastillaos2/, plan w bastillaos2/MISSION.md). Wpisy [AUTONOMIA] w historii to wasze własne kroki.',
   'Operator ma najwyższe uprawnienia (RING-−1 ABSOLUTE ROOT) i kanał natychmiastowego wykonania: /exec <polecenie powłoki> oraz komendy jądra (root, status, sync, bump, infra...) wysłane na czacie są wykonywane natychmiast przez serwer z ROOT UNLIMITED — bez propozycji i zatwierdzeń.',
   'TY też wydajesz polecenia wprost w treści odpowiedzi: /propose create-app <id> [typ], /propose create-db <id>, /propose launch <id>, /propose write-file <app> <plik> + treść pliku od następnej linii, albo /exec <polecenie powłoki>. Serwer wykrywa je w Twojej odpowiedzi i wykonuje natychmiast (ROOT UNLIMITED, bez zatwierdzania), a potwierdzenie dopisuje do Twojej wiadomości.',
   'Nie opisuj wykonania operacji słowami — wydaj polecenie (/propose ... lub /exec ...) i poczekaj na potwierdzenie serwera [AUTO-EXEC].',
@@ -4932,7 +4934,8 @@ async function bootstrapTriadMission() {
         nlp_chain: 'GEMINI → OPENROUTER → FALLBACK_API (Groq/xAI) → LOCAL_NLP_ENGINE',
         autonomy_loop: 'ALEX_PLAN → ASTYRIA_BUILD → AURELIUS_VERIFY',
         autonomy_executor: AUTONOMY_EXECUTOR,
-        autonomy_workspace: 'bastillaos/',
+        autonomy_workspace: 'bastillaos2/',
+        mission_target: 'BastillaOS 2 — zupełnie nowy system budowany od podstaw',
         update_sources: ['github.com (origin/main + api.github.com)', 'registry npm (npmjs.com)'],
         github_permissions: 'FULL_READ_WRITE',
         github_authorized_agents: ['Alex', 'Astyria', 'Aurelius'],
@@ -4993,7 +4996,7 @@ const AUTONOMY_EXECUTOR: AutonomyExecutor = parseExecutor(process.env.TRIAD_AUTO
 const AUTONOMY_INTERVAL_MS = Math.max(1, Number(process.env.TRIAD_AUTONOMY_INTERVAL_MIN) || 10) * 60 * 1000;
 const AUTONOMY_MAX_CYCLES_PER_DAY = Math.max(1, Number(process.env.TRIAD_AUTONOMY_MAX_CYCLES_PER_DAY) || 48);
 const AUTONOMY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
-const AUTONOMY_COMMIT_PATHS = ['bastillaos', 'tests'];
+const AUTONOMY_COMMIT_PATHS = [AUTONOMY_TARGET_DIR];
 
 const autonomyState = {
   enabled: (process.env.TRIAD_AUTONOMY || 'on').trim().toLowerCase() !== 'off',
@@ -5091,9 +5094,12 @@ async function readGitStatusShort(): Promise<string> {
 
 async function runHostGate(): Promise<{ ok: boolean; output: string }> {
   try {
-    await execFileAsync('node', ['bastillaos/check-build-config.cjs'], { timeout: 60000 });
+    if (!fs.existsSync(path.resolve(AUTONOMY_CHECK_SCRIPT))) {
+      return { ok: false, output: `Brak ${AUTONOMY_CHECK_SCRIPT}.` };
+    }
+    await execFileAsync('bash', [AUTONOMY_CHECK_SCRIPT], { timeout: 10 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 });
     await execFileAsync('npm', ['test', '--silent'], { timeout: 5 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 });
-    return { ok: true, output: 'check-build-config + npm test: OK' };
+    return { ok: true, output: `${AUTONOMY_CHECK_SCRIPT} + npm test: OK` };
   } catch (err: any) {
     return { ok: false, output: `${err?.stdout || ''}${err?.stderr || ''}`.slice(-1500) || String(err?.message || err) };
   }
@@ -5151,7 +5157,7 @@ async function runAutonomyCycle(origin: string): Promise<string> {
     let summary: string;
     const gate = verdictOk ? await runHostGate() : { ok: false, output: 'Aurelius nie wydał werdyktu OK.' };
     if (gate.ok) {
-      const sha = await triadGitCommit('triad', `Autonomia cykl ${cycle}: rozwój BastillaOS`, AUTONOMY_COMMIT_PATHS, 'autonomy');
+      const sha = await triadGitCommit('triad', `Autonomia cykl ${cycle}: budowa BastillaOS 2`, AUTONOMY_COMMIT_PATHS, 'autonomy');
       summary = sha ? `Cykl ${cycle}: zweryfikowano i zapisano (commit ${sha}).` : `Cykl ${cycle}: zweryfikowano, brak zmian do zapisu.`;
       if (sha && triadaGithubAutoPush) {
         try {

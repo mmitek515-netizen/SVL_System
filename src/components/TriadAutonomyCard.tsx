@@ -93,7 +93,7 @@ export const TriadAutonomyCard: React.FC = () => {
           <div className="min-w-0">
             <h3 className="font-bold text-white text-sm">Autonomia Triady · BUILD_BEST_OS</h3>
             <p className="text-slate-400 text-[11px] font-sans break-words">
-              Alex planuje → Astyria buduje → Aurelius weryfikuje. Root w {status?.executorDescription || '…'}.
+              Budują od podstaw nowy system BastillaOS 2: Alex planuje → Astyria buduje → Aurelius weryfikuje. Root w {status?.executorDescription || '…'}.
             </p>
           </div>
         </div>

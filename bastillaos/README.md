@@ -97,28 +97,11 @@ upgraded.
 
 ## Autonomous Triad mission (BUILD_BEST_OS)
 
-The SVL service runs a real autonomous loop in which the Triad develops
-BastillaOS itself: **Alex** plans one small step in `bastillaos/MISSION.md`,
-**Astyria** implements it, and **Aurelius** verifies it and ends with
-`WERDYKT: OK` or `WERDYKT: BŁĄD <reason>`. Agents issue shell commands
-(```` ```exec ```` blocks or `/exec` lines, up to three per step, 10 minutes each)
-that run as root. A cycle is committed to git (and pushed when GitHub auto-push
-is on) only after the verdict passes and `node bastillaos/check-build-config.cjs`
-plus `npm test` succeed; otherwise the changes stay in the working tree for the
-next cycle to fix. Every step is written to the agents' chat history and shown
-in the Astyria Mission panel, which also has start/stop and "run a cycle now".
-
-Configuration (`/etc/bastillaos/system.env` or `.env`):
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `GEMINI_API_KEY` | — | Model used by the agents (OpenRouter/Groq are fallbacks). |
-| `TRIAD_AUTONOMY` | `on` | `off` disables the loop at startup. |
-| `TRIAD_AUTONOMY_EXECUTOR` | `docker` | `docker`: root inside the `triada-forge` Debian Trixie container with the repository mounted at `/workspace`. `host`: root directly on the host, without isolation. |
-| `TRIAD_AUTONOMY_INTERVAL_MIN` | `10` | Minutes between cycles. |
-| `TRIAD_AUTONOMY_MAX_CYCLES_PER_DAY` | `48` | Daily cap on cycles (and model calls). |
-
-With `host`, generated commands run unreviewed as root on the machine itself;
-a bad command can damage the installed system. Use it only on a disposable or
-backed-up installation.
-
+The SVL service runs a real autonomous loop in which the Triad builds a
+completely new system, **BastillaOS 2**, from scratch in `bastillaos2/`. This
+directory (BastillaOS 1) is read-only reference material for the agents.
+See `bastillaos2/MISSION.md` for the plan and the configuration variables in
+`.env.example` (`TRIAD_AUTONOMY*`). With `TRIAD_AUTONOMY_EXECUTOR=host`,
+generated commands run unreviewed as root on the machine itself; use it only on
+a disposable or backed-up installation. The default `docker` executor runs them
+as root inside the `triada-forge` Debian Trixie container.

@@ -63,7 +63,9 @@ test('executor defaults to docker sandbox, host only on request', () => {
 
 test('prompts carry mission, role and previous results', () => {
   const role = AUTONOMY_ROLES[2];
-  assert.match(buildAutonomySystemPrompt(role, 'docker'), /Aurelius.*VERIFY.*BastillaOS.*root/s);
+  const system = buildAutonomySystemPrompt(role, 'docker');
+  assert.match(system, /Aurelius.*VERIFY.*ZUPEŁNIE NOWY.*bastillaos2\/.*root/s);
+  assert.match(system, /bastillaos\/ to BastillaOS 1 — tylko do odczytu/);
   const prompt = buildAutonomyUserPrompt(role, {
     cycle: 4,
     missionFile: '# Misja\n## Następny krok\nUFW',

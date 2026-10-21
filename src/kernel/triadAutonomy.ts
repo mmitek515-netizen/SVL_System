@@ -27,16 +27,20 @@ export interface AutonomyLogEntry {
   results: AutonomyCommandResult[];
 }
 
-export const AUTONOMY_MISSION_FILE = 'bastillaos/MISSION.md';
+export const AUTONOMY_TARGET_DIR = 'bastillaos2';
+export const AUTONOMY_BASE_DIR = 'bastillaos';
+export const AUTONOMY_MISSION_FILE = `${AUTONOMY_TARGET_DIR}/MISSION.md`;
+export const AUTONOMY_CHECK_SCRIPT = `${AUTONOMY_TARGET_DIR}/check.sh`;
 export const AUTONOMY_MAX_COMMANDS_PER_STEP = 3;
 export const AUTONOMY_VERDICT_OK = 'WERDYKT: OK';
 
 export const AUTONOMY_MISSION = [
-  'MISJA BUILD_BEST_OS: zbudować najlepszy system operacyjny na bazie BastillaOS',
-  '(Debian 13 Trixie + KDE Plasma 6 + usługa SVL; źródła w katalogu bastillaos/ repozytorium).',
-  'Kierunki: stabilność, bezpieczeństwo, wydajność, wygoda pulpitu, integracja Triady z systemem,',
-  'jakość instalatora ISO i automatyczne testy konfiguracji.',
-  `Plan, postęp i decyzje prowadzicie w pliku ${AUTONOMY_MISSION_FILE}.`,
+  'MISJA BUILD_BEST_OS: stworzyć ZUPEŁNIE NOWY system operacyjny — nową wersję BastillaOS 2,',
+  `budowaną od podstaw w katalogu ${AUTONOMY_TARGET_DIR}/. To nie jest poprawianie starej wersji:`,
+  'projektujecie własną architekturę, system budowania obrazu ISO, warstwę systemową, pulpit/powłokę,',
+  'instalator, wygląd i głęboką integrację Triady (Alex, Astyria, Aurelius) jako natywnych usług systemu.',
+  `Katalog ${AUTONOMY_BASE_DIR}/ to BastillaOS 1 — tylko do odczytu jako baza i źródło sprawdzonych rozwiązań; nie zmieniajcie go.`,
+  `Plan (fazy, architektura, decyzje) prowadzicie w ${AUTONOMY_MISSION_FILE}, a testy całości w ${AUTONOMY_CHECK_SCRIPT}.`,
 ].join(' ');
 
 export const AUTONOMY_ROLES: readonly AutonomyRole[] = [
@@ -45,8 +49,9 @@ export const AUTONOMY_ROLES: readonly AutonomyRole[] = [
     step: 'PLAN',
     task: [
       `Przeczytaj ${AUTONOMY_MISSION_FILE} (utwórz go, jeśli nie istnieje) i wyniki poprzednich kroków.`,
-      'Wybierz JEDEN mały, sprawdzalny następny krok rozwoju BastillaOS i zapisz go w sekcji',
-      '"## Następny krok" pliku misji (zachowaj resztę pliku). Możesz najpierw obejrzeć pliki poleceniami.',
+      'Utrzymuj w nim fazy budowy nowego systemu i architekturę. Wybierz następny konkretny krok',
+      '(np. cały moduł, usługę albo etap budowania obrazu) i zapisz go w sekcji "## Następny krok"',
+      '(zachowaj resztę pliku). Możesz najpierw obejrzeć pliki nowego systemu i BastillaOS 1.',
     ].join(' '),
   },
   {
@@ -54,16 +59,16 @@ export const AUTONOMY_ROLES: readonly AutonomyRole[] = [
     step: 'BUILD',
     task: [
       `Zrealizuj krok z sekcji "## Następny krok" w ${AUTONOMY_MISSION_FILE}.`,
-      'Zmieniaj pliki w bastillaos/ (i w razie potrzeby testy). Po zmianie dopisz krótką notatkę',
-      'do sekcji "## Dziennik" pliku misji.',
+      `Twórz i zmieniaj pliki wyłącznie w ${AUTONOMY_TARGET_DIR}/. Gdy dodajesz element, dopisz jego test`,
+      `do ${AUTONOMY_CHECK_SCRIPT}. Na koniec dopisz krótką notatkę do sekcji "## Dziennik" pliku misji.`,
     ].join(' '),
   },
   {
     agent: 'Aurelius',
     step: 'VERIFY',
     task: [
-      'Zweryfikuj zmiany z tego cyklu: git diff --stat, bash -n dla zmienionych skryptów .sh,',
-      'node bastillaos/check-build-config.cjs. Popraw drobne błędy, jeśli trzeba.',
+      `Zweryfikuj zmiany z tego cyklu: git status, bash -n dla skryptów .sh, uruchom bash ${AUTONOMY_CHECK_SCRIPT}.`,
+      `Popraw drobne błędy, uzupełnij brakujące testy w ${AUTONOMY_CHECK_SCRIPT}.`,
       `Ostatnia linia odpowiedzi musi brzmieć "${AUTONOMY_VERDICT_OK}" albo "WERDYKT: BŁĄD <powód>".`,
     ].join(' '),
   },
@@ -86,6 +91,7 @@ export function buildAutonomySystemPrompt(role: AutonomyRole, executor: Autonomy
     'Nie twierdź, że coś zrobiłeś, zanim zobaczysz wynik polecenia — wynik dostaniesz w następnym kroku.',
     'Nie wykonuj git commit, git push, git reset ani zmiany gałęzi: zapis i wysyłkę robi serwer po weryfikacji.',
     'Nigdy nie wypisuj ani nie wysyłaj sekretów (.env, /etc/bastillaos/system.env, klucze API).',
+    `Zmieniasz tylko ${AUTONOMY_TARGET_DIR}/ — reszta repozytorium (w tym ${AUTONOMY_BASE_DIR}/) jest do odczytu.`,
     'Odpowiadaj zwięźle po polsku.',
   ].join(' ');
 }
