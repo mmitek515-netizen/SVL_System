@@ -1,0 +1,37 @@
+[
+  {
+    "name": "app_test-agent_964565.tar.gz",
+    "hash": "b5b010d33049825e39386506d340a22f544b76d7f76d66c9e788c7b038f33737",
+    "target": "apps/",
+    "deployedAt": "2026-10-21T14:52:30.430Z",
+    "origin": "manual-api"
+  },
+  {
+    "name": "binary_hyperspace_kernel.py",
+    "hash": "06f7d77c7e8d6749f76ef907009d07b422bd402938954545769bc4b0a8ebc8c0",
+    "target": "Nowy_system/kernel/binary_hyperspace_kernel.py",
+    "deployedAt": "2026-10-21T14:52:30.430Z",
+    "origin": "manual-api"
+  },
+  {
+    "name": "raw_socket_listener.py",
+    "hash": "e37a51d6bea47b17f7ff65bda9986ac0cf36bc7fecc5179e378d6463359845a7",
+    "target": "Nowy_system/kernel/raw_socket_listener.py",
+    "deployedAt": "2026-10-21T14:52:30.431Z",
+    "origin": "manual-api"
+  },
+  {
+    "name": "theory_validator.py",
+    "hash": "98f923acc4d397aaa437c2d994a94a66984a3a5d27115a696a93b3f9a2b15fb1",
+    "target": "Nowy_system/kernel/theory_validator.py",
+    "deployedAt": "2026-10-21T14:52:30.431Z",
+    "origin": "manual-api"
+  },
+  {
+    "name": "vm_ten_sys.sh",
+    "hash": "e19de910785506a119b1f7cb063ad2545d9c24d689fc53b9e97aaf7f2ca5d413",
+    "target": "Nowy_system/vm_ten_sys.sh",
+    "deployedAt": "2026-10-21T14:52:30.432Z",
+    "origin": "manual-api"
+  }
+]
