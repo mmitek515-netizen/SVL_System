@@ -545,6 +545,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             <option value="vm_memory_optimize">Uruchom optymalizację pamięci VM</option>
             <option value="repair_schemas">Sprawdź schematy i zapisz snapshot</option>
             <option value="sync_versions">Synchronizuj wersję i dane systemu</option>
+            <option value="internet_self_update">Aktualizacja z internetu i GitHub</option>
           </select>
           <button
             type="submit"
