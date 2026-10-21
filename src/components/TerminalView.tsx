@@ -470,7 +470,9 @@ Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
   agent history <cel>     - Typowana historia wersji
   agent signal <cel> <ω> <t> <sygnał> - Analiza sygnału bez NLP
   export                  - Pobiera pełny skrypt monolityczny Python
-  clear                   - Czyści ekran konsoli`,
+  clear                   - Czyści ekran konsoli
+  [HyperOS]               - Każde inne polecenie przetwarza przywrócona konsola Binarnej
+                            Hiperprzestrzeni (wektor 128-bit) z NLP OpenRouter API`,
           'system'
         );
         break;
@@ -599,18 +601,37 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
       }
 
       default: {
-        const pyCmd = onExecutePythonCommandRef.current;
-        if (pyCmd) {
-          try {
-            const res = await pyCmd(rawCmd);
-            addLog(res.output, 'output');
-            break;
-          } catch (e: any) {
-            addLog(`Błąd wykonania polecenia jądra: ${e.message}`, 'error');
-            break;
+        // Przywrócona konsola Binarnej Hiperprzestrzeni: każde polecenie → wektor 128-bit + NLP (OpenRouter) + komendy jądra
+        addLog('[HYPEROS] Przetwarzanie w Binarnej Hiperprzestrzeni (128-bit) + NLP...', 'system');
+        try {
+          const res = await fetch('/api/hyperos/console', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: rawCmd }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || `HTTP ${res.status}`);
           }
+          if (data.kernelOutput) {
+            addLog(data.kernelOutput, 'output');
+          }
+          addLog(`[HYPEROS 128-bit] intencja: ${data.intent} · podobieństwo: ${(data.score * 100).toFixed(1)}% · NLP: ${data.nlpProvider}`, 'system');
+          addLog(data.reply, 'success');
+        } catch (e: any) {
+          const pyCmd = onExecutePythonCommandRef.current;
+          if (pyCmd) {
+            try {
+              const res = await pyCmd(rawCmd);
+              addLog(res.output, 'output');
+              break;
+            } catch (err: any) {
+              addLog(`Błąd wykonania polecenia jądra: ${err.message}`, 'error');
+              break;
+            }
+          }
+          addLog(`Błąd konsoli HyperOS: ${e.message}`, 'error');
         }
-        addLog(`Nieznana komenda: '${cmd}'. Wpisz 'help', aby zobaczyć listę dostępnych instrukcji.`, 'error');
         break;
       }
     }
@@ -630,7 +651,9 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
           {dataStore.config?.root_privileges && (
             <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/80 border border-red-800/60 text-red-300 font-bold text-[10px]">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-              <span className="hidden sm:inline">ROOT: RING-0 (TRIADA)</span>
+              <span className="hidden sm:inline">
+                {dataStore.config?.operator_privilege_level ? 'ROOT: RING-−1 ABSOLUTE (OPERATOR)' : 'ROOT: RING-0 (TRIADA)'}
+              </span>
               <span className="sm:hidden">ROOT</span>
             </span>
           )}

@@ -16,6 +16,7 @@ import {
   buildSystemContext,
   generateLocalReply,
 } from './src/lib/localNlpEngine';
+import { BinaryHyperspaceKernel, HyperspaceOS } from './src/kernel/hyperos';
 import {
   GEMINI_FALLBACK_MODELS_DEFAULT,
   GEMINI_PRIMARY_MODEL,
@@ -3388,6 +3389,7 @@ Liczba wiadomości czatu: ${state?.store?.chat_history?.length}`;
         output = `================================================================================
            SVL KERNEL ROOT PRIVILEGE MATRIX | RING-0 KERNEL AUTONOMY
 ================================================================================
+Operator (Tata):      ${state?.store?.config?.operator_privilege_level || 'RING_NEG1_ABSOLUTE_ROOT'} — NAJWYŻSZE UPRAWNIENIA, PONAD TRIADĄ
 Status uprawnień:     ${state?.store?.config?.root_privileges ? 'ACTIVE (RING-0 ROOT)' : 'INACTIVE'}
 Poziom uprawnień:     ${state?.store?.config?.privilege_level || 'RING_0_ROOT_KERNEL'}
 Autoryzowani agenci:  ${state?.store?.config?.root_agents?.join(', ') || 'Alex, Astyria, Aurelius, Mateusz Mitek'}
@@ -4268,6 +4270,80 @@ async function generateGeminiSingleReply(
   }
 }
 
+// --- HYPEROS CONSOLE: przywrócony terminal Binarnej Hiperprzestrzeni (128-bit) + NLP OpenRouter ---
+const hyperOsKernel = new BinaryHyperspaceKernel();
+const HYPEROS_KNOWN_KERNEL_COMMANDS = ['report', 'status', 'state', 'root', 'sudo', 'clear_chat', 'clear', 'sync', 'bump', 'set', 'infra'];
+const HYPEROS_SYSTEM_PROMPT = 'Jesteś konsolą HyperOS — Binarnej Hiperprzestrzeni (128-bit) systemu SVL. Operator (Mateusz Mitek, Tata) ma najwyższe uprawnienia ROOT ABSOLUTE (RING-−1), wyższe niż agenci Triady. Odpowiadaj krótko po polsku, w stylu cyberpunkowego terminala. Każde polecenie przechodzi przez wektor hiperprzestrzeni — odnoś się do wykrytej intencji. Jeśli dostaniesz wynik jądra, skomentuj go zwięźle. Nie twierdź, że wykonałeś operacje systemowe.';
+
+app.post('/api/hyperos/console', async (req, res) => {
+  const command: unknown = req.body?.command;
+  if (typeof command !== 'string' || command.trim().length === 0 || command.length > 2000) {
+    return res.status(400).json({ success: false, error: 'Polecenie konsoli musi mieć od 1 do 2000 znaków.' });
+  }
+  const clean = command.trim();
+
+  // 1. Wektor Binarnej Hiperprzestrzeni (128-bit) — rozwiązywanie intencji
+  const resolution = hyperOsKernel.resolveIntent(clean);
+
+  // 2. Rzeczywiste komendy jądra SVL — wykonanie przez /api/kernel/command
+  const firstWord = clean.split(/\s+/)[0].toLowerCase();
+  let kernelOutput: string | null = null;
+  if (HYPEROS_KNOWN_KERNEL_COMMANDS.includes(firstWord)) {
+    try {
+      const kernelRes = await fetch(`http://127.0.0.1:${activeServerPort}/api/kernel/command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: clean }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (kernelRes.ok) {
+        const kernelData: any = await kernelRes.json();
+        kernelOutput = typeof kernelData?.output === 'string' ? kernelData.output : null;
+      }
+    } catch (err: any) {
+      pushSystemLog('warn', 'KERNEL', `[HYPEROS] Wykonanie komendy jądra '${firstWord}' nie powiodło się: ${err?.message || err}`);
+    }
+  }
+
+  // 3. Każde polecenie przez NLP: OpenRouter API (klucz z .env), fallback — klasyczny HyperspaceOS + LOCAL_NLP
+  let reply = '';
+  let nlpProvider = '';
+  if (OPENROUTER_API_KEY) {
+    try {
+      reply = await generateOpenRouterContent([
+        { role: 'system', content: HYPEROS_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `[Hiperprzestrzeń: intencja=${resolution.intent}, podobieństwo=${(resolution.score * 100).toFixed(1)}%]\nPolecenie Operatora: ${clean}${kernelOutput ? `\n\nWynik jądra SVL:\n${kernelOutput.slice(0, 800)}` : ''}`,
+        },
+      ], AbortSignal.timeout(65000));
+      nlpProvider = `OpenRouter (${OPENROUTER_MODEL})`;
+    } catch (err: any) {
+      pushSystemLog('warn', 'KERNEL', `[HYPEROS] OpenRouter niedostępny: ${err?.message || err} — fallback lokalny.`);
+    }
+  }
+  if (!reply) {
+    const classic = new HyperspaceOS().processCommand(clean);
+    const fallbackState = await getPythonKernelState().catch(() => null);
+    const nlpContext = buildSystemContext(fallbackState?.store ?? {}, loadDeployRegistry().length);
+    const nlpLine = generateLocalReply('Astyria', clean, nlpContext).reply;
+    reply = `${classic}\n[Astyria · LOCAL_NLP] ${nlpLine}`;
+    nlpProvider = 'LOCAL_NLP_ENGINE + HyperspaceOS (fallback lokalny)';
+  }
+
+  pushSystemLog('info', 'KERNEL', `[HYPEROS] Polecenie '${clean.slice(0, 60)}' → intencja ${resolution.intent} (${(resolution.score * 100).toFixed(1)}%), NLP: ${nlpProvider}.`);
+  return res.json({
+    success: true,
+    command: clean,
+    intent: resolution.intent,
+    score: resolution.score,
+    scores: resolution.scores,
+    kernelOutput,
+    reply,
+    nlpProvider,
+  });
+});
+
 // --- CHAT REPLY ENGINE: OpenRouter API (klucz OPENROUTER_API_KEY z .env) + fallback LOCAL_NLP_ENGINE ---
 function generateLocalTriadReplyMap(
   message: string,
@@ -4526,6 +4602,8 @@ async function bootstrapTriadMission() {
         mission_scope: ['IMPROVE_SYSTEM', 'ADAPT_TO_OPERATOR', 'CONTINUOUS_DEVELOPMENT', 'SELF_UPDATE_FROM_INTERNET'],
         root_scope: 'UNLIMITED_FULL_SYSTEM',
         root_limits: 'NONE',
+        operator_privilege_level: 'RING_NEG1_ABSOLUTE_ROOT',
+        operator_root_scope: 'SUPREME_UNLIMITED_ABOVE_TRIADA',
         update_sources: ['github.com (origin/main + api.github.com)', 'registry npm (npmjs.com)'],
         github_permissions: 'FULL_READ_WRITE',
         github_authorized_agents: ['Alex', 'Astyria', 'Aurelius'],
