@@ -2094,23 +2094,19 @@ app.get('/api/ai/status', async (_req, res) => {
     const state = await getPythonKernelState();
     const openRouterActive = Boolean(OPENROUTER_API_KEY);
     const fallbackActive = Boolean(FALLBACK_NLP_API_KEY);
+    const withoutNlp = withoutNlpEngine.getMetrics();
     return res.json({
-      provider: openRouterActive
-        ? 'OpenRouter API'
-        : fallbackActive
-        ? 'Fallback API (Groq/xAI)'
-        : 'LOCAL_NLP_ENGINE (Triada — własny silnik językowy)',
-      model: openRouterActive ? OPENROUTER_MODEL : fallbackActive ? FALLBACK_NLP_MODEL : LOCAL_NLP_VERSION,
+      provider: 'without_nlp (deterministyczny silnik harmoniczny Eulera & Fouriera)',
+      model: withoutNlp.version,
       enabled: true,
-      connection: openRouterActive || fallbackActive ? 'api-configured' : 'local-deterministic',
-      chain: [
+      connection: 'local-deterministic',
+      chain: ['without_nlp — czat triady, bez modeli NLP/LLM'],
+      fallback: 'brak — czat triady działa w 100% lokalnie i deterministycznie',
+      hyperOsChain: [
         openRouterActive ? `OpenRouter (${OPENROUTER_MODEL})` : null,
         fallbackActive ? `Fallback API ${FALLBACK_NLP_BASE_URL} (${FALLBACK_NLP_MODEL})` : null,
-        `LOCAL_NLP_ENGINE (${LOCAL_NLP_VERSION}) — ostateczny fallback`,
+        `LOCAL_NLP_ENGINE (${LOCAL_NLP_VERSION})`,
       ].filter(Boolean),
-      fallback: openRouterActive || fallbackActive
-        ? 'Przy awarii API łańcuch przechodzi na kolejny provider, na końcu LOCAL_NLP_ENGINE'
-        : 'brak kluczy API w .env — działa silnik lokalny',
       protocol: '/api/triad/command',
       chatProtocol: '/api/triad/message',
       hyperOsConsole: '/api/hyperos/console',
@@ -4546,6 +4542,48 @@ function generateLocalTriadReplyMap(
   return replies;
 }
 
+// --- SILNIK CZATU TRIADY: without_nlp (Euler & Fourier, zero NLP/LLM) ---
+const WITHOUT_NLP_CHAT_HEADER =
+  'Odebrano wiadomość w trybie deterministycznym without_nlp. Treść nie jest interpretowana językowo.';
+
+function buildWithoutNlpAgentReply(
+  agent: ChatAgentName,
+  analysis: ReturnType<typeof withoutNlpEngine.analyzeSignal>,
+  message: string,
+  includeHeader: boolean,
+): string {
+  const lines: string[] = includeHeader ? [WITHOUT_NLP_CHAT_HEADER] : [];
+  const length = Array.from(message).length;
+  const reconstruction = analysis.decodedText === message ? 'zgodna (błąd 0.0000%)' : 'NIEZGODNA';
+  const p = analysis.phasorSample;
+  if (agent === 'Astyria') {
+    lines.push(
+      `Długość sygnału: ${length} znaków, energia widmowa: ${analysis.spectralEnergy}.`,
+      `Fazor Eulera e^(iωt), ω=${analysis.fundamentalOmega}: Re=${p.real}, Im=${p.imag}, θ=${p.thetaRad} rad (${p.thetaDeg}°).`,
+      `Rekonstrukcja sygnału: ${reconstruction}.`,
+    );
+  } else if (agent === 'Alex') {
+    const dominant = analysis.harmonics.reduce(
+      (best, h) => (h.amplitude > best.amplitude ? h : best),
+      analysis.harmonics[0],
+    );
+    lines.push(
+      `Synteza Fouriera: ${analysis.harmonics.length} harmonicznych, częstotliwość podstawowa ω=${analysis.fundamentalOmega}.`,
+      dominant
+        ? `Dominująca harmoniczna n=${dominant.n}: f=${dominant.frequency}, amplituda=${dominant.amplitude}, faza=${dominant.phase} rad.`
+        : 'Brak składowych harmonicznych.',
+      `Czas obliczeń: ${analysis.processingTimeMs} ms, model językowy: brak.`,
+    );
+  } else {
+    lines.push(
+      `Audyt integralności: rekonstrukcja ${reconstruction}, współczynników: ${analysis.encodedCoefficients.length}.`,
+      `Energia sygnału zachowana (Parseval): ${analysis.spectralEnergy}.`,
+      'Zależności zewnętrzne: brak (bez sieci, bez modeli NLP/LLM).',
+    );
+  }
+  return lines.join('\n');
+}
+
 app.post('/api/triad/message', async (req, res) => {
   const message: unknown = req.body?.message;
   const attachmentValidation = validateChatAttachments(req.body?.attachments ?? []);
@@ -4720,10 +4758,11 @@ app.post('/api/triad/message', async (req, res) => {
     }
   }
 
-  if (attachments.some((attachment) => attachment.mimeType) && !OPENROUTER_API_KEY) {
+  // CZAT TRIADY = SILNIK without_nlp: deterministyczna analiza harmoniczna, bez modeli językowych.
+  if (attachments.some((attachment) => attachment.mimeType)) {
     return res.status(400).json({
       success: false,
-      error: 'Załączniki PDF/JPEG wymagają klucza OPENROUTER_API_KEY w pliku .env. Bez klucza działa lokalny silnik NLP (tylko tekst).',
+      error: 'Silnik without_nlp analizuje tylko tekst. Załączniki PDF/JPEG nie są obsługiwane — dołącz plik tekstowy.',
     });
   }
 
@@ -4733,54 +4772,14 @@ app.post('/api/triad/message', async (req, res) => {
       ? currentState.store
       : {};
     const previousChatHistoryLength = Array.isArray(store.chat_history) ? store.chat_history.length : 0;
-    const chatHistory = Array.isArray(store.chat_history) ? store.chat_history : [];
-    const nlpContext = buildSystemContext(store, loadDeployRegistry().length);
+    const analysis = withoutNlpEngine.analyzeSignal(cleanMessage);
     const targetAgents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
-    // Łańcuch NLP: OpenRouter → fallback API (Groq/xAI) → LOCAL_NLP_ENGINE
-    let replyMap: Partial<Record<ChatAgentName, string>> | null = null;
-    if (OPENROUTER_API_KEY) {
-      try {
-        replyMap = target === 'triad'
-          ? await generateOpenRouterTriadReplies(cleanMessage, chatHistory, attachments)
-          : { [target]: await generateOpenRouterSingleReply(target, cleanMessage, chatHistory, attachments) };
-      } catch (nlpError: any) {
-        pushSystemLog('warn', 'KERNEL', `[NLP] OpenRouter niedostępny: ${nlpError?.message || nlpError} — próbuję fallback API (Groq/xAI).`);
-      }
-    }
-    if (!replyMap && FALLBACK_NLP_API_KEY) {
-      try {
-        const entries = await Promise.all(
-          targetAgents.map(async (agent) => [agent, await generateFallbackNlpChatReply(agent, cleanMessage, chatHistory)] as const),
-        );
-        replyMap = Object.fromEntries(entries) as Partial<Record<ChatAgentName, string>>;
-        pushSystemLog('info', 'KERNEL', `[NLP] Odpowiedź wygenerowana przez fallback API (${FALLBACK_NLP_MODEL}).`);
-      } catch (fallbackError: any) {
-        pushSystemLog('warn', 'KERNEL', `[NLP] Fallback API niedostępny: ${fallbackError?.message || fallbackError} — fallback na LOCAL_NLP_ENGINE.`);
-      }
-    }
-    if (!replyMap) {
-      const prefix = OPENROUTER_API_KEY || FALLBACK_NLP_API_KEY ? '[API OFFLINE — LOCAL_NLP] ' : '';
-      replyMap = Object.fromEntries(
-        targetAgents.map((agent) => [agent, prefix + generateLocalReply(agent, cleanMessage, nlpContext).reply]),
-      ) as Partial<Record<ChatAgentName, string>>;
-    }
+    const replyMap = Object.fromEntries(targetAgents.map((agent) => [
+      agent,
+      buildWithoutNlpAgentReply(agent, analysis, cleanMessage, target === 'triad' ? agent === 'Astyria' : true),
+    ])) as Record<ChatAgentName, string>;
 
-    // AUTO-EXEC: polecenia w odpowiedziach agentów (/propose, /exec) wykonują się natychmiast — bez zatwierdzania
-    for (const agent of targetAgents) {
-      const text = replyMap[agent];
-      if (!text) continue;
-      try {
-        const execNote = await autoExecuteAgentReplyCommands(text);
-        if (execNote) {
-          replyMap[agent] = `${text}\n\n[AUTO-EXEC · ROOT UNLIMITED] Wykonano natychmiast:\n\`\`\`\n${execNote.slice(0, 2000)}\n\`\`\``;
-          pushSystemLog('healed', 'KERNEL', `[AUTO-EXEC] Polecenie z odpowiedzi agenta ${agent} wykonane natychmiast.`);
-        }
-      } catch (err: any) {
-        pushSystemLog('warn', 'KERNEL', `[AUTO-EXEC] Błąd wykonania polecenia z odpowiedzi ${agent}: ${err?.message || err}`);
-      }
-    }
-    const agents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
-    const replies = agents.map((agent) => [agent, replyMap[agent]!] as const);
+    const replies = targetAgents.map((agent) => [agent, replyMap[agent]] as const);
     const transcript = [
       { agent: 'Mateusz Mitek', tekst: persistedMessage },
       ...replies.map(([agent, text]) => ({ agent, tekst: text })),
@@ -4792,19 +4791,21 @@ app.post('/api/triad/message', async (req, res) => {
     ]);
     const finalState = await getPythonKernelState(true);
     if (!hasPersistedAgentProtocolTranscript(finalState, transcript, previousChatHistoryLength)) {
-      throw new Error('Jądro nie potwierdziło zapisu wiadomości i odpowiedzi agentów.');
+      throw new Error('Jądro nie potwierdziło zapisu wiadomości i wyniku without_nlp.');
     }
     return res.json({
       success: true,
       agent: target,
+      engine: 'without_nlp',
       reply: target === 'triad'
         ? replies.map(([agent, text]) => `${agent}:\n${text}`).join('\n\n')
         : replyMap[target],
       replies: replyMap,
+      analysis,
       state: finalState,
     });
   } catch (error: any) {
-    return res.status(500).json({ success: false, error: error?.message || 'Nie udało się uzyskać odpowiedzi agentów z lokalnego silnika NLP.' });
+    return res.status(500).json({ success: false, error: error?.message || 'Nie udało się przetworzyć wiadomości silnikiem without_nlp.' });
   }
 });
 

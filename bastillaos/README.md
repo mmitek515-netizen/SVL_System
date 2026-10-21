@@ -86,6 +86,12 @@ installed as a native system component by the `bastillaos-system` package:
   on the engine view (`http://127.0.0.1:3000/?view=without_nlp`).
 - The local API keeps serving `GET /api/without_nlp/status` and
   `POST /api/without_nlp/analyze`.
+- Triad chat (`POST /api/triad/message`) is answered by without_nlp: Astyria
+  reports the Euler phasor and reconstruction, Alex the Fourier harmonics,
+  Aurelius the integrity audit. No language model or network is used; the
+  response includes the full `analysis`. Text attachments are analysed,
+  PDF/JPEG attachments are rejected. Operator `/propose`, `/approve` and
+  `/exec` commands keep working as before.
 
 The Python and TypeScript engines encode Unicode code points identically, so
 the CLI, API and desktop view return the same coefficients and harmonics.

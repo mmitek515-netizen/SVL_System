@@ -32,3 +32,11 @@ without-nlp --decode 0.6797 0.5703
 without-nlp --status
 ```
 Kodowanie działa na punktach kodowych Unicode (także emoji) — bezstratnie i identycznie w Pythonie oraz TypeScript.
+
+## 4. Czat triady
+Od tej wersji czat z Alexem, Astyrią i Aureliusem (`POST /api/triad/message`) odpowiada silnikiem without_nlp — bez modeli językowych i bez sieci:
+- **Astyria** — fazor Eulera, energia widmowa, rekonstrukcja sygnału,
+- **Alex** — synteza Fouriera i dominująca harmoniczna,
+- **Aurelius** — audyt integralności (Parseval, błąd rekonstrukcji).
+
+Treść wiadomości nie jest interpretowana językowo — agenci zwracają deterministyczny wynik matematyczny.
