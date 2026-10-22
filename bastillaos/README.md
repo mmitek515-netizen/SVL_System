@@ -103,7 +103,15 @@ installed as a native system component by the `bastillaos-system` package:
   machine (RAM/GPU), tunes the Ollama server (flash attention, q8_0 KV
   cache, keep-alive, parallel requests when memory allows), pulls and warms
   the model, measures tokens/s, and writes the settings to the env file.
-  The SVL server also preloads the model at start (`[OLLAMA] Model … loaded`). Put the
+  The SVL server also preloads the model at start (`[OLLAMA] Model … loaded`).
+- Triad mission **Optymalizacja i konfiguracja Ollamy** (`POST
+  /api/astyria/mission` with `{"action":"ollama_optimize"}`, also in the
+  mission selector): the server warms the model, measures tokens/s, and
+  collects version, models, memory placement and host resources; Alex
+  (infrastructure), Astyria (performance) and Aurelius (stability/security)
+  each post a report with rule-based recommendations plus a short model
+  comment. Recommended commands are shown to the operator and are never run
+  automatically; commands in model comments are dropped. Put the
   keys in `/etc/bastillaos/system.env` (root-owned, `chmod 0600`).
 
 The Python and TypeScript engines encode Unicode code points identically, so

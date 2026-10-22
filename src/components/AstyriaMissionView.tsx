@@ -546,6 +546,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             <option value="repair_schemas">Sprawdź schematy i zapisz snapshot</option>
             <option value="sync_versions">Synchronizuj wersję i dane systemu</option>
             <option value="internet_self_update">Aktualizacja z internetu i GitHub</option>
+            <option value="ollama_optimize">Optymalizacja i konfiguracja Ollamy (cała Triada)</option>
           </select>
           <button
             type="submit"
