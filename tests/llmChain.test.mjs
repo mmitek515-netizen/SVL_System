@@ -6,6 +6,7 @@ import {
   generateWithChain,
   pickXaiChatModel,
   resetXaiModelCache,
+  stripThinking,
 } from '../src/kernel/llmChain.ts';
 
 const json = (status, body) => new Response(JSON.stringify(body), {
@@ -128,4 +129,55 @@ test('kolejność dostawców i wybór modelu Grok', () => {
   assert.deepEqual(configuredProviders({ geminiApiKey: '  ' }), []);
   assert.equal(pickXaiChatModel(['grok-2-image', 'grok-vision-beta']), null);
   assert.equal(pickXaiChatModel(['grok-4', 'grok-4-fast', 'grok-imagine-video']), 'grok-4-fast');
+});
+
+const ollamaOk = (content) => json(200, { message: { role: 'assistant', content } });
+
+test('awaria Gemini i xAI → lokalny model Ollama', async () => {
+  const { impl, calls } = mockFetch([
+    [/generativelanguage/, { respond: () => json(429, {}) }],
+    [/x\.ai/, { respond: () => json(500, {}) }],
+    [/127\.0\.0\.1:11434\/api\/chat/, { respond: () => ollamaOk('<think>rozważam</think>Lokalna Astyria odpowiada.') }],
+  ]);
+  const result = await generateWithChain({
+    geminiApiKey: 'g', geminiModel: 'gemini-a', xaiApiKey: 'x', xaiModel: 'grok', ollamaModel: 'gemma4:e4b', fetchImpl: impl,
+  }, request);
+  assert.equal(result.provider, 'ollama');
+  assert.equal(result.model, 'gemma4:e4b');
+  assert.equal(result.text, 'Lokalna Astyria odpowiada.');
+  assert.equal(result.failures.length, 2);
+  const call = calls.find((c) => c.url.includes('11434'));
+  assert.equal(call.body.stream, false);
+  assert.equal(call.body.think, false);
+  assert.ok(call.body.options.num_predict <= 600);
+  assert.deepEqual(call.body.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user']);
+});
+
+test('Ollama bez obsługi think → ponowienie bez tej opcji; brak modelu → podpowiedź pull', async () => {
+  const { impl, calls } = mockFetch([
+    [/api\/chat/, { when: (b) => b.think === false, respond: () => json(400, { error: 'model does not support thinking' }) }],
+    [/api\/chat/, { respond: () => ollamaOk('Działa bez think.') }],
+  ]);
+  const result = await generateWithChain({ ollamaModel: 'qwen3.5:4b', fetchImpl: impl }, request);
+  assert.equal(result.text, 'Działa bez think.');
+  assert.equal(calls.length, 2);
+
+  const missing = mockFetch([[/api\/chat/, { respond: () => json(404, { error: 'model not found' }) }]]);
+  await assert.rejects(
+    generateWithChain({ ollamaModel: 'gemma4:12b', fetchImpl: missing.impl }, request),
+    (error) => error instanceof LlmChainError && /ollama pull gemma4:12b/.test(error.failures[0]),
+  );
+
+  const down = mockFetch([[/api\/chat/, { respond: () => { throw new TypeError('fetch failed'); } }]]);
+  await assert.rejects(
+    generateWithChain({ ollamaModel: 'gemma4:12b', fetchImpl: down.impl }, request),
+    (error) => error instanceof LlmChainError && /ollama serve/.test(error.failures[0]),
+  );
+});
+
+test('kolejność z Ollamą i usuwanie bloków rozumowania', () => {
+  assert.deepEqual(configuredProviders({ geminiApiKey: 'g', xaiApiKey: 'x', ollamaModel: 'm' }), ['gemini', 'xai', 'ollama']);
+  assert.deepEqual(configuredProviders({ ollamaModel: 'm' }), ['ollama']);
+  assert.equal(stripThinking('<think>a\nb</think>\nOdpowiedź'), 'Odpowiedź');
+  assert.equal(stripThinking('bez myślenia'), 'bez myślenia');
 });

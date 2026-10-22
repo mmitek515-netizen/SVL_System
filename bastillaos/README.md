@@ -91,7 +91,11 @@ installed as a native system component by the `bastillaos-system` package:
   `GEMINI_FALLBACK_MODELS`), xAI Grok is the fallback (`XAI_API_KEY`; when
   `XAI_MODEL` is rejected the server picks a current Grok model from
   `/v1/models`). Each agent falls back independently. Without keys or when
-  both APIs fail, without_nlp answers locally and deterministically. Put the
+  both APIs fail, a local Ollama model answers (`OLLAMA_MODEL`), and only
+  then without_nlp answers locally and deterministically.
+  `bash scripts/setup-ollama.sh` installs Ollama, picks a model for the
+  machine (RAM/GPU), pulls and tests it, and writes `OLLAMA_MODEL` to the
+  env file. Put the
   keys in `/etc/bastillaos/system.env` (root-owned, `chmod 0600`).
 
 The Python and TypeScript engines encode Unicode code points identically, so

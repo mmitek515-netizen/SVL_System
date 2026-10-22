@@ -11,6 +11,7 @@ import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import type { ChatSystemChange } from './src/kernel/chatChanges';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 import {
+  DEFAULT_OLLAMA_BASE_URL,
   DEFAULT_XAI_BASE_URL,
   LlmChainError,
   configuredProviders,
@@ -85,15 +86,22 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   xaiApiKey: XAI_API_KEY,
   xaiModel: XAI_MODEL,
   xaiBaseUrl: XAI_BASE_URL,
+  ollamaModel: (process.env.OLLAMA_MODEL || '').trim(),
+  ollamaBaseUrl: (process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL).trim(),
 };
+// Lokalny model na CPU potrzebuje więcej czasu niż API w chmurze.
+const LLM_CHAT_TIMEOUT_MS = Math.max(15, Number(process.env.LLM_TIMEOUT_SEC) || (LLM_CHAIN_CONFIG.ollamaModel ? 240 : 70)) * 1000;
+const llmProviderLabel = (provider: string) =>
+  provider === 'gemini' ? 'Google Gemini' : provider === 'xai' ? 'xAI' : 'Ollama (lokalnie)';
 {
   const chain = [
     LLM_CHAIN_CONFIG.geminiApiKey ? `Google Gemini (${GEMINI_MODEL})` : null,
     LLM_CHAIN_CONFIG.xaiApiKey ? `xAI Grok (${XAI_MODEL || 'auto'})` : null,
+    LLM_CHAIN_CONFIG.ollamaModel ? `Ollama (${LLM_CHAIN_CONFIG.ollamaModel} @ ${LLM_CHAIN_CONFIG.ollamaBaseUrl})` : null,
   ].filter(Boolean);
   console.log(chain.length
     ? `[CZAT TRIADY] Łańcuch: ${chain.join(' → ')} → without_nlp`
-    : '[CZAT TRIADY] BRAK KLUCZY API (GEMINI_API_KEY / XAI_API_KEY w .env) — agenci odpowiadają tylko silnikiem without_nlp.');
+    : '[CZAT TRIADY] BRAK MODELI (GEMINI_API_KEY / XAI_API_KEY / OLLAMA_MODEL w .env) — agenci odpowiadają tylko silnikiem without_nlp.');
 }
 const rawEnvPollKey = (process.env.POLLINATIONS_API_KEY || '').trim();
 const POLLINATIONS_API_KEY = rawEnvPollKey.startsWith('sk_')
@@ -2136,22 +2144,24 @@ app.get('/api/ai/status', async (_req, res) => {
     const withoutNlp = withoutNlpEngine.getMetrics();
     return res.json({
       provider: configuredProviders(LLM_CHAIN_CONFIG).length
-        ? configuredProviders(LLM_CHAIN_CONFIG).map((p) => (p === 'gemini' ? 'Google Gemini' : 'xAI Grok')).join(' → ')
+        ? configuredProviders(LLM_CHAIN_CONFIG).map(llmProviderLabel).join(' → ')
         : 'without_nlp (brak kluczy API — tryb lokalny)',
       model: [
         LLM_CHAIN_CONFIG.geminiApiKey ? GEMINI_MODEL : null,
         LLM_CHAIN_CONFIG.xaiApiKey ? (XAI_MODEL || 'auto (xAI)') : null,
+        LLM_CHAIN_CONFIG.ollamaModel || null,
       ].filter(Boolean).join(' / ') || withoutNlp.version,
       enabled: true,
       connection: configuredProviders(LLM_CHAIN_CONFIG).length ? 'api-configured' : 'local-deterministic',
       chain: [
         LLM_CHAIN_CONFIG.geminiApiKey ? `Google Gemini (${GEMINI_MODEL}; zapasowe: ${GEMINI_FALLBACK_MODELS})` : null,
         LLM_CHAIN_CONFIG.xaiApiKey ? `xAI Grok (${XAI_MODEL || 'automatyczny dobór modelu'})` : null,
+        LLM_CHAIN_CONFIG.ollamaModel ? `Ollama lokalnie (${LLM_CHAIN_CONFIG.ollamaModel})` : null,
         `without_nlp (${withoutNlp.version}) — ostateczny fallback lokalny`,
       ].filter(Boolean),
-      fallback: 'Gemini → xAI → without_nlp; każdy agent przechodzi dalej niezależnie',
+      fallback: 'Gemini → xAI → Ollama → without_nlp; każdy agent przechodzi dalej niezależnie',
       hyperOsChain: [
-        ...configuredProviders(LLM_CHAIN_CONFIG).map((p) => (p === 'gemini' ? `Google Gemini (${GEMINI_MODEL})` : 'xAI Grok')),
+        ...configuredProviders(LLM_CHAIN_CONFIG).map(llmProviderLabel),
         openRouterActive ? `OpenRouter (${OPENROUTER_MODEL})` : null,
         fallbackActive ? `Fallback API ${FALLBACK_NLP_BASE_URL} (${FALLBACK_NLP_MODEL})` : null,
         `LOCAL_NLP_ENGINE (${LOCAL_NLP_VERSION})`,
@@ -4485,7 +4495,7 @@ app.post('/api/hyperos/console', async (req, res) => {
         maxOutputTokens: 600,
       }, AbortSignal.timeout(65000));
       reply = result.text;
-      nlpProvider = `${result.provider === 'gemini' ? 'Google Gemini' : 'xAI'} (${result.model})`;
+      nlpProvider = `${llmProviderLabel(result.provider)} (${result.model})`;
     } catch (err: any) {
       pushSystemLog('warn', 'KERNEL', `[HYPEROS] Gemini/xAI niedostępne: ${err?.message || err}`);
     }
@@ -4844,12 +4854,12 @@ app.post('/api/triad/message', async (req, res) => {
     }
   }
 
-  // CZAT TRIADY: swobodna rozmowa — Gemini → xAI (Grok) → without_nlp (lokalnie, bez modelu).
+  // CZAT TRIADY: swobodna rozmowa — Gemini → xAI (Grok) → Ollama (lokalny model) → without_nlp.
   const llmProviders = configuredProviders(LLM_CHAIN_CONFIG);
   if (attachments.some((attachment) => attachment.mimeType) && llmProviders.length === 0) {
     return res.status(400).json({
       success: false,
-      error: 'Załączniki PDF/JPEG wymagają GEMINI_API_KEY lub XAI_API_KEY w pliku .env. Bez kluczy działa tylko tekst (without_nlp).',
+      error: 'Załączniki PDF/JPEG wymagają modelu (GEMINI_API_KEY, XAI_API_KEY lub OLLAMA_MODEL w .env). Bez modelu działa tylko tekst (without_nlp).',
     });
   }
 
@@ -4865,7 +4875,7 @@ app.post('/api/triad/message', async (req, res) => {
     const binaryAttachments = attachments
       .filter((attachment) => attachment.mimeType)
       .map((attachment) => ({ name: attachment.name, mimeType: attachment.mimeType!, content: attachment.content }));
-    const deadline = AbortSignal.timeout(70000);
+    const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS);
 
     const results = await Promise.all(targetAgents.map(async (agent) => {
       if (llmProviders.length > 0) {

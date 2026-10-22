@@ -3,7 +3,8 @@
  *
  *   1. Google Gemini (GEMINI_API_KEY, model główny + modele zapasowe)
  *   2. xAI Grok   (XAI_API_KEY, API zgodne z OpenAI, automatyczny dobór modelu)
- *   3. brak modelu → wywołujący przechodzi na deterministyczny without_nlp
+ *   3. Ollama     (OLLAMA_MODEL, lokalny model na serwerze, działa bez internetu)
+ *   4. brak modelu → wywołujący przechodzi na deterministyczny without_nlp
  *
  * Moduł używa wyłącznie fetch (bez SDK), więc jest w pełni testowalny
  * z podstawionym fetch i nie dodaje zależności npm.
@@ -11,6 +12,7 @@
 import { parseGeminiModelChain, runWithGeminiFallback } from './geminiVm.ts';
 
 export type LlmRole = 'user' | 'assistant';
+export type LlmProvider = 'gemini' | 'xai' | 'ollama';
 
 export interface LlmTurn {
   role: LlmRole;
@@ -41,22 +43,24 @@ export interface LlmChainConfig {
   xaiApiKey?: string;
   xaiModel?: string;
   xaiBaseUrl?: string;
+  ollamaModel?: string;
+  ollamaBaseUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
 export interface LlmResult {
   text: string;
-  provider: 'gemini' | 'xai';
+  provider: LlmProvider;
   model: string;
   /** Błędy dostawców, które zawiodły przed sukcesem (do logów). */
   failures: string[];
 }
 
 export class LlmProviderError extends Error {
-  readonly provider: 'gemini' | 'xai';
+  readonly provider: LlmProvider;
   readonly status: number;
 
-  constructor(provider: 'gemini' | 'xai', status: number, message: string) {
+  constructor(provider: LlmProvider, status: number, message: string) {
     super(message);
     this.name = 'LlmProviderError';
     this.provider = provider;
@@ -70,7 +74,7 @@ export class LlmChainError extends Error {
   constructor(failures: string[]) {
     super(failures.length
       ? `Żaden model nie odpowiedział: ${failures.join(' | ')}`
-      : 'Brak skonfigurowanych kluczy API (GEMINI_API_KEY, XAI_API_KEY).');
+      : 'Brak skonfigurowanych modeli (GEMINI_API_KEY, XAI_API_KEY, OLLAMA_MODEL).');
     this.name = 'LlmChainError';
     this.failures = failures;
   }
@@ -79,13 +83,16 @@ export class LlmChainError extends Error {
 export const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 export const DEFAULT_XAI_BASE_URL = 'https://api.x.ai/v1';
 export const DEFAULT_XAI_MODEL = 'grok-3-mini';
+export const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
+/** Lokalny model na CPU jest wolniejszy — krótsze odpowiedzi. */
+export const OLLAMA_MAX_OUTPUT_TOKENS = 600;
 
 function trimBase(url: string): string {
   return url.trim().replace(/\/+$/, '');
 }
 
-function describeStatus(provider: 'gemini' | 'xai', status: number): string {
-  const name = provider === 'gemini' ? 'Google Gemini' : 'xAI';
+function describeStatus(provider: LlmProvider, status: number): string {
+  const name = provider === 'gemini' ? 'Google Gemini' : provider === 'xai' ? 'xAI' : 'Ollama';
   if (status === 401 || status === 403) return `${name}: klucz API odrzucony (HTTP ${status}).`;
   if (status === 402) return `${name}: brak środków na koncie (HTTP 402).`;
   if (status === 429) return `${name}: limit żądań wyczerpany (HTTP 429).`;
@@ -276,14 +283,77 @@ export async function generateXai(
   }
 }
 
-export function configuredProviders(config: LlmChainConfig): Array<'gemini' | 'xai'> {
-  const providers: Array<'gemini' | 'xai'> = [];
+/** Usuwa bloki rozumowania modeli „thinking” (<think>…</think>) z odpowiedzi. */
+export function stripThinking(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/i, '').trim();
+}
+
+export async function generateOllama(
+  config: LlmChainConfig,
+  request: LlmRequest,
+  signal?: AbortSignal,
+): Promise<{ text: string; model: string }> {
+  const model = (config.ollamaModel || '').trim();
+  if (!model) throw new Error('Brak OLLAMA_MODEL.');
+  const doFetch = config.fetchImpl ?? fetch;
+  const base = trimBase(config.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL);
+  const images = (request.attachments ?? [])
+    .filter((attachment) => attachment.mimeType.startsWith('image/'))
+    .map((attachment) => attachment.content);
+  const messages = [
+    { role: 'system', content: request.system },
+    ...request.history.map((turn) => ({ role: turn.role, content: turn.text })),
+    { role: 'user', content: request.message, ...(images.length ? { images } : {}) },
+  ];
+
+  const call = async (disableThinking: boolean) => {
+    let response: Response;
+    try {
+      response = await doFetch(`${base}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: false,
+          ...(disableThinking ? { think: false } : {}),
+          options: {
+            temperature: request.temperature ?? 0.7,
+            num_predict: Math.min(request.maxOutputTokens ?? OLLAMA_MAX_OUTPUT_TOKENS, OLLAMA_MAX_OUTPUT_TOKENS),
+          },
+        }),
+        signal,
+      });
+    } catch (error: any) {
+      if (error?.name === 'AbortError') throw error;
+      throw new LlmProviderError('ollama', 503, `Ollama: serwer nie odpowiada pod ${base} (uruchom: ollama serve).`);
+    }
+    if (!response.ok) {
+      const body = await readErrorText(response);
+      if (disableThinking && response.status === 400 && /think/i.test(body)) return null;
+      const hint = response.status === 404 ? ` Pobierz model: ollama pull ${model}` : '';
+      throw new LlmProviderError('ollama', response.status, `${describeStatus('ollama', response.status)} [${model}]${hint}`);
+    }
+    const data: any = await response.json();
+    const text = stripThinking(typeof data?.message?.content === 'string' ? data.message.content : '');
+    if (!text) throw new LlmProviderError('ollama', 502, `Ollama: pusta odpowiedź [${model}]`);
+    return text;
+  };
+
+  // think:false przyspiesza modele z rozumowaniem; modele bez tej opcji dostają zwykłe żądanie.
+  const text = (await call(true)) ?? (await call(false));
+  return { text: text!, model };
+}
+
+export function configuredProviders(config: LlmChainConfig): Array<LlmProvider> {
+  const providers: Array<LlmProvider> = [];
   if ((config.geminiApiKey || '').trim()) providers.push('gemini');
   if ((config.xaiApiKey || '').trim()) providers.push('xai');
+  if ((config.ollamaModel || '').trim()) providers.push('ollama');
   return providers;
 }
 
-/** Gemini → xAI. Rzuca LlmChainError, gdy żaden dostawca nie odpowiedział. */
+/** Gemini → xAI → Ollama. Rzuca LlmChainError, gdy żaden dostawca nie odpowiedział. */
 export async function generateWithChain(
   config: LlmChainConfig,
   request: LlmRequest,
@@ -295,7 +365,9 @@ export async function generateWithChain(
     try {
       const { text, model } = provider === 'gemini'
         ? await generateGemini(config, request, signal)
-        : await generateXai(config, request, signal);
+        : provider === 'xai'
+        ? await generateXai(config, request, signal)
+        : await generateOllama(config, request, signal);
       return { text, provider, model, failures };
     } catch (error: any) {
       failures.push(error?.name === 'AbortError'
