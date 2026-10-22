@@ -12,6 +12,7 @@ import type { ChatSystemChange } from './src/kernel/chatChanges';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 import {
   DEFAULT_OLLAMA_BASE_URL,
+  warmupOllama,
   DEFAULT_XAI_BASE_URL,
   LlmChainError,
   configuredProviders,
@@ -88,6 +89,9 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   xaiBaseUrl: XAI_BASE_URL,
   ollamaModel: (process.env.OLLAMA_MODEL || 'auto').trim(),
   ollamaBaseUrl: (process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL).trim(),
+  ollamaKeepAlive: (process.env.OLLAMA_KEEP_ALIVE || '24h').trim(),
+  ollamaNumCtx: Number(process.env.OLLAMA_NUM_CTX) || 4096,
+  ollamaNumThread: Number(process.env.OLLAMA_NUM_THREAD) || 0,
   // Domyślnie TYLKO Ollama. Inna kolejność: LLM_PROVIDERS="gemini,xai,ollama".
   providers: (process.env.LLM_PROVIDERS || 'ollama')
     .split(',')
@@ -4902,7 +4906,8 @@ app.post('/api/triad/message', async (req, res) => {
         try {
           const result = await generateWithChain(LLM_CHAIN_CONFIG, {
             system: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}`,
-            history: buildLlmHistory(chatHistory, agent),
+            // Lokalny model: krótsza historia = mniej tokenów do przetworzenia przed odpowiedzią.
+            history: usesOllama() && !CLOUD_LLM_ENABLED ? buildLlmHistory(chatHistory, agent, 4, 600) : buildLlmHistory(chatHistory, agent),
             message: cleanMessage,
             attachments: binaryAttachments,
           }, deadline);
@@ -5124,6 +5129,14 @@ async function startServer() {
     const server = app.listen(port, '0.0.0.0', () => {
       activeServerPort = port;
       console.log(`[SVL-KERNEL] Server listening on http://0.0.0.0:${port}`);
+      if (usesOllama()) {
+        // Rozgrzewka w tle: wagi modelu trafiają do pamięci, zanim padnie pierwsza wiadomość.
+        void warmupOllama(LLM_CHAIN_CONFIG, AbortSignal.timeout(180000)).then((warm) => {
+          console.log(warm.ok
+            ? `[OLLAMA] Model ${warm.model} wczytany do pamięci w ${(warm.ms / 1000).toFixed(1)} s (keep_alive ${LLM_CHAIN_CONFIG.ollamaKeepAlive}).`
+            : `[OLLAMA] Rozgrzewka nieudana: ${warm.detail}. Uruchom Ollamę: ollama serve (lub npm run setup:ollama).`);
+        });
+      }
     });
 
     server.on('error', (error: NodeJS.ErrnoException) => {

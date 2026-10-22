@@ -8,6 +8,8 @@ import {
   resetXaiModelCache,
   resetOllamaModelCache,
   pickOllamaChatModel,
+  parseKeepAlive,
+  warmupOllama,
   stripThinking,
 } from '../src/kernel/llmChain.ts';
 
@@ -212,4 +214,32 @@ test('tylko Ollama bez pobranych modeli → czytelny błąd', async () => {
     (error) => error instanceof LlmChainError && /npm run setup:ollama/.test(error.failures[0]),
   );
   assert.equal(pickOllamaChatModel([{ name: 'bge-m3' }]), null);
+});
+
+test('Ollama: keep_alive, num_ctx i num_thread trafiają do żądania', async () => {
+  const { impl, calls } = mockFetch([[/api\/chat/, { respond: () => ollamaOk('ok') }]]);
+  await generateWithChain({ providers: ['ollama'], ollamaModel: 'm', ollamaNumThread: 4, fetchImpl: impl }, request);
+  const body = calls[0].body;
+  assert.equal(body.keep_alive, '24h');
+  assert.equal(body.options.num_ctx, 4096);
+  assert.equal(body.options.num_thread, 4);
+  const custom = mockFetch([[/api\/chat/, { respond: () => ollamaOk('ok') }]]);
+  await generateWithChain({ providers: ['ollama'], ollamaModel: 'm', ollamaKeepAlive: '-1', ollamaNumCtx: 2048, fetchImpl: custom.impl }, request);
+  assert.equal(custom.calls[0].body.keep_alive, -1);
+  assert.equal(custom.calls[0].body.options.num_ctx, 2048);
+  assert.equal('num_thread' in custom.calls[0].body.options, false);
+  assert.equal(parseKeepAlive('30m'), '30m');
+  assert.equal(parseKeepAlive(''), '24h');
+});
+
+test('rozgrzewka Ollamy wczytuje model i nie rzuca przy awarii', async () => {
+  resetOllamaModelCache();
+  const ok = mockFetch([[/api\/chat/, { respond: () => json(200, { done: true }) }]]);
+  const warm = await warmupOllama({ ollamaModel: 'qwen3.5:4b', fetchImpl: ok.impl });
+  assert.equal(warm.ok, true);
+  assert.deepEqual(ok.calls[0].body.messages, []);
+  assert.equal(ok.calls[0].body.keep_alive, '24h');
+  const down = mockFetch([[/api\/chat/, { respond: () => { throw new TypeError('fetch failed'); } }]]);
+  const failed = await warmupOllama({ ollamaModel: 'qwen3.5:4b', fetchImpl: down.impl });
+  assert.equal(failed.ok, false);
 });

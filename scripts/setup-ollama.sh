@@ -6,7 +6,8 @@
 #   ENV_FILE=/etc/bastillaos/system.env bash scripts/setup-ollama.sh
 #
 # Skrypt: instaluje Ollamę (jeśli brak), uruchamia serwer, pobiera model,
-# sprawdza odpowiedź i zapisuje OLLAMA_MODEL / OLLAMA_BASE_URL do pliku .env.
+# stroi serwer (flash attention, kompresja KV, keep-alive, tryb równoległy), rozgrzewa
+# model, mierzy prędkość i zapisuje OLLAMA_MODEL i parametry do pliku .env.
 set -Eeuo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -66,41 +67,87 @@ if ! command -v ollama >/dev/null 2>&1; then
 fi
 log "Ollama: $(ollama --version 2>/dev/null | head -1)"
 
-# ── 4. Serwer Ollamy ─────────────────────────────────────────────────────────
-is_up() { curl -fsS -m 3 "$OLLAMA_HOST_URL/api/version" >/dev/null 2>&1; }
-if ! is_up; then
-  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ] \
-     && systemctl list-unit-files ollama.service >/dev/null 2>&1; then
-    log "Uruchamiam usługę systemd ollama…"
-    sudo systemctl enable --now ollama >/dev/null 2>&1 || true
-  fi
-fi
-if ! is_up; then
-  # Codespaces / kontenery bez systemd: serwer w tle, log w ~/.ollama/serve.log.
-  mkdir -p "$HOME/.ollama"
-  log "Uruchamiam 'ollama serve' w tle (log: ~/.ollama/serve.log)…"
-  nohup ollama serve >"$HOME/.ollama/serve.log" 2>&1 &
-fi
-for _ in $(seq 1 30); do is_up && break; sleep 1; done
-is_up || die "Serwer Ollamy nie odpowiada pod $OLLAMA_HOST_URL (zobacz ~/.ollama/serve.log)."
+# ── 4. Strojenie serwera Ollamy ──────────────────────────────────────────────
+# FLASH_ATTENTION + KV_CACHE q8_0: ~2x mniej pamięci na kontekst, szybsze przetwarzanie promptu.
+# KEEP_ALIVE: model zostaje w pamięci (bez ponownego ładowania wag przy każdej wiadomości).
+# NUM_PARALLEL: trzej agenci Triady mogą odpowiadać równocześnie, gdy starczy pamięci.
+if [ "$vram_gb" -ge 8 ] || [ "$ram_gb" -ge 16 ]; then parallel=3; else parallel=1; fi
+ctx=4096
+declare -A TUNING=(
+  [OLLAMA_FLASH_ATTENTION]=1
+  [OLLAMA_KV_CACHE_TYPE]=q8_0
+  [OLLAMA_KEEP_ALIVE]=24h
+  [OLLAMA_NUM_PARALLEL]=$parallel
+  [OLLAMA_MAX_LOADED_MODELS]=1
+  [OLLAMA_CONTEXT_LENGTH]=$ctx
+)
+tuning_args=()
+for key in "${!TUNING[@]}"; do tuning_args+=("$key=${TUNING[$key]}"); done
+log "Strojenie serwera: ${tuning_args[*]}"
 
-# ── 5. Pobranie i test modelu ────────────────────────────────────────────────
+is_up() { curl -fsS -m 3 "$OLLAMA_HOST_URL/api/version" >/dev/null 2>&1; }
+use_systemd=0
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ] \
+   && systemctl list-unit-files ollama.service >/dev/null 2>&1 \
+   && systemctl list-unit-files ollama.service | grep -q ollama; then
+  use_systemd=1
+fi
+
+if [ "$use_systemd" = 1 ]; then
+  log "Zapisuję ustawienia w usłudze systemd (drop-in) i restartuję ją…"
+  sudo mkdir -p /etc/systemd/system/ollama.service.d
+  {
+    echo "[Service]"
+    for kv in "${tuning_args[@]}"; do echo "Environment=\"$kv\""; done
+  } | sudo tee /etc/systemd/system/ollama.service.d/bastillaos-tuning.conf >/dev/null
+  sudo systemctl daemon-reload
+  sudo systemctl enable ollama >/dev/null 2>&1 || true
+  sudo systemctl restart ollama
+else
+  # Codespaces / kontenery bez systemd: restart 'ollama serve' z ustawieniami.
+  if is_up; then
+    log "Restartuję działający serwer Ollamy, żeby zastosować ustawienia…"
+    pkill -f "ollama serve" 2>/dev/null || true
+    sleep 2
+  fi
+  mkdir -p "$HOME/.ollama"
+  printf '%s\n' "${tuning_args[@]}" > "$HOME/.ollama/tuning.env"
+  log "Uruchamiam 'ollama serve' w tle (log: ~/.ollama/serve.log)…"
+  env "${tuning_args[@]}" nohup ollama serve >"$HOME/.ollama/serve.log" 2>&1 &
+fi
+for _ in $(seq 1 40); do is_up && break; sleep 1; done
+is_up || die "Serwer Ollamy nie odpowiada pod $OLLAMA_HOST_URL (zobacz ~/.ollama/serve.log lub journalctl -u ollama)."
+
+# ── 5. Pobranie, rozgrzanie i pomiar modelu ──────────────────────────────────
 log "Pobieram $model (może potrwać kilka minut)…"
 ollama pull "$model"
-log "Test odpowiedzi modelu…"
-start=$(date +%s)
-answer=$(curl -fsS -m 300 "$OLLAMA_HOST_URL/api/chat" -H 'Content-Type: application/json' -d "{
-  \"model\": \"$model\", \"stream\": false, \"think\": false,
-  \"messages\": [{\"role\": \"user\", \"content\": \"Przedstaw się jednym zdaniem po polsku.\"}],
-  \"options\": {\"num_predict\": 60}
-}" 2>/dev/null || curl -fsS -m 300 "$OLLAMA_HOST_URL/api/chat" -H 'Content-Type: application/json' -d "{
-  \"model\": \"$model\", \"stream\": false,
-  \"messages\": [{\"role\": \"user\", \"content\": \"Przedstaw się jednym zdaniem po polsku.\"}],
-  \"options\": {\"num_predict\": 60}
-}") || die "Model $model nie odpowiedział."
-elapsed=$(( $(date +%s) - start ))
-reply=$(printf '%s' "$answer" | python3 -c 'import json,sys; print(json.load(sys.stdin)["message"]["content"].strip()[:300])' 2>/dev/null || echo "$answer")
-log "Odpowiedź ($elapsed s): $reply"
+chat() { # $1 = JSON
+  curl -fsS -m 300 "$OLLAMA_HOST_URL/api/chat" -H 'Content-Type: application/json' -d "$1"
+}
+log "Rozgrzewam model (wczytanie do pamięci)…"
+warm_start=$(date +%s)
+chat "{\"model\":\"$model\",\"messages\":[],\"stream\":false,\"keep_alive\":\"24h\"}" >/dev/null 2>&1 \
+  || warn "Rozgrzewka nie powiodła się — pierwsza odpowiedź będzie wolniejsza."
+log "Wczytano w $(( $(date +%s) - warm_start )) s."
+
+log "Test odpowiedzi i pomiar prędkości…"
+body="{\"model\":\"$model\",\"stream\":false,\"keep_alive\":\"24h\",\"think\":false,
+  \"messages\":[{\"role\":\"user\",\"content\":\"Przedstaw się jednym zdaniem po polsku.\"}],
+  \"options\":{\"num_predict\":80,\"num_ctx\":$ctx}}"
+answer=$(chat "$body" 2>/dev/null || chat "${body/\"think\":false,/}") || die "Model $model nie odpowiedział."
+read -r reply speed < <(printf '%s' "$answer" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+text = d["message"]["content"].strip().replace("\n", " ")[:200] or "(pusta odpowiedź)"
+n, dur = d.get("eval_count", 0), d.get("eval_duration", 0)
+print(text.replace(" ", "_"), round(n / (dur / 1e9), 1) if dur else 0)
+' 2>/dev/null || echo "?  0")
+log "Odpowiedź: ${reply//_/ }"
+log "Prędkość generowania: ${speed} tokenów/s."
+if [ "$vram_gb" -lt 8 ] && awk "BEGIN { exit !($speed > 0 && $speed < 4) }"; then
+  warn "Model jest wolny na tym sprzęcie (<4 tokeny/s). Dla szybszych odpowiedzi wybierz mniejszy:"
+  warn "  bash scripts/setup-ollama.sh qwen3.5:2b"
+fi
 
 # ── 6. Zapis konfiguracji ────────────────────────────────────────────────────
 upsert() {
@@ -114,6 +161,9 @@ upsert() {
 }
 upsert OLLAMA_MODEL "$model" "$ENV_FILE"
 upsert OLLAMA_BASE_URL "$OLLAMA_HOST_URL" "$ENV_FILE"
+upsert OLLAMA_KEEP_ALIVE "24h" "$ENV_FILE"
+upsert OLLAMA_NUM_CTX "$ctx" "$ENV_FILE"
+upsert LLM_PROVIDERS "ollama" "$ENV_FILE"
 log "Zapisano OLLAMA_MODEL=\"$model\" i OLLAMA_BASE_URL w $ENV_FILE"
 log "Gotowe. Zrestartuj serwer SVL (Ctrl+C → npm run dev, w BastillaOS: sudo systemctl restart bastillaos-system)."
-log "W logu startu zobaczysz: [CZAT TRIADY] Łańcuch: … → Ollama ($model …) → without_nlp"
+log "W logu startu zobaczysz: [CZAT TRIADY] Silniki: Ollama …  oraz  [OLLAMA] Model $model wczytany do pamięci."

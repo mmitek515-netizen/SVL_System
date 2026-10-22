@@ -100,8 +100,10 @@ installed as a native system component by the `bastillaos-system` package:
   both APIs fail, a local Ollama model answers (`OLLAMA_MODEL`), and only
   then without_nlp answers locally and deterministically.
   `bash scripts/setup-ollama.sh` installs Ollama, picks a model for the
-  machine (RAM/GPU), pulls and tests it, and writes `OLLAMA_MODEL` to the
-  env file. Put the
+  machine (RAM/GPU), tunes the Ollama server (flash attention, q8_0 KV
+  cache, keep-alive, parallel requests when memory allows), pulls and warms
+  the model, measures tokens/s, and writes the settings to the env file.
+  The SVL server also preloads the model at start (`[OLLAMA] Model … loaded`). Put the
   keys in `/etc/bastillaos/system.env` (root-owned, `chmod 0600`).
 
 The Python and TypeScript engines encode Unicode code points identically, so

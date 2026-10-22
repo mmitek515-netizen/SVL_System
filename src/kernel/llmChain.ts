@@ -46,6 +46,12 @@ export interface LlmChainConfig {
   /** Pusty lub "auto" = pierwszy pobrany model z /api/tags. */
   ollamaModel?: string;
   ollamaBaseUrl?: string;
+  /** Jak długo model zostaje w pamięci po odpowiedzi (np. "24h", "-1" = na stałe). Domyślnie 24h. */
+  ollamaKeepAlive?: string;
+  /** Okno kontekstu w tokenach — mniejsze = szybszy start odpowiedzi i mniej RAM (domyślnie 4096). */
+  ollamaNumCtx?: number;
+  /** Liczba wątków CPU; 0/brak = automatycznie. */
+  ollamaNumThread?: number;
   /** Kolejność i wybór dostawców (np. ['ollama'] = tylko Ollama). Brak = wszyscy skonfigurowani. */
   providers?: LlmProvider[];
   fetchImpl?: typeof fetch;
@@ -89,6 +95,24 @@ export const DEFAULT_XAI_MODEL = 'grok-3-mini';
 export const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
 /** Lokalny model na CPU jest wolniejszy — krótsze odpowiedzi. */
 export const OLLAMA_MAX_OUTPUT_TOKENS = 600;
+export const OLLAMA_DEFAULT_KEEP_ALIVE = '24h';
+export const OLLAMA_DEFAULT_NUM_CTX = 4096;
+
+/** keep_alive: liczba (sekundy / ujemna = na stałe) albo tekst typu "24h". */
+export function parseKeepAlive(value: string | undefined): string | number {
+  const raw = (value ?? '').trim();
+  if (!raw) return OLLAMA_DEFAULT_KEEP_ALIVE;
+  return /^-?\d+$/.test(raw) ? Number(raw) : raw;
+}
+
+function ollamaOptions(config: LlmChainConfig, request: LlmRequest): Record<string, number> {
+  return {
+    temperature: request.temperature ?? 0.7,
+    num_predict: Math.min(request.maxOutputTokens ?? OLLAMA_MAX_OUTPUT_TOKENS, OLLAMA_MAX_OUTPUT_TOKENS),
+    num_ctx: Math.max(1024, Math.floor(config.ollamaNumCtx || OLLAMA_DEFAULT_NUM_CTX)),
+    ...(config.ollamaNumThread && config.ollamaNumThread > 0 ? { num_thread: Math.floor(config.ollamaNumThread) } : {}),
+  };
+}
 
 function trimBase(url: string): string {
   return url.trim().replace(/\/+$/, '');
@@ -360,11 +384,9 @@ export async function generateOllama(
           model,
           messages,
           stream: false,
+          keep_alive: parseKeepAlive(config.ollamaKeepAlive),
           ...(disableThinking ? { think: false } : {}),
-          options: {
-            temperature: request.temperature ?? 0.7,
-            num_predict: Math.min(request.maxOutputTokens ?? OLLAMA_MAX_OUTPUT_TOKENS, OLLAMA_MAX_OUTPUT_TOKENS),
-          },
+          options: ollamaOptions(config, request),
         }),
         signal,
       });
@@ -387,6 +409,40 @@ export async function generateOllama(
   // think:false przyspiesza modele z rozumowaniem; modele bez tej opcji dostają zwykłe żądanie.
   const text = (await call(true)) ?? (await call(false));
   return { text: text!, model };
+}
+
+/**
+ * Rozgrzewa model: wczytuje go do pamięci (pusta wiadomość + keep_alive), żeby pierwsza
+ * odpowiedź nie czekała na załadowanie wag. Nigdy nie rzuca — zwraca wynik do logu.
+ */
+export async function warmupOllama(
+  config: LlmChainConfig,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; model?: string; ms: number; detail: string }> {
+  const started = Date.now();
+  const doFetch = config.fetchImpl ?? fetch;
+  const base = trimBase(config.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL);
+  try {
+    const model = await resolveOllamaModel(config, doFetch, base, signal);
+    const response = await doFetch(`${base}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [],
+        stream: false,
+        keep_alive: parseKeepAlive(config.ollamaKeepAlive),
+        options: { num_ctx: Math.max(1024, Math.floor(config.ollamaNumCtx || OLLAMA_DEFAULT_NUM_CTX)) },
+      }),
+      signal,
+    });
+    if (!response.ok) {
+      return { ok: false, model, ms: Date.now() - started, detail: `HTTP ${response.status}` };
+    }
+    return { ok: true, model, ms: Date.now() - started, detail: 'model wczytany do pamięci' };
+  } catch (error: any) {
+    return { ok: false, ms: Date.now() - started, detail: String(error?.message || error) };
+  }
 }
 
 export function configuredProviders(config: LlmChainConfig): Array<LlmProvider> {
