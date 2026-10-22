@@ -43,8 +43,11 @@ export interface LlmChainConfig {
   xaiApiKey?: string;
   xaiModel?: string;
   xaiBaseUrl?: string;
+  /** Pusty lub "auto" = pierwszy pobrany model z /api/tags. */
   ollamaModel?: string;
   ollamaBaseUrl?: string;
+  /** Kolejność i wybór dostawców (np. ['ollama'] = tylko Ollama). Brak = wszyscy skonfigurowani. */
+  providers?: LlmProvider[];
   fetchImpl?: typeof fetch;
 }
 
@@ -288,15 +291,56 @@ export function stripThinking(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^[\s\S]*?<\/think>/i, '').trim();
 }
 
+/** Wybiera model czatu z listy pobranych modeli Ollamy (bez modeli embedding). */
+export function pickOllamaChatModel(models: Array<{ name: string; size?: number }>): string | null {
+  const chat = models.filter((model) => model.name && !/embed|bge|minilm|nomic/i.test(model.name));
+  if (chat.length === 0) return null;
+  // Największy pobrany model = zwykle najlepszy, jaki zmieścił się na serwerze.
+  return [...chat].sort((a, b) => (b.size ?? 0) - (a.size ?? 0))[0].name;
+}
+
+const resolvedOllamaModels = new Map<string, string>();
+
+export function resetOllamaModelCache(): void {
+  resolvedOllamaModels.clear();
+}
+
+async function resolveOllamaModel(
+  config: LlmChainConfig,
+  doFetch: typeof fetch,
+  base: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const configured = (config.ollamaModel || '').trim();
+  if (configured && configured.toLowerCase() !== 'auto') return configured;
+  const cached = resolvedOllamaModels.get(base);
+  if (cached) return cached;
+  let response: Response;
+  try {
+    response = await doFetch(`${base}/api/tags`, { signal });
+  } catch (error: any) {
+    if (error?.name === 'AbortError') throw error;
+    throw new LlmProviderError('ollama', 503, `Ollama: serwer nie odpowiada pod ${base} (uruchom: ollama serve).`);
+  }
+  if (!response.ok) throw new LlmProviderError('ollama', response.status, `Ollama: nie można pobrać listy modeli (HTTP ${response.status}).`);
+  const data: any = await response.json();
+  const models = Array.isArray(data?.models) ? data.models : [];
+  const picked = pickOllamaChatModel(models.map((model: any) => ({ name: String(model?.name || ''), size: Number(model?.size) || 0 })));
+  if (!picked) {
+    throw new LlmProviderError('ollama', 404, 'Ollama: brak pobranych modeli. Pobierz model: npm run setup:ollama');
+  }
+  resolvedOllamaModels.set(base, picked);
+  return picked;
+}
+
 export async function generateOllama(
   config: LlmChainConfig,
   request: LlmRequest,
   signal?: AbortSignal,
 ): Promise<{ text: string; model: string }> {
-  const model = (config.ollamaModel || '').trim();
-  if (!model) throw new Error('Brak OLLAMA_MODEL.');
   const doFetch = config.fetchImpl ?? fetch;
   const base = trimBase(config.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL);
+  const model = await resolveOllamaModel(config, doFetch, base, signal);
   const images = (request.attachments ?? [])
     .filter((attachment) => attachment.mimeType.startsWith('image/'))
     .map((attachment) => attachment.content);
@@ -346,6 +390,13 @@ export async function generateOllama(
 }
 
 export function configuredProviders(config: LlmChainConfig): Array<LlmProvider> {
+  if (config.providers && config.providers.length > 0) {
+    // Jawny wybór: Ollama nie wymaga klucza (model może być wykryty automatycznie).
+    return config.providers.filter((provider, index, list) => list.indexOf(provider) === index
+      && (provider === 'ollama'
+        || (provider === 'gemini' && Boolean((config.geminiApiKey || '').trim()))
+        || (provider === 'xai' && Boolean((config.xaiApiKey || '').trim()))));
+  }
   const providers: Array<LlmProvider> = [];
   if ((config.geminiApiKey || '').trim()) providers.push('gemini');
   if ((config.xaiApiKey || '').trim()) providers.push('xai');

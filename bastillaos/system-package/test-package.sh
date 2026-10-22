@@ -141,7 +141,7 @@ grep -q 'user datastore must persist' "$STATE/exports/svl_datastore.json"
 [ -w "$STATE/exports/svl_datastore.json" ]
 
 PORT=42117
-NODE_ENV=production HOST=127.0.0.1 PORT="$PORT" \
+NODE_ENV=production HOST=127.0.0.1 PORT="$PORT" LLM_PROVIDERS=none CHAT_LOCAL_FALLBACK=on \
 BASTILLAOS_DEFAULTS_DIR="$DEFAULTS" \
 BASTILLAOS_RUNTIME_DIR="$RUNTIME" \
 BASTILLAOS_STATE_DIR="$STATE" \

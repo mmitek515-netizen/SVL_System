@@ -86,6 +86,12 @@ installed as a native system component by the `bastillaos-system` package:
   on the engine view (`http://127.0.0.1:3000/?view=without_nlp`).
 - The local API keeps serving `GET /api/without_nlp/status` and
   `POST /api/without_nlp/analyze`.
+- Engine selection: by default only local Ollama answers
+  (`LLM_PROVIDERS="ollama"`, `OLLAMA_MODEL="auto"` picks the largest pulled
+  model); cloud APIs and without_nlp are off, and a model failure returns an
+  error instead of a substitute reply. `LLM_PROVIDERS="gemini,xai,ollama"`
+  restores the cloud chain and `CHAT_LOCAL_FALLBACK="on"` re-enables
+  without_nlp as the last resort.
 - Triad chat (`POST /api/triad/message`) is free conversation with the Triad:
   Google Gemini answers first (`GEMINI_API_KEY`, primary model plus
   `GEMINI_FALLBACK_MODELS`), xAI Grok is the fallback (`XAI_API_KEY`; when

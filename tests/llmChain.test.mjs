@@ -6,6 +6,8 @@ import {
   generateWithChain,
   pickXaiChatModel,
   resetXaiModelCache,
+  resetOllamaModelCache,
+  pickOllamaChatModel,
   stripThinking,
 } from '../src/kernel/llmChain.ts';
 
@@ -180,4 +182,34 @@ test('kolejność z Ollamą i usuwanie bloków rozumowania', () => {
   assert.deepEqual(configuredProviders({ ollamaModel: 'm' }), ['ollama']);
   assert.equal(stripThinking('<think>a\nb</think>\nOdpowiedź'), 'Odpowiedź');
   assert.equal(stripThinking('bez myślenia'), 'bez myślenia');
+});
+
+test('tylko Ollama: Gemini i xAI pomijane mimo kluczy, model wykryty z /api/tags', async () => {
+  resetOllamaModelCache();
+  const { impl, calls } = mockFetch([
+    [/api\/tags/, { respond: () => json(200, { models: [
+      { name: 'nomic-embed-text:latest', size: 300 },
+      { name: 'qwen3.5:4b', size: 3_300_000_000 },
+      { name: 'qwen3.5:2b', size: 1_900_000_000 },
+    ] }) }],
+    [/api\/chat/, { respond: (body) => ollamaOk(`Odpowiada ${body.model}.`) }],
+  ]);
+  const config = { providers: ['ollama'], geminiApiKey: 'g', xaiApiKey: 'x', ollamaModel: 'auto', fetchImpl: impl };
+  assert.deepEqual(configuredProviders(config), ['ollama']);
+  const result = await generateWithChain(config, request);
+  assert.equal(result.provider, 'ollama');
+  assert.equal(result.model, 'qwen3.5:4b');
+  assert.ok(calls.every((call) => !/generativelanguage|x\.ai/.test(call.url)));
+  await generateWithChain(config, request);
+  assert.equal(calls.filter((call) => call.url.includes('/api/tags')).length, 1, 'model wykrywany raz (cache)');
+});
+
+test('tylko Ollama bez pobranych modeli → czytelny błąd', async () => {
+  resetOllamaModelCache();
+  const { impl } = mockFetch([[/api\/tags/, { respond: () => json(200, { models: [] }) }]]);
+  await assert.rejects(
+    generateWithChain({ providers: ['ollama'], fetchImpl: impl }, request),
+    (error) => error instanceof LlmChainError && /npm run setup:ollama/.test(error.failures[0]),
+  );
+  assert.equal(pickOllamaChatModel([{ name: 'bge-m3' }]), null);
 });

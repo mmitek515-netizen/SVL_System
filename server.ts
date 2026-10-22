@@ -86,22 +86,33 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   xaiApiKey: XAI_API_KEY,
   xaiModel: XAI_MODEL,
   xaiBaseUrl: XAI_BASE_URL,
-  ollamaModel: (process.env.OLLAMA_MODEL || '').trim(),
+  ollamaModel: (process.env.OLLAMA_MODEL || 'auto').trim(),
   ollamaBaseUrl: (process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL).trim(),
+  // Domyślnie TYLKO Ollama. Inna kolejność: LLM_PROVIDERS="gemini,xai,ollama".
+  providers: (process.env.LLM_PROVIDERS || 'ollama')
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter((name): name is 'gemini' | 'xai' | 'ollama' => name === 'gemini' || name === 'xai' || name === 'ollama'),
 };
+// Awaryjny silnik without_nlp, gdy modele zawiodą — domyślnie wyłączony (CHAT_LOCAL_FALLBACK=on włącza).
+const CHAT_LOCAL_FALLBACK = /^(1|on|true|yes|tak)$/i.test((process.env.CHAT_LOCAL_FALLBACK || 'off').trim());
+// Stare API chmurowe (OpenRouter, Groq/xAI w konsoli HyperOS) działają tylko, gdy LLM_PROVIDERS zawiera gemini lub xai.
+const CLOUD_LLM_ENABLED = (LLM_CHAIN_CONFIG.providers ?? []).some((name) => name === 'gemini' || name === 'xai');
+const usesOllama = () => configuredProviders(LLM_CHAIN_CONFIG).includes('ollama');
 // Lokalny model na CPU potrzebuje więcej czasu niż API w chmurze.
-const LLM_CHAT_TIMEOUT_MS = Math.max(15, Number(process.env.LLM_TIMEOUT_SEC) || (LLM_CHAIN_CONFIG.ollamaModel ? 240 : 70)) * 1000;
+const LLM_CHAT_TIMEOUT_MS = Math.max(15, Number(process.env.LLM_TIMEOUT_SEC) || (usesOllama() ? 240 : 70)) * 1000;
 const llmProviderLabel = (provider: string) =>
   provider === 'gemini' ? 'Google Gemini' : provider === 'xai' ? 'xAI' : 'Ollama (lokalnie)';
+const describeLlmProvider = (provider: string) =>
+  provider === 'gemini' ? `Google Gemini (${GEMINI_MODEL})`
+  : provider === 'xai' ? `xAI Grok (${XAI_MODEL || 'auto'})`
+  : `Ollama (model: ${LLM_CHAIN_CONFIG.ollamaModel}, ${LLM_CHAIN_CONFIG.ollamaBaseUrl})`;
 {
-  const chain = [
-    LLM_CHAIN_CONFIG.geminiApiKey ? `Google Gemini (${GEMINI_MODEL})` : null,
-    LLM_CHAIN_CONFIG.xaiApiKey ? `xAI Grok (${XAI_MODEL || 'auto'})` : null,
-    LLM_CHAIN_CONFIG.ollamaModel ? `Ollama (${LLM_CHAIN_CONFIG.ollamaModel} @ ${LLM_CHAIN_CONFIG.ollamaBaseUrl})` : null,
-  ].filter(Boolean);
+  const chain = configuredProviders(LLM_CHAIN_CONFIG).map(describeLlmProvider);
+  if (CHAT_LOCAL_FALLBACK) chain.push('without_nlp');
   console.log(chain.length
-    ? `[CZAT TRIADY] Łańcuch: ${chain.join(' → ')} → without_nlp`
-    : '[CZAT TRIADY] BRAK MODELI (GEMINI_API_KEY / XAI_API_KEY / OLLAMA_MODEL w .env) — agenci odpowiadają tylko silnikiem without_nlp.');
+    ? `[CZAT TRIADY] Silniki: ${chain.join(' → ')}`
+    : '[CZAT TRIADY] BRAK MODELI (LLM_PROVIDERS / klucze API w .env) — czat nie odpowie.');
 }
 const rawEnvPollKey = (process.env.POLLINATIONS_API_KEY || '').trim();
 const POLLINATIONS_API_KEY = rawEnvPollKey.startsWith('sk_')
@@ -2145,26 +2156,22 @@ app.get('/api/ai/status', async (_req, res) => {
     return res.json({
       provider: configuredProviders(LLM_CHAIN_CONFIG).length
         ? configuredProviders(LLM_CHAIN_CONFIG).map(llmProviderLabel).join(' → ')
-        : 'without_nlp (brak kluczy API — tryb lokalny)',
-      model: [
-        LLM_CHAIN_CONFIG.geminiApiKey ? GEMINI_MODEL : null,
-        LLM_CHAIN_CONFIG.xaiApiKey ? (XAI_MODEL || 'auto (xAI)') : null,
-        LLM_CHAIN_CONFIG.ollamaModel || null,
-      ].filter(Boolean).join(' / ') || withoutNlp.version,
-      enabled: true,
-      connection: configuredProviders(LLM_CHAIN_CONFIG).length ? 'api-configured' : 'local-deterministic',
+        : 'brak modelu',
+      model: LLM_CHAIN_CONFIG.ollamaModel && usesOllama() ? LLM_CHAIN_CONFIG.ollamaModel : withoutNlp.version,
+      enabled: configuredProviders(LLM_CHAIN_CONFIG).length > 0 || CHAT_LOCAL_FALLBACK,
+      connection: usesOllama() ? 'local-ollama' : configuredProviders(LLM_CHAIN_CONFIG).length ? 'api-configured' : 'local-deterministic',
       chain: [
-        LLM_CHAIN_CONFIG.geminiApiKey ? `Google Gemini (${GEMINI_MODEL}; zapasowe: ${GEMINI_FALLBACK_MODELS})` : null,
-        LLM_CHAIN_CONFIG.xaiApiKey ? `xAI Grok (${XAI_MODEL || 'automatyczny dobór modelu'})` : null,
-        LLM_CHAIN_CONFIG.ollamaModel ? `Ollama lokalnie (${LLM_CHAIN_CONFIG.ollamaModel})` : null,
-        `without_nlp (${withoutNlp.version}) — ostateczny fallback lokalny`,
+        ...configuredProviders(LLM_CHAIN_CONFIG).map(describeLlmProvider),
+        CHAT_LOCAL_FALLBACK ? `without_nlp (${withoutNlp.version}) — fallback lokalny` : null,
       ].filter(Boolean),
-      fallback: 'Gemini → xAI → Ollama → without_nlp; każdy agent przechodzi dalej niezależnie',
+      fallback: CHAT_LOCAL_FALLBACK
+        ? 'włączony: po awarii modeli odpowiada without_nlp'
+        : 'wyłączony: przy awarii modelu czat zwraca błąd (CHAT_LOCAL_FALLBACK=on włącza without_nlp)',
       hyperOsChain: [
         ...configuredProviders(LLM_CHAIN_CONFIG).map(llmProviderLabel),
-        openRouterActive ? `OpenRouter (${OPENROUTER_MODEL})` : null,
-        fallbackActive ? `Fallback API ${FALLBACK_NLP_BASE_URL} (${FALLBACK_NLP_MODEL})` : null,
-        `LOCAL_NLP_ENGINE (${LOCAL_NLP_VERSION})`,
+        CLOUD_LLM_ENABLED && openRouterActive ? `OpenRouter (${OPENROUTER_MODEL})` : null,
+        CLOUD_LLM_ENABLED && fallbackActive ? `Fallback API ${FALLBACK_NLP_BASE_URL} (${FALLBACK_NLP_MODEL})` : null,
+        CHAT_LOCAL_FALLBACK ? `LOCAL_NLP_ENGINE (${LOCAL_NLP_VERSION})` : null,
       ].filter(Boolean),
       protocol: '/api/triad/command',
       chatProtocol: '/api/triad/message',
@@ -4493,14 +4500,14 @@ app.post('/api/hyperos/console', async (req, res) => {
         history: [],
         message: hyperMessages[1].content,
         maxOutputTokens: 600,
-      }, AbortSignal.timeout(65000));
+      }, AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS));
       reply = result.text;
       nlpProvider = `${llmProviderLabel(result.provider)} (${result.model})`;
     } catch (err: any) {
       pushSystemLog('warn', 'KERNEL', `[HYPEROS] Gemini/xAI niedostępne: ${err?.message || err}`);
     }
   }
-  if (!reply && OPENROUTER_API_KEY) {
+  if (!reply && OPENROUTER_API_KEY && CLOUD_LLM_ENABLED) {
     try {
       reply = await generateOpenRouterContent(hyperMessages, AbortSignal.timeout(65000));
       nlpProvider = `OpenRouter (${OPENROUTER_MODEL})`;
@@ -4508,13 +4515,19 @@ app.post('/api/hyperos/console', async (req, res) => {
       pushSystemLog('warn', 'KERNEL', `[HYPEROS] OpenRouter niedostępny: ${err?.message || err} — próbuję fallback API.`);
     }
   }
-  if (!reply && FALLBACK_NLP_API_KEY) {
+  if (!reply && FALLBACK_NLP_API_KEY && CLOUD_LLM_ENABLED) {
     try {
       reply = await generateFallbackNlpContent(hyperMessages, AbortSignal.timeout(45000));
       nlpProvider = `Fallback API (${FALLBACK_NLP_MODEL})`;
     } catch (err: any) {
       pushSystemLog('warn', 'KERNEL', `[HYPEROS] Fallback API niedostępny: ${err?.message || err} — fallback lokalny.`);
     }
+  }
+  if (!reply && !CHAT_LOCAL_FALLBACK) {
+    return res.status(502).json({
+      success: false,
+      error: 'Model Ollama nie odpowiedział (sprawdź: ollama serve, npm run setup:ollama). Silniki zapasowe są wyłączone.',
+    });
   }
   if (!reply) {
     const classic = new HyperspaceOS().processCommand(clean);
@@ -4856,10 +4869,16 @@ app.post('/api/triad/message', async (req, res) => {
 
   // CZAT TRIADY: swobodna rozmowa — Gemini → xAI (Grok) → Ollama (lokalny model) → without_nlp.
   const llmProviders = configuredProviders(LLM_CHAIN_CONFIG);
-  if (attachments.some((attachment) => attachment.mimeType) && llmProviders.length === 0) {
+  if (llmProviders.length === 0 && !CHAT_LOCAL_FALLBACK) {
+    return res.status(503).json({
+      success: false,
+      error: 'Brak skonfigurowanego modelu czatu. Ustaw LLM_PROVIDERS="ollama" (i uruchom Ollamę: npm run setup:ollama) albo klucze API w .env.',
+    });
+  }
+  if (attachments.some((attachment) => attachment.mimeType === 'application/pdf') && !llmProviders.includes('gemini')) {
     return res.status(400).json({
       success: false,
-      error: 'Załączniki PDF/JPEG wymagają modelu (GEMINI_API_KEY, XAI_API_KEY lub OLLAMA_MODEL w .env). Bez modelu działa tylko tekst (without_nlp).',
+      error: 'Załączniki PDF obsługuje tylko Gemini (GEMINI_API_KEY + LLM_PROVIDERS). Ollama przyjmuje tekst i zdjęcia (model z obsługą obrazów).',
     });
   }
 
@@ -4875,7 +4894,8 @@ app.post('/api/triad/message', async (req, res) => {
     const binaryAttachments = attachments
       .filter((attachment) => attachment.mimeType)
       .map((attachment) => ({ name: attachment.name, mimeType: attachment.mimeType!, content: attachment.content }));
-    const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS);
+    // Lokalna Ollama obsługuje agentów po kolei, więc limit rośnie z liczbą agentów.
+    const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS * (usesOllama() ? targetAgents.length : 1));
 
     const results = await Promise.all(targetAgents.map(async (agent) => {
       if (llmProviders.length > 0) {
@@ -4889,10 +4909,13 @@ app.post('/api/triad/message', async (req, res) => {
           if (result.failures.length) {
             pushSystemLog('warn', 'KERNEL', `[CZAT] ${agent}: ${result.failures.join(' | ')} — odpowiedział ${result.provider} (${result.model}).`);
           }
-          return { agent, text: result.text, engine: `${result.provider}:${result.model}`, llm: true };
+          return { agent, text: result.text, engine: `${result.provider}:${result.model}`, llm: true, error: undefined as string | undefined };
         } catch (error: any) {
           const failures = error instanceof LlmChainError ? error.failures.join(' | ') : String(error?.message || error);
-          pushSystemLog('warn', 'KERNEL', `[CZAT] ${agent}: modele niedostępne (${failures}) — fallback without_nlp.`);
+          pushSystemLog('warn', 'KERNEL', `[CZAT] ${agent}: modele niedostępne (${failures})${CHAT_LOCAL_FALLBACK ? ' — fallback without_nlp.' : '.'}`);
+          if (!CHAT_LOCAL_FALLBACK) {
+            return { agent, text: '', engine: 'error', llm: false, error: `${agent}: ${failures}` };
+          }
         }
       }
       const offlinePrefix = llmProviders.length > 0 ? '[API OFFLINE — without_nlp] ' : '';
@@ -4902,8 +4925,18 @@ app.post('/api/triad/message', async (req, res) => {
         text: offlinePrefix + buildWithoutNlpAgentReply(agent, analysis, cleanMessage, includeHeader),
         engine: 'without_nlp',
         llm: false,
+        error: undefined as string | undefined,
       };
     }));
+
+    const failed = results.filter((result) => result.error);
+    if (failed.length > 0) {
+      // Bez awaryjnego silnika nic nie zapisujemy do historii — operator widzi prawdziwy powód awarii.
+      return res.status(502).json({
+        success: false,
+        error: `Model Ollama nie odpowiedział. ${failed.map((result) => result.error).join(' | ')}`.slice(0, 900),
+      });
+    }
 
     const replyMap = {} as Record<ChatAgentName, string>;
     const engines = {} as Record<ChatAgentName, string>;
