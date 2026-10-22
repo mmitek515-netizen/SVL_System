@@ -50,7 +50,12 @@ import {
 import { cleanAgentReplyText, extractAgentCommands } from './src/kernel/agentCommands';
 
 dotenv.config();
-dotenv.config({ path: '.env.local', override: true });
+// .env.local nadpisuje .env, ale puste wartości nie kasują kluczy z sekretów Codespaces / .env.
+if (fs.existsSync('.env.local')) {
+  for (const [name, value] of Object.entries(dotenv.parse(fs.readFileSync('.env.local')))) {
+    if (value.trim()) process.env[name] = value;
+  }
+}
 
 const execFileAsync = promisify(execFile);
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
@@ -81,6 +86,15 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   xaiModel: XAI_MODEL,
   xaiBaseUrl: XAI_BASE_URL,
 };
+{
+  const chain = [
+    LLM_CHAIN_CONFIG.geminiApiKey ? `Google Gemini (${GEMINI_MODEL})` : null,
+    LLM_CHAIN_CONFIG.xaiApiKey ? `xAI Grok (${XAI_MODEL || 'auto'})` : null,
+  ].filter(Boolean);
+  console.log(chain.length
+    ? `[CZAT TRIADY] Łańcuch: ${chain.join(' → ')} → without_nlp`
+    : '[CZAT TRIADY] BRAK KLUCZY API (GEMINI_API_KEY / XAI_API_KEY w .env) — agenci odpowiadają tylko silnikiem without_nlp.');
+}
 const rawEnvPollKey = (process.env.POLLINATIONS_API_KEY || '').trim();
 const POLLINATIONS_API_KEY = rawEnvPollKey.startsWith('sk_')
   ? rawEnvPollKey
