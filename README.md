@@ -71,6 +71,27 @@ npm run check:gemini
 The diagnostic never prints the API key and does not send chat history or
 application data. It sends a short test prompt to each configured Gemini model.
 
+## Instant best-fit replies
+
+Short chat messages (up to 8 words) are matched against a matrix of
+"arguments" before any model is called — the same best-fit idea as the
+ABARKUS prototype. The best match answers immediately from live system
+data; no match falls through to the model (Ollama) as before.
+
+| Argument | Agent | Example | Data |
+|---|---|---|---|
+| `SYSTEM_STATUS` | Alex | `status` | kernel version, mode, mission, model chain |
+| `RESOURCES` | Alex | `ile ramu` | RAM, CPU load, disk, uptime |
+| `OLLAMA_STATUS` | Astyria | `ollama` | reachability, installed/loaded models |
+| `SYSTEM_LOGS` | Astyria | `pokaż błędy` | last 10 system log entries |
+| `GIT_STATUS` | Aurelius | `git` | branch, last commit, uncommitted files |
+| `HELP` | Aurelius | `pomoc` | this list |
+
+Prefix a message with `@model` to force a model reply. Set
+`BEST_FIT_ROUTER="off"` to disable the router. Matching lives in
+`src/kernel/bestFitRouter.ts`; the arguments are `BEST_FIT_MATRIX` in
+`server.ts`.
+
 ## Agent commands
 
 The typed agent-command API is `POST /api/triad/command`. It validates a

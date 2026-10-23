@@ -52,6 +52,12 @@ import {
 } from './src/kernel/chatAttachments';
 import { cleanAgentReplyText, extractAgentCommands } from './src/kernel/agentCommands';
 import {
+  formatBestFitReport,
+  selectBestFit,
+  stripForceLlmPrefix,
+  type BestFitArgument,
+} from './src/kernel/bestFitRouter';
+import {
   buildOllamaRecommendations,
   collectOllamaDiagnostics,
   describeOllamaDiagnostics,
@@ -4136,6 +4142,160 @@ interface ChatExecResult {
   output: string;
 }
 
+// --- BEST-FIT ROUTER (zasada ABARKUS v85.0): natychmiastowe odpowiedzi z prawdziwych danych systemu ---
+// Krótkie wiadomości są dopasowywane do matrycy argumentów; najlepszy argument odpowiada od razu,
+// bez modelu. Brak dopasowania = DEFAULT → model (Ollama). BEST_FIT_ROUTER=off wyłącza router,
+// a prefiks „@model" wymusza odpowiedź modelu dla pojedynczej wiadomości.
+const BEST_FIT_ROUTER_ENABLED = (process.env.BEST_FIT_ROUTER || 'on').trim().toLowerCase() !== 'off';
+
+const formatBytesGb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+
+const BEST_FIT_MATRIX: Array<BestFitArgument<null>> = [
+  {
+    id: 'SYSTEM_STATUS',
+    owner: 'Alex',
+    description: 'wersja jądra, tryb, agenci, misja, łańcuch modeli',
+    keywords: ['status', 'stan', 'wersj', 'kernel', 'jadr', 'misj', 'raport'],
+    run: async () => {
+      const state = await getPythonKernelState().catch(() => null);
+      const config = state?.store?.config ?? {};
+      const chain = configuredProviders(LLM_CHAIN_CONFIG).map(describeLlmProvider);
+      return [
+        `Wersja jądra   : ${state?.sys_version || config.sys_version || 'nieznana'}`,
+        `Tryb           : ${config.mode || 'nieznany'}`,
+        `Agenci         : ${(config.active_profiles || CHAT_AGENT_NAMES).join(', ')}`,
+        `Misja ciągła   : ${continuousMissionEnabled ? 'AKTYWNA' : 'WSTRZYMANA'}`,
+        `Auto-naprawa   : ${autoRepairEnabled ? 'WŁĄCZONA' : 'WYŁĄCZONA'}`,
+        `Model czatu    : ${chain.length ? chain.join(' → ') : 'brak'}`,
+        `Wiadomości     : ${Array.isArray(state?.store?.chat_history) ? state.store.chat_history.length : 0} w historii`,
+      ].join('\n');
+    },
+  },
+  {
+    id: 'RESOURCES',
+    owner: 'Alex',
+    description: 'RAM, CPU, obciążenie, dysk, czas pracy',
+    keywords: ['ram', 'pamiec', 'cpu', 'procesor', 'zasob', 'obciaz', 'uptime', 'dysk', 'load'],
+    run: () => {
+      const total = os.totalmem();
+      const free = os.freemem();
+      const [l1, l5, l15] = os.loadavg();
+      let disk = 'niedostępne';
+      try {
+        const st = fs.statfsSync(process.cwd());
+        disk = `${formatBytesGb(st.bavail * st.bsize)} wolne z ${formatBytesGb(st.blocks * st.bsize)}`;
+      } catch { /* statfs niedostępne na tej platformie */ }
+      const up = os.uptime();
+      return [
+        `RAM      : ${formatBytesGb(total - free)} / ${formatBytesGb(total)} (${Math.round(((total - free) / total) * 100)}%)`,
+        `CPU      : ${os.cpus().length} rdzeni · load ${l1.toFixed(2)} / ${l5.toFixed(2)} / ${l15.toFixed(2)}`,
+        `Dysk     : ${disk}`,
+        `Uptime   : ${Math.floor(up / 3600)} h ${Math.floor((up % 3600) / 60)} min`,
+        `Proces   : ${formatBytesGb(process.memoryUsage().rss)} RSS (serwer SVL)`,
+      ].join('\n');
+    },
+  },
+  {
+    id: 'OLLAMA_STATUS',
+    owner: 'Astyria',
+    description: 'czy Ollama działa, zainstalowane i załadowane modele',
+    keywords: ['ollam', 'model', 'llm'],
+    run: async () => {
+      const base = (LLM_CHAIN_CONFIG.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL).replace(/\/+$/, '');
+      try {
+        const [tagsRes, psRes] = await Promise.all([
+          fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(2500) }),
+          fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(2500) }).catch(() => null),
+        ]);
+        const tags: any = tagsRes.ok ? await tagsRes.json() : { models: [] };
+        const ps: any = psRes && psRes.ok ? await psRes.json() : { models: [] };
+        const installed = (tags.models || []).map((m: any) => `${m.name} (${formatBytesGb(m.size || 0)})`);
+        const loaded = (ps.models || []).map((m: any) => m.name);
+        return [
+          `Ollama     : DZIAŁA (${base})`,
+          `Model czatu: ${LLM_CHAIN_CONFIG.ollamaModel || 'auto'}`,
+          `Załadowane : ${loaded.length ? loaded.join(', ') : 'żaden (pierwsza odpowiedź będzie wolniejsza)'}`,
+          `Dostępne   : ${installed.length ? installed.join(', ') : 'brak modeli — uruchom npm run setup:ollama'}`,
+        ].join('\n');
+      } catch (err: any) {
+        return `Ollama     : NIEOSIĄGALNA (${base})\nPowód      : ${String(err?.message || err).slice(0, 200)}\nStart      : ollama serve  (albo npm run setup:ollama)`;
+      }
+    },
+  },
+  {
+    id: 'SYSTEM_LOGS',
+    owner: 'Astyria',
+    description: 'ostatnie wpisy logu systemowego',
+    keywords: ['log', 'blad', 'bled', 'incydent', 'awari', 'error'],
+    run: () => {
+      const recent = systemLogs.slice(-10).reverse();
+      if (recent.length === 0) return 'Log systemowy jest pusty.';
+      const problems = systemLogs.filter((e) => e.level === 'error' || e.level === 'warn').length;
+      return [
+        `Ostatnie ${recent.length} z ${systemLogs.length} wpisów (ostrzeżenia/błędy łącznie: ${problems}):`,
+        ...recent.map((e) => `${e.timestamp} [${e.level.toUpperCase()}] ${e.source}: ${e.message.slice(0, 140)}`),
+      ].join('\n');
+    },
+  },
+  {
+    id: 'GIT_STATUS',
+    owner: 'Aurelius',
+    description: 'gałąź, niezatwierdzone zmiany, ostatni commit',
+    keywords: ['git', 'commit', 'repo', 'branch', 'galaz', 'push'],
+    run: async () => {
+      try {
+        const [{ stdout: status }, { stdout: last }] = await Promise.all([
+          execFileAsync('git', ['status', '--short', '--branch'], { timeout: 5000 }),
+          execFileAsync('git', ['log', '-1', '--format=%h %s (%cr)'], { timeout: 5000 }),
+        ]);
+        const lines = status.trim().split('\n');
+        const changes = lines.slice(1);
+        return [
+          `Gałąź        : ${lines[0].replace(/^##\s*/, '')}`,
+          `Ostatni commit: ${last.trim()}`,
+          `Zmiany       : ${changes.length ? `${changes.length} plik(ów)` : 'brak — czysto'}`,
+          ...changes.slice(0, 12).map((l) => `  ${l}`),
+        ].join('\n');
+      } catch (err: any) {
+        return `Git niedostępny: ${String(err?.message || err).slice(0, 200)}`;
+      }
+    },
+  },
+  {
+    id: 'HELP',
+    owner: 'Aurelius',
+    description: 'lista natychmiastowych argumentów',
+    keywords: ['pomoc', 'help', 'komend', 'umiesz', 'potrafisz'],
+    run: () => [
+      'Natychmiastowe argumenty (krótka wiadomość, odpowiedź bez modelu):',
+      ...BEST_FIT_MATRIX.map((a) => `• ${a.id} — ${a.description} (np. „${a.keywords[0]}")`),
+      '',
+      'Dłuższe pytania idą do modelu. Wymuś model prefiksem: @model <pytanie>',
+      'Polecenia: /exec <powłoka>, !<powłoka>, /propose …',
+    ].join('\n'),
+  },
+];
+
+async function tryBestFitReply(message: string): Promise<{ id: string; owner: ChatAgentName; text: string } | null> {
+  if (!BEST_FIT_ROUTER_ENABLED) return null;
+  const match = selectBestFit(BEST_FIT_MATRIX, message);
+  if (!match) return null;
+  const started = Date.now();
+  let body: string;
+  try {
+    body = await match.argument.run(null, message);
+  } catch (err: any) {
+    pushSystemLog('warn', 'KERNEL', `[BEST-FIT] ${match.argument.id} nie powiódł się: ${err?.message || err} — przekazuję do modelu.`);
+    return null;
+  }
+  pushSystemLog('info', 'KERNEL', `[BEST-FIT] '${message.slice(0, 60)}' → ${match.argument.id} (${Date.now() - started} ms).`);
+  return {
+    id: match.argument.id,
+    owner: match.argument.owner,
+    text: formatBestFitReport({ argumentId: match.argument.id, confidence: match.confidence, elapsedMs: Date.now() - started }, body),
+  };
+}
+
 async function tryExecuteChatCommand(message: string): Promise<ChatExecResult | null> {
   const trimmed = message.trim();
   if (!trimmed) return null;
@@ -4833,7 +4993,7 @@ app.post('/api/triad/message', async (req, res) => {
       error: 'Polecenia czatu nie mogą być wysyłane razem z załącznikami.',
     });
   }
-  const cleanMessage = formatChatMessage(message, attachments);
+  const cleanMessage = formatChatMessage(stripForceLlmPrefix(message), attachments);
   const requestedTarget: unknown = req.body?.agent === undefined ? 'triad' : req.body.agent;
   const approvalCommand: ChatApprovalCommand | null = parseChatApprovalCommand(message);
   const maxMessageLength = approvalCommand ? MAX_PROPOSED_FILE_SIZE + 500 : MAX_CHAT_MESSAGE_LENGTH;
@@ -4978,6 +5138,33 @@ app.post('/api/triad/message', async (req, res) => {
         replies: execReplies,
         executed: true,
         state: execState,
+      });
+    }
+  }
+
+  // BEST-FIT (natychmiast): krótkie pytania o stan systemu dostają odpowiedź z prawdziwych danych, bez modelu.
+  if (attachments.length === 0) {
+    const bestFit = await tryBestFitReply(message);
+    if (bestFit) {
+      const fitAgents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
+      const answering = fitAgents.includes(bestFit.owner) ? bestFit.owner : fitAgents[0];
+      const fitReplies = Object.fromEntries(fitAgents.map((agent) => [
+        agent,
+        agent === answering
+          ? bestFit.text
+          : `[NATYCHMIAST] Odpowiedź z argumentu ${bestFit.id} podał ${answering}.`,
+      ])) as Partial<Record<ChatAgentName, string>>;
+      const fitState = await persistChatCommandReplies(persistedMessage, target, fitReplies);
+      return res.json({
+        success: true,
+        agent: target,
+        engines: Object.fromEntries(fitAgents.map((agent) => [agent, `best-fit:${bestFit.id}`])),
+        reply: target === 'triad'
+          ? fitAgents.map((agent) => `${agent}:\n${fitReplies[agent]}`).join('\n\n')
+          : fitReplies[target],
+        replies: fitReplies,
+        instant: true,
+        state: fitState,
       });
     }
   }
