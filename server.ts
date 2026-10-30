@@ -3091,6 +3091,7 @@ async function autoSyncGitChanges(): Promise<void> {
       ['test', []],
       ['run', ['lint']],
       ['run', ['build']],
+      ['run', ['build:server']],
     ] as const;
     for (const [command, args] of validations) {
       await execFileAsync('npm', [command, ...args], { timeout: 180000 });
@@ -3173,13 +3174,15 @@ function sanitizeCommitPaths(files: unknown): string[] | null {
 
 async function triadGitCommit(agent: string, message: string, files: string[], origin: string): Promise<string | null> {
   const author = TRIADA_COMMIT_AUTHORS[agent] ?? TRIADA_COMMIT_AUTHORS.triad;
-  const existing = files.filter((file) => {
+  const existing = (await Promise.all(files.map(async (file) => {
+    if (fs.existsSync(path.resolve(file))) return file;
     try {
-      return fs.existsSync(path.resolve(file));
+      await execFileAsync('git', ['ls-files', '--error-unmatch', '--', file], { timeout: 5000 });
+      return file;
     } catch {
-      return false;
+      return null;
     }
-  });
+  }))).filter((file): file is string => file !== null);
   if (existing.length === 0) return null;
 
   await execFileAsync('git', ['add', '--', ...existing], { timeout: 15000 });
