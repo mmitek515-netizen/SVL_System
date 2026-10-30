@@ -12,7 +12,7 @@ STORE_PATH = Path(
 )
 DEFAULT_STORE = {
     "config": {
-        "sys_version": "8.6.0-WithoutNLP",
+        "sys_version": "8.8.0-Triada-BestOS-Mission",
         "mode": "Local-Deterministic-Production",
         "active_profiles": ["Alex", "Astyria", "Aurelius"],
         "sovereign_mode": True,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Instalacja i konfiguracja Ollamy dla czatu Triady (Alex, Astyria, Aurelius).
 #
-#   bash scripts/setup-ollama.sh               # domyślnie llama3.2 (tekstowy, bez Vision)
+#   bash scripts/setup-ollama.sh               # domyślnie gemma3:4b (multimodalny, z Vision, ~3.3 GB)
 #   bash scripts/setup-ollama.sh gemma4:12b    # wymuszenie konkretnego modelu
 #   ENV_FILE=/etc/bastillaos/system.env bash scripts/setup-ollama.sh
 #
@@ -38,9 +38,9 @@ disk_gb=$(df -Pk "$HOME" | awk 'NR==2 { printf "%d", $4 / 1024 / 1024 }')
 log "Sprzęt: RAM ${ram_gb} GB, CPU ${cpus} rdzeni, GPU ${vram_gb} GB VRAM, wolne miejsce ${disk_gb} GB."
 
 # ── 2. Wybór modelu ─────────────────────────────────────────────────────────
-# llama3.2 to wariant tekstowy; model Vision ma osobny tag llama3.2-vision.
-model="${REQUESTED_MODEL:-llama3.2}"
-need_gb=4
+# gemma3:4b to lekki wariant multimodalny z Vision (4B, ~3.3 GB pobierania).
+model="${REQUESTED_MODEL:-gemma3:4b}"
+need_gb=10
 log "Wybrany model: $model"
 if [ "$disk_gb" -lt $(( need_gb + 2 )) ]; then
   die "Za mało miejsca na dysku dla $model (potrzeba ~$(( need_gb + 2 )) GB, wolne ${disk_gb} GB). Podaj mniejszy model jako argument."
@@ -55,19 +55,22 @@ fi
 log "Ollama: $(ollama --version 2>/dev/null | head -1)"
 
 # ── 4. Strojenie serwera Ollamy ──────────────────────────────────────────────
-# FLASH_ATTENTION + KV_CACHE q8_0: ~2x mniej pamięci na kontekst, szybsze przetwarzanie promptu.
+# FLASH_ATTENTION + KV_CACHE q8_0 tylko na GPU: ~2x mniej pamięci na kontekst, szybsze przetwarzanie promptu.
+# Na czystym CPU te flagi SPOWALNIAJĄ prefill (zmierzone ~-40%), więc są pomijane bez GPU.
 # KEEP_ALIVE: model zostaje w pamięci (bez ponownego ładowania wag przy każdej wiadomości).
 # NUM_PARALLEL: trzej agenci Triady mogą odpowiadać równocześnie, gdy starczy pamięci.
 if [ "$vram_gb" -ge 8 ] || [ "$ram_gb" -ge 16 ]; then parallel=3; else parallel=1; fi
 ctx=4096
 declare -A TUNING=(
-  [OLLAMA_FLASH_ATTENTION]=1
-  [OLLAMA_KV_CACHE_TYPE]=q8_0
   [OLLAMA_KEEP_ALIVE]=24h
   [OLLAMA_NUM_PARALLEL]=$parallel
   [OLLAMA_MAX_LOADED_MODELS]=1
   [OLLAMA_CONTEXT_LENGTH]=$ctx
 )
+if [ "$vram_gb" -ge 1 ]; then
+  TUNING[OLLAMA_FLASH_ATTENTION]=1
+  TUNING[OLLAMA_KV_CACHE_TYPE]=q8_0
+fi
 tuning_args=()
 for key in "${!TUNING[@]}"; do tuning_args+=("$key=${TUNING[$key]}"); done
 log "Strojenie serwera: ${tuning_args[*]}"

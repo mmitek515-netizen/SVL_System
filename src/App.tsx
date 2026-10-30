@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DataStore,
   INITIAL_DATA_STORE,
@@ -77,39 +77,28 @@ export default function App() {
     (window as any).setActiveTab = setActiveTab;
   }, []);
 
+  // Ref mirrors isAgentLoading so in-flight polls never overwrite a freshly returned chat state
+  const isAgentLoadingRef = useRef(isAgentLoading);
+  useEffect(() => {
+    isAgentLoadingRef.current = isAgentLoading;
+  }, [isAgentLoading]);
+
   // Periodic live sync with real Python SVL Kernel on disk
   useEffect(() => {
     let isMounted = true;
     const fetchState = async () => {
-      if (isAgentLoading) return;
+      if (isAgentLoadingRef.current) return;
       try {
         const res = await fetch('/api/kernel/state');
-        if (res.ok && isMounted) {
+        if (res.ok && isMounted && !isAgentLoadingRef.current) {
           const data = await res.json();
-          if (data && data.store) {
+          if (data && data.store && !isAgentLoadingRef.current) {
             const incomingStore = normalizeDataStore(data.store);
-            setDataStore((prev) => {
-              const prevChat = prev.chat_history || [];
-              const serverChat = incomingStore.chat_history || [];
-              const lastPrev = prevChat[prevChat.length - 1];
-              const lastServer = serverChat[serverChat.length - 1];
-
-              const chatChanged =
-                serverChat.length !== prevChat.length ||
-                lastPrev?.tekst !== lastServer?.tekst ||
-                lastPrev?.agent !== lastServer?.agent;
-
-              const updatesChanged =
-                (incomingStore.update_history || []).length !== (prev.update_history || []).length;
-
-              const configChanged =
-                incomingStore.config?.sys_version !== prev.config?.sys_version;
-
-              if (chatChanged || updatesChanged || configChanged) {
-                return incomingStore;
-              }
-              return prev;
-            });
+            setDataStore((prev) =>
+              // Adopt any difference (chat, config, update history, apps…) so chat-driven
+              // changes are reflected immediately, not only version/chat-length bumps.
+              JSON.stringify(prev) === JSON.stringify(incomingStore) ? prev : incomingStore
+            );
           }
         }
       } catch (err) {
@@ -123,7 +112,7 @@ export default function App() {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [isAgentLoading, setDataStore]);
+  }, [setDataStore]);
 
   // Sync with LocalStorage whenever dataStore changes
   useEffect(() => {
@@ -171,8 +160,8 @@ export default function App() {
           return;
         }
       }
-      // Fallback direct state fetch if mission endpoint didn't return store
-      const stateRes = await fetch('/api/kernel/state');
+      // Fallback direct state fetch if mission endpoint didn't return store (fresh=1 bypasses server cache)
+      const stateRes = await fetch('/api/kernel/state?fresh=1');
       if (stateRes.ok) {
         const stateData = await stateRes.json();
         if (stateData?.store) {

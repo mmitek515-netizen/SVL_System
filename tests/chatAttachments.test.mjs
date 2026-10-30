@@ -25,6 +25,15 @@ test('validates and formats bounded text attachments', () => {
   assert.equal(formatChatMessage('', attachments).startsWith('Przeanalizuj załączone pliki.'), true);
 });
 
+test('accepts filenames with Polish characters and parentheses', () => {
+  const attachments = [
+    { name: 'zdjęcie (1).jpg', content: '/9j/4A==', mimeType: 'image/jpeg' },
+    { name: 'Załącznik_umowa.pdf', content: 'JVBERi0xLjc=', mimeType: 'application/pdf' },
+    { name: 'notatki żółte.txt', content: 'treść' },
+  ];
+  assert.deepEqual(validateChatAttachments(attachments), { valid: true, attachments });
+});
+
 test('rejects unsupported names, binary content and oversized attachments', () => {
   assert.equal(validateChatAttachments([{ name: '../secrets.txt', content: 'x' }]).valid, false);
   assert.equal(validateChatAttachments([{ name: 'prompt<file>.txt', content: 'x' }]).valid, false);

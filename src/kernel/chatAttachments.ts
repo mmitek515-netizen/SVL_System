@@ -53,8 +53,10 @@ export function validateChatAttachments(value: unknown): ChatAttachmentValidatio
     }
     const { name, content } = entry;
     const extension = name.split('.').pop()?.toLowerCase();
+    // Nazwy plików mogą zawierać litery Unicode (np. polskie znaki), cyfry, spacje, kropki,
+    // podkreślenia, myślniki i nawiasy — bez separatorów ścieżek ani znaków specjalnych HTML.
     if (
-      !/^[a-zA-Z0-9][a-zA-Z0-9_. -]{0,127}$/.test(name) ||
+      !/^[\p{L}\p{N}][\p{L}\p{N} _.()\-]{0,127}$/u.test(name) ||
       !extension ||
       !ALLOWED_EXTENSIONS.has(extension)
     ) {

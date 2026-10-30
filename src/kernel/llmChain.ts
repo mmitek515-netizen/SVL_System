@@ -50,6 +50,8 @@ export interface LlmChainConfig {
   ollamaKeepAlive?: string;
   /** Okno kontekstu w tokenach — mniejsze = szybszy start odpowiedzi i mniej RAM (domyślnie 4096). */
   ollamaNumCtx?: number;
+  /** Maksymalna długość odpowiedzi w tokenach — mniejsza = szybsza odpowiedź (domyślnie 2048). */
+  ollamaNumPredict?: number;
   /** Liczba wątków CPU; 0/brak = automatycznie. */
   ollamaNumThread?: number;
   /** Kolejność i wybór dostawców (np. ['ollama'] = tylko Ollama). Brak = wszyscy skonfigurowani. */
@@ -93,8 +95,8 @@ export const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.co
 export const DEFAULT_XAI_BASE_URL = 'https://api.x.ai/v1';
 export const DEFAULT_XAI_MODEL = 'grok-3-mini';
 export const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
-/** Lokalny model na CPU jest wolniejszy — krótsze odpowiedzi. */
-export const OLLAMA_MAX_OUTPUT_TOKENS = 600;
+/** Górny limit tokenów odpowiedzi lokalnego modelu — podniesiony, by odpowiedzi nie były ucinane. */
+export const OLLAMA_MAX_OUTPUT_TOKENS = 2048;
 export const OLLAMA_DEFAULT_KEEP_ALIVE = '24h';
 export const OLLAMA_DEFAULT_NUM_CTX = 4096;
 
@@ -106,9 +108,12 @@ export function parseKeepAlive(value: string | undefined): string | number {
 }
 
 function ollamaOptions(config: LlmChainConfig, request: LlmRequest): Record<string, number> {
+  const configuredPredict = config.ollamaNumPredict && config.ollamaNumPredict > 0
+    ? Math.floor(config.ollamaNumPredict)
+    : OLLAMA_MAX_OUTPUT_TOKENS;
   return {
     temperature: request.temperature ?? 0.7,
-    num_predict: Math.min(request.maxOutputTokens ?? OLLAMA_MAX_OUTPUT_TOKENS, OLLAMA_MAX_OUTPUT_TOKENS),
+    num_predict: Math.min(request.maxOutputTokens ?? configuredPredict, OLLAMA_MAX_OUTPUT_TOKENS),
     num_ctx: Math.max(1024, Math.floor(config.ollamaNumCtx || OLLAMA_DEFAULT_NUM_CTX)),
     ...(config.ollamaNumThread && config.ollamaNumThread > 0 ? { num_thread: Math.floor(config.ollamaNumThread) } : {}),
   };
@@ -180,7 +185,7 @@ export async function generateGemini(
         contents,
         generationConfig: {
           temperature: request.temperature ?? 0.7,
-          maxOutputTokens: request.maxOutputTokens ?? 1200,
+          maxOutputTokens: request.maxOutputTokens ?? 2048,
         },
       }),
       signal,
@@ -273,7 +278,7 @@ export async function generateXai(
         model,
         messages,
         temperature: request.temperature ?? 0.7,
-        max_tokens: request.maxOutputTokens ?? 1200,
+        max_tokens: request.maxOutputTokens ?? 2048,
       }),
       signal,
     });
@@ -324,9 +329,41 @@ export function pickOllamaChatModel(models: Array<{ name: string; size?: number 
 }
 
 const resolvedOllamaModels = new Map<string, string>();
+const ollamaVisionSupport = new Map<string, boolean>();
 
 export function resetOllamaModelCache(): void {
   resolvedOllamaModels.clear();
+  ollamaVisionSupport.clear();
+}
+
+/** Czy model Ollamy analizuje obrazy (capability "vision" z /api/show). Przy braku odpowiedzi nie blokuje. */
+async function ollamaSupportsVision(
+  base: string,
+  model: string,
+  doFetch: typeof fetch,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const key = `${base}|${model}`;
+  const cached = ollamaVisionSupport.get(key);
+  if (cached !== undefined) return cached;
+  try {
+    const response = await doFetch(`${base}/api/show`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model }),
+      signal,
+    });
+    if (!response.ok) return true;
+    const data: any = await response.json();
+    const capabilities = Array.isArray(data?.capabilities) ? data.capabilities : null;
+    if (!capabilities) return true;
+    const supported = capabilities.includes('vision');
+    ollamaVisionSupport.set(key, supported);
+    return supported;
+  } catch (error: any) {
+    if (error?.name === 'AbortError') throw error;
+    return true;
+  }
 }
 
 async function resolveOllamaModel(
@@ -368,6 +405,13 @@ export async function generateOllama(
   const images = (request.attachments ?? [])
     .filter((attachment) => attachment.mimeType.startsWith('image/'))
     .map((attachment) => attachment.content);
+  if (images.length > 0 && !(await ollamaSupportsVision(base, model, doFetch, signal))) {
+    throw new LlmProviderError(
+      'ollama',
+      400,
+      `Ollama: model ${model} nie analizuje zdjęć. Pobierz model z obsługą obrazów (np. ollama pull gemma3:4b) albo wyślij załącznik tekstowy.`,
+    );
+  }
   const messages = [
     { role: 'system', content: request.system },
     ...request.history.map((turn) => ({ role: turn.role, content: turn.text })),

@@ -16,18 +16,22 @@ local Ollama-powered chat, local kernel state, diagnostics and application manag
 ```sh
 npm ci
 cp .env.example .env
-ollama pull gemma3:270m
+ollama pull gemma3:4b
 npm run dev
 ```
 
 Ollama runs locally at `http://127.0.0.1:11434`; chat requires no model API key
-or cloud connection. The default `gemma3:270m` model is selected to fit the
-limited CPU/RAM available in small development containers. Larger local models
-need more memory and may not start in constrained environments. Set
+or cloud connection. The default `gemma3:4b` model (4B parameters, ~3.3 GB
+download) needs roughly 5 GB of free RAM and supports image (vision) input; in
+constrained environments pick a smaller model instead (e.g. `llama3.2`, faster
+on CPU but without image analysis). Set
 `OLLAMA_MODEL` to another model already installed in Ollama to change it.
-`GET /api/ai/status` checks the local Ollama service and selected model. Text
-messages are limited to 600 characters with the default model. Text attachments
-are included within that limit; the model does not support PDF or JPEG input.
+`GET /api/ai/status` checks the local Ollama service and selected model. Chat
+replies are capped at 2048 output tokens; set `OLLAMA_NUM_PREDICT` (e.g. 512)
+to shorten replies and speed up CPU-only generation. Text attachments are
+included in the prompt; image attachments (JPEG/PNG) work with vision models
+such as `gemma3:4b` (models without vision reject them with a clear error),
+while PDF input requires the optional Gemini provider.
 The deterministic command protocol works independently of Ollama.
 
 `npm run check:gemini` checks the optional Gemini configuration for the

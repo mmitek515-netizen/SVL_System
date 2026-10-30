@@ -36,7 +36,7 @@ export interface DataStore {
 
 export const INITIAL_DATA_STORE: DataStore = {
   config: {
-    sys_version: "8.5.1-Desktop-Ready",
+    sys_version: "8.8.0-Triada-BestOS-Mission",
     mode: "Local-Deterministic-Production",
     active_profiles: ["Alex", "Astyria", "Aurelius", "si_1"],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
@@ -68,7 +68,7 @@ export const INITIAL_DATA_STORE: DataStore = {
       vcpu: 4,
       ram: "8 GiB",
       storage: "40 GiB NVMe",
-      sys_version: "8.5.1-Desktop-Ready"
+      sys_version: "8.8.0-Triada-BestOS-Mission"
     },
     vm_dalle_3: {
       vm_name: "VM_Dalle_3",
@@ -78,7 +78,7 @@ export const INITIAL_DATA_STORE: DataStore = {
     vm_ten_system: {
       vm_name: "VM_Ten_System",
       status: "DEPLOYED_PRODUCTION",
-      kernel: "v8.5.1-Desktop-Ready",
+      kernel: "v8.8.0-Triada-BestOS-Mission",
       app_version: "1.2.3-NodeReact-VM",
       filesystem: "ext4 (10 GiB)",
       ram_allocation: "4 GiB (<70% Idle Target)",
@@ -261,6 +261,11 @@ export const INITIAL_DATA_STORE: DataStore = {
       wersja: "8.6.0-WithoutNLP",
       data: "2026-10-19 19:10:00 CEST",
       opis: "Misja dla Astyrii: Całkowite usunięcie silnika NLP i pełne wdrożenie projektu without_nlp (Deterministyczny Silnik Harmoniczny Eulera & Fouriera e^(i*omega*t) = cos(omega*t) + i*sin(omega*t)) oraz naprawa czatu i odpowiedzi."
+    },
+    {
+      wersja: "8.8.0-Triada-BestOS-Mission",
+      data: "2026-10-30 08:00:00 CET",
+      opis: "Pełna synchronizacja wersji jądra systemu do v8.8.0-Triada-BestOS-Mission (misja BUILD_BEST_OS): ujednolicenie SYS_VERSION w svlKernel.ts, svl_kernel.py oraz fallbacków wersji w server.ts."
     }
   ],
   chat_history: [
@@ -325,7 +330,7 @@ export const INITIAL_BACKUP_DATA_STORE: DataStore = {
 
 export const OPERATOR_NAME = "Mateusz Mitek";
 export const OPERATOR_TITLE = "Tata";
-export const SYS_VERSION = "8.5.1-Desktop-Ready";
+export const SYS_VERSION = "8.8.0-Triada-BestOS-Mission";
 
 /**
  * Safely normalizes any raw or nested DataStore object (e.g. { store: { config, update_history, chat_history } })

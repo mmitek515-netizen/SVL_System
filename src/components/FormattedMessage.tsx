@@ -31,6 +31,59 @@ function normalizeImageSrc(rawSrc: string): string {
   return trimmed;
 }
 
+/** Bezpośredni link do pliku wideo (mp4/webm/ogv/mov/m4v), opcjonalnie z query string. */
+function isVideoFileUrl(url: string): boolean {
+  return /\.(mp4|webm|ogv|mov|m4v)(\?[^\s]*)?$/i.test(url.trim());
+}
+
+/** Zamienia link YouTube (watch / shorts / youtu.be / embed) na URL osadzenia; null gdy to nie wideo. */
+function getYouTubeEmbedUrl(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl.trim());
+    const host = url.hostname.replace(/^(www\.|m\.)/, '');
+    let id = '';
+    if (host === 'youtu.be') {
+      id = url.pathname.slice(1).split('/')[0] || '';
+    } else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
+      if (url.pathname === '/watch') id = url.searchParams.get('v') || '';
+      else if (/^\/(shorts|embed|live)\//.test(url.pathname)) id = url.pathname.split('/')[2] || '';
+    }
+    return /^[\w-]{6,}$/.test(id) ? `https://www.youtube-nocookie.com/embed/${id}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Odtwarzacz wideo w czacie: pliki (mp4/webm/...) przez <video>, YouTube przez osadzony iframe.
+ */
+const VideoEmbed: React.FC<{ src: string; title?: string }> = ({ src, title }) => {
+  const youTubeUrl = getYouTubeEmbedUrl(src);
+  if (youTubeUrl) {
+    return (
+      <span className="block my-3 rounded-xl overflow-hidden border border-slate-800 bg-black aspect-video shadow-lg shadow-slate-950/40">
+        <iframe
+          src={youTubeUrl}
+          title={title || 'Wideo YouTube'}
+          className="w-full h-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          loading="lazy"
+        />
+      </span>
+    );
+  }
+  return (
+    <span className="block my-3 rounded-xl overflow-hidden border border-slate-800 bg-black shadow-lg shadow-slate-950/40">
+      <video src={src.trim()} controls preload="metadata" className="w-full max-h-[420px]" title={title}>
+        <a href={src} target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline">
+          Pobierz wideo
+        </a>
+      </video>
+    </span>
+  );
+};
+
 /**
  * Image with loading and error states for external graphics (Pollinations/AI & Data URIs)
  */
@@ -179,7 +232,7 @@ function renderInlineContent(text: string): React.ReactNode[] {
   );
 
   const tokenRegex =
-    /(?:\$([^\$\n]+?)\$|\\\(([^\$\n]+?)\\\))|(!\[([^\]]*?)\]\(((?:[^()\n]|\([^()\n]*\))+?)\))|(\[([^\]]*?)\]\(((?:[^()\n]|\([^()\n]*\))+?)\))|(\/(?:api\/pollinations\/image|api\/image)\?[^\s\n\)]+)|(https?:\/\/(?:image\.|gen\.)?pollinations\.ai\/(?:prompt\/|p\/|image\/)?[^\s\n\)]+)|(<br\s*\/?>)|(<(u|b|strong|i|em|code|sub|sup|mark)>([\s\S]*?)<\/\12>)|(`[^`\n]+`)|(\*\*[\s\S]+?\*\*)|(\b[a-zA-Z0-9]+_[a-zA-Z0-9_]+\b)|(?:\*([^*\n]+?)\*)|(?:(?<=\s|^|[([{<"'])_([a-zA-Z0-9\s]+?)_(?=\s|$|[.,!?:;\])>"']))/g;
+    /(?:\$([^\$\n]+?)\$|\\\(([^\$\n]+?)\\\))|(!\[([^\]]*?)\]\(((?:[^()\n]|\([^()\n]*\))+?)\))|(\[([^\]]*?)\]\(((?:[^()\n]|\([^()\n]*\))+?)\))|(\/(?:api\/pollinations\/image|api\/image)\?[^\s\n\)]+)|(https?:\/\/(?:image\.|gen\.)?pollinations\.ai\/(?:prompt\/|p\/|image\/)?[^\s\n\)]+)|(<br\s*\/?>)|(<(u|b|strong|i|em|code|sub|sup|mark)>([\s\S]*?)<\/\12>)|(`[^`\n]+`)|(\*\*[\s\S]+?\*\*)|(\b[a-zA-Z0-9]+_[a-zA-Z0-9_]+\b)|(?:\*([^*\n]+?)\*)|(?:(?<=\s|^|[([{<"'])_([a-zA-Z0-9\s]+?)_(?=\s|$|[.,!?:;\])>"']))|(https?:\/\/[^\s\n\)]+\.(?:mp4|webm|ogv|mov|m4v)(?:\?[^\s\n\)]*)?)|(https?:\/\/(?:www\.|m\.)?(?:youtube\.com|youtube-nocookie\.com|youtu\.be)\/[^\s\n\)]+)/g;
 
   const elements: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -223,10 +276,16 @@ function renderInlineContent(text: string): React.ReactNode[] {
       continue;
     }
 
-    // 2. Markdown Images: ![alt](url)
+    // 2. Markdown Images: ![alt](url) — linki wideo renderowane jako odtwarzacz
     if (match[3] !== undefined) {
       const alt = match[4];
-      const url = toPollinationsProxyUrl(match[5]);
+      const rawUrl = match[5];
+      if (isVideoFileUrl(rawUrl) || getYouTubeEmbedUrl(rawUrl)) {
+        elements.push(<VideoEmbed key={`video-md-${keyIdx++}`} src={rawUrl} title={alt} />);
+        lastIndex = tokenRegex.lastIndex;
+        continue;
+      }
+      const url = toPollinationsProxyUrl(rawUrl);
       elements.push(
         <ImageWithFallback key={`img-md-${keyIdx++}`} src={url} alt={alt} />
       );
@@ -234,10 +293,15 @@ function renderInlineContent(text: string): React.ReactNode[] {
       continue;
     }
 
-    // 3. Markdown Links: [text](url)
+    // 3. Markdown Links: [text](url) — linki wideo renderowane jako odtwarzacz
     if (match[6] !== undefined) {
       const linkText = match[7];
       const url = match[8];
+      if (isVideoFileUrl(url) || getYouTubeEmbedUrl(url)) {
+        elements.push(<VideoEmbed key={`video-link-${keyIdx++}`} src={url} title={linkText} />);
+        lastIndex = tokenRegex.lastIndex;
+        continue;
+      }
       elements.push(
         <a
           key={`link-${keyIdx++}`}
@@ -268,6 +332,29 @@ function renderInlineContent(text: string): React.ReactNode[] {
       elements.push(
         <ImageWithFallback key={`img-raw-full-${keyIdx++}`} src={url} />
       );
+      lastIndex = tokenRegex.lastIndex;
+      continue;
+    }
+
+    // 5b. Surowe linki wideo: pliki (mp4/webm/...) i YouTube — automatyczne osadzenie odtwarzacza
+    if (match[20] !== undefined || match[21] !== undefined) {
+      const src = (match[20] ?? match[21])!;
+      if (match[21] !== undefined && !getYouTubeEmbedUrl(src)) {
+        // Link YouTube bez identyfikatora wideo (np. kanał) — zwykły odnośnik
+        elements.push(
+          <a
+            key={`yt-link-${keyIdx++}`}
+            href={src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2 decoration-cyan-900 hover:decoration-cyan-500 transition-all font-medium"
+          >
+            {src}
+          </a>
+        );
+      } else {
+        elements.push(<VideoEmbed key={`video-raw-${keyIdx++}`} src={src} />);
+      }
       lastIndex = tokenRegex.lastIndex;
       continue;
     }
@@ -719,14 +806,24 @@ export const FormattedMessage: React.FC<FormattedMessageProps> = ({ content, cla
           }
 
           if (lang.startsWith('chart') || lang === 'mermaid' || lang === 'plot' || lang.includes('chart')) {
-            if (lang.includes('phase') || block.content.includes('phase') || block.content.includes('fazow')) {
+            const chartSpec = `${lang} ${block.content}`.toLowerCase();
+            if (chartSpec.includes('phase') || chartSpec.includes('fazow')) {
               return <PhaseSpaceChart key={`code-chart-phase-${bIdx}`} />;
             }
-            if (lang.includes('heatmap') || block.content.includes('heatmap') || block.content.includes('entropi')) {
+            if (chartSpec.includes('heatmap') || chartSpec.includes('entropi')) {
               return <EntropyHeatmapChart key={`code-chart-heatmap-${bIdx}`} />;
             }
-            if (lang.includes('3d') || block.content.includes('3d') || block.content.includes('oscylat')) {
+            if (chartSpec.includes('3d') || chartSpec.includes('oscylat')) {
               return <Triad3DOscillatorChart key={`code-chart-3d-${bIdx}`} />;
+            }
+            if (chartSpec.includes('power') || chartSpec.includes('prąd') || chartSpec.includes('waveform')) {
+              return <LivePowerWaveChart key={`code-chart-power-${bIdx}`} />;
+            }
+            if (chartSpec.includes('heartbeat') || chartSpec.includes('puls') || chartSpec.includes('serc')) {
+              return <HeartbeatWaveChart key={`code-chart-heartbeat-${bIdx}`} />;
+            }
+            if (chartSpec.includes('orbit') || chartSpec.includes('rdzeń')) {
+              return <TriadCoreOrbitsChart key={`code-chart-orbits-${bIdx}`} />;
             }
             return <InteractiveChartRenderer key={`code-chart-gen-${bIdx}`} type="phase" />;
           }

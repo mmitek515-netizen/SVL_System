@@ -153,7 +153,7 @@ test('awaria Gemini i xAI → lokalny model Ollama', async () => {
   const call = calls.find((c) => c.url.includes('11434'));
   assert.equal(call.body.stream, false);
   assert.equal(call.body.think, false);
-  assert.ok(call.body.options.num_predict <= 600);
+  assert.ok(call.body.options.num_predict <= 2048);
   assert.deepEqual(call.body.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user']);
 });
 
@@ -223,13 +223,37 @@ test('Ollama: keep_alive, num_ctx i num_thread trafiają do żądania', async ()
   assert.equal(body.keep_alive, '24h');
   assert.equal(body.options.num_ctx, 4096);
   assert.equal(body.options.num_thread, 4);
+  assert.equal(body.options.num_predict, 2048);
   const custom = mockFetch([[/api\/chat/, { respond: () => ollamaOk('ok') }]]);
-  await generateWithChain({ providers: ['ollama'], ollamaModel: 'm', ollamaKeepAlive: '-1', ollamaNumCtx: 2048, fetchImpl: custom.impl }, request);
+  await generateWithChain({ providers: ['ollama'], ollamaModel: 'm', ollamaKeepAlive: '-1', ollamaNumCtx: 2048, ollamaNumPredict: 512, fetchImpl: custom.impl }, request);
   assert.equal(custom.calls[0].body.keep_alive, -1);
   assert.equal(custom.calls[0].body.options.num_ctx, 2048);
+  assert.equal(custom.calls[0].body.options.num_predict, 512);
   assert.equal('num_thread' in custom.calls[0].body.options, false);
   assert.equal(parseKeepAlive('30m'), '30m');
   assert.equal(parseKeepAlive(''), '24h');
+});
+
+test('Ollama: zdjęcie przy modelu bez vision → czytelny błąd; z vision → obrazy w żądaniu', async () => {
+  resetOllamaModelCache();
+  const imageRequest = { ...request, attachments: [{ name: 'foto.jpg', mimeType: 'image/jpeg', content: '/9j/4A==' }] };
+  const noVision = mockFetch([
+    [/api\/show/, { respond: () => json(200, { capabilities: ['completion', 'tools'] }) }],
+  ]);
+  await assert.rejects(
+    generateWithChain({ providers: ['ollama'], ollamaModel: 'llama3.2:latest', fetchImpl: noVision.impl }, imageRequest),
+    (error) => error instanceof LlmChainError && /nie analizuje zdjęć/.test(error.failures[0]),
+  );
+  resetOllamaModelCache();
+  const withVision = mockFetch([
+    [/api\/show/, { respond: () => json(200, { capabilities: ['completion', 'vision'] }) }],
+    [/api\/chat/, { respond: () => ollamaOk('Widzę zdjęcie.') }],
+  ]);
+  const result = await generateWithChain({ providers: ['ollama'], ollamaModel: 'gemma3:4b', fetchImpl: withVision.impl }, imageRequest);
+  assert.equal(result.text, 'Widzę zdjęcie.');
+  const chatCall = withVision.calls.find((call) => call.url.includes('/api/chat'));
+  assert.deepEqual(chatCall.body.messages.at(-1).images, ['/9j/4A==']);
+  resetOllamaModelCache();
 });
 
 test('rozgrzewka Ollamy wczytuje model i nie rzuca przy awarii', async () => {
