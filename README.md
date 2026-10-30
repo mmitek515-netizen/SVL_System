@@ -231,5 +231,5 @@ Vite build, then pushes the resulting commit. Changes already present when the
 server starts and local runtime data are not pushed automatically. This does
 not deploy to a separate production host; configure and approve that target
 independently. Git push credentials must be configured for the `origin` remote
-(for example with `gh auth login`); failed pushes keep the local commit and are
-retried automatically.
+(for example with `gh auth login` followed by `gh auth setup-git`); failed
+pushes keep the local commit and are retried automatically.

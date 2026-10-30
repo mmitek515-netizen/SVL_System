@@ -3047,7 +3047,7 @@ async function pushCurrentBranch(): Promise<void> {
   } catch (error: any) {
     const details = String(error?.stderr || error?.message || error);
     if (/unable to get password|could not read (?:Username|Password)|authentication failed|permission denied/i.test(details)) {
-      throw new Error('GitHub nie ma skonfigurowanego uwierzytelnienia w tym środowisku. Zaloguj `gh auth login` lub skonfiguruj git credential helper; commit lokalny został zachowany, a push będzie ponawiany.');
+      throw new Error('GitHub nie ma skonfigurowanego uwierzytelnienia w tym środowisku. Uruchom `gh auth login` i `gh auth setup-git` albo skonfiguruj git credential helper; commit lokalny został zachowany, a push będzie ponawiany.');
     }
     throw error;
   }
@@ -3058,10 +3058,19 @@ async function autoSyncGitChanges(): Promise<void> {
   autoGitSyncRunning = true;
   try {
     if (autoGitPushPending) {
-      await pushCurrentBranch();
-      autoGitPushPending = false;
-      autoGitSyncLastWarning = '';
-      pushSystemLog('healed', 'KERNEL', '[GITHUB AUTO] Oczekujący commit został wypchnięty do origin.');
+      try {
+        await pushCurrentBranch();
+        autoGitPushPending = false;
+        autoGitSyncLastWarning = '';
+        pushSystemLog('healed', 'KERNEL', '[GITHUB AUTO] Oczekujący commit został wypchnięty do origin.');
+      } catch (error: any) {
+        const message = String(error?.message || error);
+        if (message !== autoGitSyncLastWarning || Date.now() - autoGitSyncLastWarningAt >= 5 * 60 * 1000) {
+          pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Push oczekuje na uwierzytelnienie lub dostęp do origin: ${message}`);
+          autoGitSyncLastWarning = message;
+          autoGitSyncLastWarningAt = Date.now();
+        }
+      }
     }
 
     const changedPaths = await getAutoGitSyncChanges();
