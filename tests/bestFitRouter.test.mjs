@@ -33,6 +33,11 @@ test('brak dopasowania = DEFAULT (model)', () => {
   assert.equal(selectBestFit(matrix, 'cześć Alex, jak się masz?'), null);
 });
 
+test('słabe dopasowanie (1 słowo z wielu) idzie do modelu z pełną historią', () => {
+  assert.equal(selectBestFit(matrix, 'Zrób synchronizacje systemu. Jaką mamy wersję?'), null);
+  assert.equal(selectBestFit(matrix, 'napisz mi proszę dłuższy opis stanu'), null);
+});
+
 test('długa wiadomość idzie do modelu nawet ze słowem kluczowym', () => {
   assert.equal(selectBestFit(matrix, 'opowiedz mi szczegółowo jak wyglądał status projektu w zeszłym tygodniu i co dalej'), null);
 });

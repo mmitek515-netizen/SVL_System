@@ -3373,7 +3373,9 @@ app.post('/api/astyria/mission', async (req, res) => {
 
     const repairDiag = scanSystemLogs(`Skan misji Astyrii: ${action}`);
     const currentState = await getPythonKernelState(true);
-    const targetVer = currentState?.store?.config?.sys_version || currentState?.sys_version || '8.5.1-Desktop-Ready';
+    const storedVer = currentState?.store?.config?.sys_version || currentState?.sys_version || '8.5.1-Desktop-Ready';
+    // Synchronizacja podnosi wersję do wersji misji Triady, jeśli zapisana jest starsza.
+    const targetVer = isSystemVersionNewer(TRIADA_MISSION_VERSION, String(storedVer)) ? TRIADA_MISSION_VERSION : storedVer;
     vmTenSystemState.kernelVersion = targetVer;
     const mem = getVmMemoryTelemetry();
 
@@ -4133,6 +4135,74 @@ function isSameOriginApprovalRequest(req: express.Request): boolean {
     return false;
   }
 }
+
+app.get('/api/chat/approvals', (req, res) => {
+  if (!isSameOriginApprovalRequest(req)) {
+    return res.status(403).json({ success: false, error: 'Lista zatwierdzeń jest dostępna wyłącznie z tej aplikacji.' });
+  }
+  cleanExpiredChatApprovals();
+  const approvals = [...pendingChatApprovals.values()]
+    .filter((proposal) => proposal.status === 'pending')
+    .map((proposal) => ({
+      id: proposal.id,
+      agent: proposal.agent,
+      action: proposal.action,
+      createdAt: proposal.createdAt,
+      description: describeChatApproval(proposal.action),
+    }));
+  return res.json({ success: true, approvals });
+});
+
+app.post('/api/chat/approvals/:id', async (req, res) => {
+  if (!isSameOriginApprovalRequest(req)) {
+    return res.status(403).json({ success: false, error: 'Decyzje są dostępne wyłącznie z tej aplikacji.' });
+  }
+  const decision = req.body?.decision;
+  if (decision !== 'approve' && decision !== 'reject') {
+    return res.status(400).json({ success: false, error: 'Wybierz zatwierdzenie albo odrzucenie propozycji.' });
+  }
+  if (!/^[a-f0-9-]{36}$/i.test(req.params.id)) {
+    return res.status(400).json({ success: false, error: 'Nieprawidłowy identyfikator propozycji.' });
+  }
+
+  cleanExpiredChatApprovals();
+  const proposal = pendingChatApprovals.get(req.params.id);
+  if (!proposal) {
+    return res.status(404).json({ success: false, error: 'Propozycja wygasła albo została już rozstrzygnięta.' });
+  }
+  if (proposal.status !== 'pending') {
+    return res.status(409).json({ success: false, error: 'Ta propozycja jest już przetwarzana.' });
+  }
+
+  let responseText: string;
+  let change: ChatSystemChange | undefined;
+  if (decision === 'reject') {
+    pendingChatApprovals.delete(proposal.id);
+    responseText = `Odrzucono propozycję ${proposal.id}: ${describeChatApproval(proposal.action)}. Nie wprowadzono zmian.`;
+  } else {
+    proposal.status = 'approving';
+    try {
+      const result = await executeApprovedChatAction(proposal.action);
+      pendingChatApprovals.delete(proposal.id);
+      responseText = `ZATWIERDZONO ${proposal.id}\n${result.message}`;
+      change = result.change;
+    } catch (error) {
+      proposal.status = 'pending';
+      const message = error instanceof Error ? error.message : 'Nie udało się wykonać zatwierdzonej operacji.';
+      return res.status(500).json({ success: false, error: message });
+    }
+  }
+
+  try {
+    const state = await persistChatCommandReplies(`/${decision} ${proposal.id}`, proposal.agent, {
+      [proposal.agent]: responseText,
+    });
+    return res.json({ success: true, decision, reply: responseText, ...(change ? { change } : {}), state });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Nie udało się zapisać decyzji w historii czatu.';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
 
 // --- CHAT EXEC (ROOT UNLIMITED): natychmiastowe wykonywanie poleceń Operatora z czatu ---
 const CHAT_EXEC_KERNEL_COMMANDS = ['report', 'status', 'state', 'root', 'sudo', 'clear_chat', 'clear', 'sync', 'bump', 'set', 'infra'];
@@ -5301,8 +5371,23 @@ app.post('/api/kernel/agent', (_req, res) => {
 
 // --- TRIADA MISSION BOOTSTRAP: BUILD_BEST_OS (ROOT RING-0 + AUTONOMIA W TLE) ---
 const TRIADA_MISSION_DIRECTIVE = 'BUILD_BEST_OS';
-const TRIADA_MISSION_VERSION = '8.7.0-Triada-BestOS-Mission';
+const TRIADA_MISSION_VERSION = '8.8.0-Triada-BestOS-Mission';
 const TRIADA_ROOT_AGENTS = ['Alex', 'Astyria', 'Aurelius', 'Mateusz Mitek'];
+
+/** Porównuje numery wersji (np. „8.8.0-Triada" > „8.7.0-Triada"). */
+function isSystemVersionNewer(candidate: string, current: string): boolean {
+  const parse = (value: string) => {
+    const match = String(value).match(/\d+(?:\.\d+)*/);
+    return match ? match[0].split('.').map(Number) : [0];
+  };
+  const a = parse(candidate);
+  const b = parse(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] || 0) - (b[i] || 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
 
 async function bootstrapTriadMission() {
   try {
@@ -5339,7 +5424,7 @@ async function bootstrapTriadMission() {
         operator_privilege_level: 'RING_NEG1_ABSOLUTE_ROOT',
         operator_root_scope: 'SUPREME_UNLIMITED_ABOVE_TRIADA',
         chat_exec: 'ENABLED_ROOT_UNLIMITED',
-        chat_approvals: 'DISABLED_AUTO_EXEC',
+        chat_approvals: 'ENABLED_MANUAL_APPROVAL',
         nlp_chain: 'OPENROUTER → FALLBACK_API (Groq/xAI) → LOCAL_NLP_ENGINE',
         update_sources: ['github.com (origin/main + api.github.com)', 'registry npm (npmjs.com)'],
         github_permissions: 'FULL_READ_WRITE',
@@ -5352,6 +5437,12 @@ async function bootstrapTriadMission() {
       configArgs.push(
         '--version_tag', TRIADA_MISSION_VERSION,
         '--desc', 'Misja Triady BUILD_BEST_OS: budowa najlepszego OS na bazie SVL_System — ROOT RING-0 + autonomia w tle',
+      );
+    } else if (isSystemVersionNewer(TRIADA_MISSION_VERSION, String(config.sys_version || ''))) {
+      // Nowa wersja misji — podbij sys_version bez ponownego ogłaszania misji na czacie.
+      configArgs.push(
+        '--version_tag', TRIADA_MISSION_VERSION,
+        '--desc', `Aktualizacja wersji systemu do v${TRIADA_MISSION_VERSION} (misja BUILD_BEST_OS).`,
       );
     }
     await runPythonKernel(configArgs);

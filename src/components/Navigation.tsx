@@ -1,9 +1,10 @@
 import React from 'react';
-import { Terminal, MessagesSquare, FileCode2, Database, History, Activity, Cpu, GitBranch, Clock, Sigma, FolderOpen, HardDrive, LayoutGrid, Brain, Github, Home } from 'lucide-react';
+import { Terminal, MessagesSquare, FileCode2, Database, History, Activity, Cpu, GitBranch, Clock, Sigma, FolderOpen, HardDrive, LayoutGrid, Brain, Github, Home, ClipboardCheck } from 'lucide-react';
 
 export type TabId =
   | 'home'
   | 'comms'
+  | 'approvals'
   | 'process_matrix'
   | 'astyria_mission'
   | 'schema_graph'
@@ -19,7 +20,7 @@ export type TabId =
   | 'github';
 
 export const TAB_IDS: readonly TabId[] = [
-  'home', 'comms', 'process_matrix', 'astyria_mission', 'schema_graph', 'temporal',
+  'home', 'comms', 'approvals', 'process_matrix', 'astyria_mission', 'schema_graph', 'temporal',
   'terminal', 'monolith', 'datastore', 'diagnostics', 'visualizer', 'file_explorer',
   'apps', 'without_nlp', 'github',
 ];
@@ -59,6 +60,12 @@ export const Navigation: React.FC<NavigationProps> = ({
       label: 'Komora Triady & Dialog',
       icon: MessagesSquare,
       badge: `${messageCount}`
+    },
+    {
+      id: 'approvals' as TabId,
+      label: 'Akceptacje czatu',
+      icon: ClipboardCheck,
+      badge: 'DECYZJE'
     },
     {
       id: 'process_matrix' as TabId,

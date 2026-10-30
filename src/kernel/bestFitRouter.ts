@@ -43,9 +43,15 @@ export interface BestFitOptions {
    * nawet jeśli zawierają słowo „status".
    */
   maxWords?: number;
+  /**
+   * Minimalny udział trafionych słów (0–1). Wiadomość, w której tylko
+   * drobna część słów pasuje do argumentu (np. 1 z 6), to zwykle pytanie
+   * o coś innego — idzie do modelu, który zna historię rozmowy.
+   */
+  minConfidence?: number;
 }
 
-export const BEST_FIT_DEFAULTS: Required<BestFitOptions> = { minScore: 1, maxWords: 8 };
+export const BEST_FIT_DEFAULTS: Required<BestFitOptions> = { minScore: 1, maxWords: 8, minConfidence: 1 / 3 };
 
 /** Prefiks wymuszający pominięcie routera i odpowiedź modelu. */
 export const FORCE_LLM_PREFIX = '@model';
@@ -89,7 +95,7 @@ export function selectBestFit<Ctx>(
   message: string,
   options: BestFitOptions = {},
 ): BestFitMatch<Ctx> | null {
-  const { minScore, maxWords } = { ...BEST_FIT_DEFAULTS, ...options };
+  const { minScore, maxWords, minConfidence } = { ...BEST_FIT_DEFAULTS, ...options };
   const trimmed = message.trim();
   if (!trimmed || trimmed.startsWith('/') || trimmed.startsWith('!')) return null;
   if (trimmed.toLowerCase().startsWith(FORCE_LLM_PREFIX)) return null;
@@ -100,8 +106,9 @@ export function selectBestFit<Ctx>(
   let best: BestFitMatch<Ctx> | null = null;
   for (const argument of matrix) {
     const score = scoreArgument(argument.keywords, tokens);
-    if (score >= minScore && (!best || score > best.score)) {
-      best = { argument, score, confidence: score / tokens.length };
+    const confidence = score / tokens.length;
+    if (score >= minScore && confidence >= minConfidence && (!best || score > best.score)) {
+      best = { argument, score, confidence };
     }
   }
   return best;

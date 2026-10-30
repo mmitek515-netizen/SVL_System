@@ -9,6 +9,7 @@ import { Header } from './components/Header';
 import { Navigation, TabId, initialTabFromLocation } from './components/Navigation';
 import { TerminalView } from './components/TerminalView';
 import { AgentCommsView } from './components/AgentCommsView';
+import { ChatApprovalsView } from './components/ChatApprovalsView';
 import { MonolithView } from './components/MonolithView';
 import { DataStoreView } from './components/DataStoreView';
 import { ChronolithView } from './components/ChronolithView';
@@ -507,6 +508,10 @@ export default function App() {
               onClearHistory={handleClearHistory}
               onForceSync={handleForceSync}
             />
+          )}
+
+          {activeTab === 'approvals' && (
+            <ChatApprovalsView onUpdateDataStore={setDataStore} />
           )}
 
           {activeTab === 'process_matrix' && (

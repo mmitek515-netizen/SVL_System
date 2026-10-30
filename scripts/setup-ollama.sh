@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Instalacja i konfiguracja Ollamy dla czatu Triady (Alex, Astyria, Aurelius).
 #
-#   bash scripts/setup-ollama.sh               # automatyczny dobór modelu do sprzętu
+#   bash scripts/setup-ollama.sh               # domyślnie llama3.2 (tekstowy, bez Vision)
 #   bash scripts/setup-ollama.sh gemma4:12b    # wymuszenie konkretnego modelu
 #   ENV_FILE=/etc/bastillaos/system.env bash scripts/setup-ollama.sh
 #
@@ -37,23 +37,10 @@ fi
 disk_gb=$(df -Pk "$HOME" | awk 'NR==2 { printf "%d", $4 / 1024 / 1024 }')
 log "Sprzęt: RAM ${ram_gb} GB, CPU ${cpus} rdzeni, GPU ${vram_gb} GB VRAM, wolne miejsce ${disk_gb} GB."
 
-# ── 2. Dobór modelu (rozmiary z ollama.com/library) ─────────────────────────
-# Gemma 4 i Qwen 3.5 dobrze radzą sobie z polskim. Na samym CPU wybieramy
-# mniejsze modele, żeby trzech agentów odpowiadało w rozsądnym czasie.
-need_gb=0
-if [ -n "$REQUESTED_MODEL" ]; then
-  model="$REQUESTED_MODEL"; need_gb=4
-elif [ "$vram_gb" -ge 20 ] || [ "$ram_gb" -ge 32 ]; then
-  model="gemma4:26b"; need_gb=19     # MoE (~4B aktywnych) — szybki mimo rozmiaru
-elif [ "$vram_gb" -ge 10 ]; then
-  model="gemma4:12b"; need_gb=8
-elif [ "$ram_gb" -ge 14 ]; then
-  model="gemma4:e4b"; need_gb=10
-elif [ "$ram_gb" -ge 6 ]; then
-  model="qwen3.5:4b"; need_gb=4
-else
-  model="qwen3.5:2b"; need_gb=3
-fi
+# ── 2. Wybór modelu ─────────────────────────────────────────────────────────
+# llama3.2 to wariant tekstowy; model Vision ma osobny tag llama3.2-vision.
+model="${REQUESTED_MODEL:-llama3.2}"
+need_gb=4
 log "Wybrany model: $model"
 if [ "$disk_gb" -lt $(( need_gb + 2 )) ]; then
   die "Za mało miejsca na dysku dla $model (potrzeba ~$(( need_gb + 2 )) GB, wolne ${disk_gb} GB). Podaj mniejszy model jako argument."

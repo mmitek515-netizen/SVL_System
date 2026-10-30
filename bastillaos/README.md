@@ -87,7 +87,7 @@ installed as a native system component by the `bastillaos-system` package:
 - The local API keeps serving `GET /api/without_nlp/status` and
   `POST /api/without_nlp/analyze`.
 - Engine selection: by default only local Ollama answers
-  (`LLM_PROVIDERS="ollama"`, `OLLAMA_MODEL="auto"` picks the largest pulled
+  (`LLM_PROVIDERS="ollama"`, `OLLAMA_MODEL="llama3.2"` selects the text-only
   model); cloud APIs and without_nlp are off, and a model failure returns an
   error instead of a substitute reply. `LLM_PROVIDERS="gemini,xai,ollama"`
   restores the cloud chain and `CHAT_LOCAL_FALLBACK="on"` re-enables
@@ -99,10 +99,10 @@ installed as a native system component by the `bastillaos-system` package:
   `/v1/models`). Each agent falls back independently. Without keys or when
   both APIs fail, a local Ollama model answers (`OLLAMA_MODEL`), and only
   then without_nlp answers locally and deterministically.
-  `bash scripts/setup-ollama.sh` installs Ollama, picks a model for the
-  machine (RAM/GPU), tunes the Ollama server (flash attention, q8_0 KV
-  cache, keep-alive, parallel requests when memory allows), pulls and warms
-  the model, measures tokens/s, and writes the settings to the env file.
+  `bash scripts/setup-ollama.sh` installs Ollama and pulls `llama3.2` by
+  default (pass a model tag to select another), tunes the Ollama server (flash
+  attention, q8_0 KV cache, keep-alive, parallel requests when memory allows),
+  warms the model, measures tokens/s, and writes the settings to the env file.
   The SVL server also preloads the model at start (`[OLLAMA] Model … loaded`).
 - Triad mission **Optymalizacja i konfiguracja Ollamy** (`POST
   /api/astyria/mission` with `{"action":"ollama_optimize"}`, also in the
