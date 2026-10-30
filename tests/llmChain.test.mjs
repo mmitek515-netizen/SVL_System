@@ -179,6 +179,17 @@ test('Ollama bez obsługi think → ponowienie bez tej opcji; brak modelu → po
   );
 });
 
+test('Ollama HTTP 500 includes provider details', async () => {
+  const { impl } = mockFetch([
+    [/api\/chat/, { respond: () => json(500, { error: 'model requires more system memory than is available' }) }],
+  ]);
+  await assert.rejects(
+    generateWithChain({ providers: ['ollama'], ollamaModel: 'llama3.2-vision:11b', fetchImpl: impl }, request),
+    (error) => error instanceof LlmChainError
+      && /Ollama: HTTP 500\. \[llama3\.2-vision:11b\] Szczegóły: model requires more system memory than is available/.test(error.failures[0]),
+  );
+});
+
 test('kolejność z Ollamą i usuwanie bloków rozumowania', () => {
   assert.deepEqual(configuredProviders({ geminiApiKey: 'g', xaiApiKey: 'x', ollamaModel: 'm' }), ['gemini', 'xai', 'ollama']);
   assert.deepEqual(configuredProviders({ ollamaModel: 'm' }), ['ollama']);

@@ -142,6 +142,17 @@ async function readErrorText(response: Response): Promise<string> {
   }
 }
 
+function describeOllamaErrorBody(body: string): string {
+  if (!body) return '';
+  try {
+    const data = JSON.parse(body);
+    if (typeof data?.error === 'string' && data.error.trim()) return data.error.trim();
+  } catch {
+    // Keep non-JSON provider error text as-is.
+  }
+  return body.trim();
+}
+
 /** Czy błąd uzasadnia próbę kolejnego modelu Gemini (limit, brak modelu, awaria). */
 export function shouldTryNextGeminiModel(error: unknown): boolean {
   return error instanceof LlmProviderError
@@ -443,7 +454,9 @@ export async function generateOllama(
       const body = await readErrorText(response);
       if (disableThinking && response.status === 400 && /think/i.test(body)) return null;
       const hint = response.status === 404 ? ` Pobierz model: ollama pull ${model}` : '';
-      throw new LlmProviderError('ollama', response.status, `${describeStatus('ollama', response.status)} [${model}]${hint}`);
+      const details = describeOllamaErrorBody(body);
+      const detailText = details ? ` Szczegóły: ${details}` : '';
+      throw new LlmProviderError('ollama', response.status, `${describeStatus('ollama', response.status)} [${model}]${hint}${detailText}`);
     }
     const data: any = await response.json();
     const text = stripThinking(typeof data?.message?.content === 'string' ? data.message.content : '');
