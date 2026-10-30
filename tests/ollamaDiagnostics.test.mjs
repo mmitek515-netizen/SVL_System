@@ -57,7 +57,7 @@ test('wolny model na CPU → mniejszy model; szybki z dużym RAM → większy', 
   const slow = await collectOllamaDiagnostics('http://127.0.0.1:11434', host, router(healthyRoutes(10, 5_000_000_000)).impl);
   assert.equal(slow.tokensPerSecond, 2);
   const slowRecs = buildOllamaRecommendations(slow);
-  assert.ok(slowRecs.some((r) => r.agent === 'Astyria' && /qwen3.5:2b/.test(r.command ?? '')));
+  assert.ok(slowRecs.some((r) => r.agent === 'Astyria' && /llava-phi3:3.8b/.test(r.command ?? '')));
 
   const fast = await collectOllamaDiagnostics('http://127.0.0.1:11434', { ...host, ramGb: 32 }, router(healthyRoutes(200, 8_000_000_000)).impl);
   const fastRecs = buildOllamaRecommendations(fast);

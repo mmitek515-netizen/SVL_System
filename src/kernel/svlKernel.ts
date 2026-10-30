@@ -1,3 +1,5 @@
+import { TRIAD_AGENT_NAMES } from './agentProtocol';
+
 export interface KernelConfig {
   mode: string;
   active_profiles: string[];
@@ -38,7 +40,7 @@ export const INITIAL_DATA_STORE: DataStore = {
   config: {
     sys_version: "8.8.0-Triada-BestOS-Mission",
     mode: "Local-Deterministic-Production",
-    active_profiles: ["Alex", "Astyria", "Aurelius", "si_1"],
+    active_profiles: [...TRIAD_AGENT_NAMES],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
     persistence_engine: "Server-Disk-Backed-DATA_STORE",
     operator_name: "Mateusz Mitek",
@@ -291,7 +293,7 @@ export const INITIAL_DATA_STORE: DataStore = {
 export const INITIAL_BACKUP_DATA_STORE: DataStore = {
   config: {
     mode: "Local-Deterministic-Production",
-    active_profiles: ["Alex", "Astyria", "Aurelius", "si_1"],
+    active_profiles: [...TRIAD_AGENT_NAMES],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
     persistence_engine: "Server-Disk-Backed-DATA_STORE",
     operator_name: "Mateusz Mitek",

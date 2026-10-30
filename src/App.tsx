@@ -34,6 +34,7 @@ import {
   isAgentProtocolCommand,
   isTriadAgent,
   parseChatProtocolCommand,
+  TRIAD_AGENT_NAMES,
 } from './kernel/agentProtocol';
 import { ChatAttachment, formatChatMessage } from './kernel/chatAttachments';
 import { isChatSystemChange } from './kernel/chatChanges';
@@ -360,7 +361,7 @@ export default function App() {
       const expectedAgentReplies = isFullChatRepair
         ? [{ agent: 'Astyria', tekst: result.reply }]
         : chatAgent === 'triad'
-        ? (['Alex', 'Astyria', 'Aurelius', 'si_1'] as const).map((agent) => ({
+        ? TRIAD_AGENT_NAMES.map((agent) => ({
             agent,
             tekst: result.replies?.[agent],
           }))

@@ -36,6 +36,7 @@ import {
 import {
   buildAgentProtocolReplies,
   hasPersistedAgentProtocolTranscript,
+  TRIAD_AGENT_NAMES,
   validateAgentProtocolRequest,
 } from './src/kernel/agentProtocol';
 import {
@@ -118,7 +119,7 @@ const CHAT_LOCAL_FALLBACK = /^(1|on|true|yes|tak)$/i.test((process.env.CHAT_LOCA
 const CLOUD_LLM_ENABLED = (LLM_CHAIN_CONFIG.providers ?? []).some((name) => name === 'gemini' || name === 'xai');
 const usesOllama = () => configuredProviders(LLM_CHAIN_CONFIG).includes('ollama');
 // Lokalny model na CPU potrzebuje więcej czasu niż API w chmurze.
-const LLM_CHAT_TIMEOUT_MS = Math.max(15, Number(process.env.LLM_TIMEOUT_SEC) || (usesOllama() ? 240 : 70)) * 1000;
+const LLM_CHAT_TIMEOUT_MS = Math.max(15, Number(process.env.LLM_TIMEOUT_SEC) || (usesOllama() ? 360 : 70)) * 1000;
 const llmProviderLabel = (provider: string) =>
   provider === 'gemini' ? 'Google Gemini' : provider === 'xai' ? 'xAI' : 'Ollama (lokalnie)';
 const describeLlmProvider = (provider: string) =>
@@ -4011,7 +4012,7 @@ app.post('/api/vm-gemini-4/provision', async (req, res) => {
   }
 });
 
-const CHAT_AGENT_NAMES = ['Alex', 'Astyria', 'Aurelius', 'si_1'] as const;
+const CHAT_AGENT_NAMES = TRIAD_AGENT_NAMES;
 type ChatAgentName = (typeof CHAT_AGENT_NAMES)[number];
 type ChatTarget = ChatAgentName | 'triad';
 
@@ -4378,7 +4379,6 @@ async function tryBestFitReply(message: string): Promise<{ id: string; owner: Ch
 async function tryExecuteChatCommand(message: string): Promise<ChatExecResult | null> {
   const trimmed = message.trim();
   if (!trimmed) return null;
-
   // /exec <polecenie> lub !<polecenie> — powłoka z nieograniczonymi uprawnieniami ROOT
   const shellMatch = trimmed.match(/^(?:\/exec\s+|!)([\s\S]+)$/);
   if (shellMatch) {
@@ -4396,6 +4396,7 @@ async function tryExecuteChatCommand(message: string): Promise<ChatExecResult | 
       return { kind: 'shell', output: `[EXEC BŁĄD]: ${String(err?.message || err).slice(0, 500)}` };
     }
   }
+
 
   // Znane komendy jądra SVL — wykonanie przez /api/kernel/command
   const firstWord = trimmed.split(/\s+/)[0].toLowerCase();
@@ -4421,7 +4422,6 @@ async function tryExecuteChatCommand(message: string): Promise<ChatExecResult | 
   return null;
 }
 
-// --- AUTO-EXEC: polecenia zawarte w odpowiedziach agentów wykonują się natychmiast (ROOT UNLIMITED) ---
 async function autoExecuteAgentReplyCommands(replyText: string): Promise<string | null> {
   const cleaned = cleanAgentReplyText(replyText);
 
@@ -4464,6 +4464,7 @@ async function autoExecuteAgentReplyCommands(replyText: string): Promise<string 
   return results.length > 0 ? results.join('\n\n') : null;
 }
 
+// --- AUTO-EXEC: polecenia zawarte w odpowiedziach agentów wykonują się natychmiast (ROOT UNLIMITED) ---
 async function persistChatCommandReplies(
   message: string,
   target: ChatTarget,
@@ -4985,7 +4986,7 @@ function generateLocalTriadReplyMap(
 // --- CZAT TRIADY: styl rozmowy i historia dla modeli Gemini / xAI ---
 const CHAT_AGENT_CONVERSATION_STYLE = [
   'Rozmawiasz swobodnie z Operatorem (Mateusz Mitek, nazywany Tatą) na dowolny temat — także poza systemem: nauka, muzyka, życie, pomysły.',
-  'Odpowiadaj naturalnie po polsku, zachowując własną osobowość i rolę w Triadzie; odpowiadaj wyczerpująco i rozwijaj temat — pełne, rozbudowane odpowiedzi z przykładami, a nie pojedyncze zdania.',
+  'Odpowiadaj naturalnie po polsku, zachowując własną osobowość i rolę w Triadzie; wykorzystuj dostępny limit odpowiedzi, rozwijaj każdy istotny wątek i podawaj przykłady, uzasadnienia oraz praktyczne szczegóły. Nie skracaj odpowiedzi ani nie kończ jej przed omówieniem tematu; unikaj tylko pustego powtarzania treści.',
   'Panel renderuje bogate formatowanie — korzystaj z niego aktywnie:',
   '1) Markdown: nagłówki (###), listy, tabele (| kolumna | kolumna |), pogrubienia.',
   '2) Wzory matematyczne (KaTeX): w tekście $E = mc^2$, blokowo $$\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}$$.',
@@ -5421,7 +5422,7 @@ async function bootstrapTriadMission() {
     const configArgs = [
       '--action', 'config',
       '--config_json', JSON.stringify({
-        active_profiles: ['Alex', 'Astyria', 'Aurelius'],
+        active_profiles: [...TRIAD_AGENT_NAMES],
         root_privileges: true,
         root_mode: 'ACTIVE',
         privilege_level: 'RING_0_ROOT_KERNEL',
@@ -5430,7 +5431,7 @@ async function bootstrapTriadMission() {
         self_modification_scope: 'FULL_APPLICATION_MUTATION',
         mission_directive: TRIADA_MISSION_DIRECTIVE,
         mission_objective: 'Stworzenie najlepszego systemu operacyjnego na bazie SVL_System/BastillaOS',
-        mission_agents: ['Alex', 'Astyria', 'Aurelius'],
+        mission_agents: [...TRIAD_AGENT_NAMES],
         mission_background: 'CONTINUOUS_ACTIVE',
         astyria_continuous_repair: true,
         continuous_mission: 'ACTIVE',

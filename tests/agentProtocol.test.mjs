@@ -4,6 +4,7 @@ import {
   buildAgentProtocolReplies,
   hasPersistedAgentProtocolTranscript,
   parseChatProtocolCommand,
+  TRIAD_AGENT_NAMES,
   validateAgentProtocolRequest,
 } from '../src/kernel/agentProtocol.ts';
 
@@ -50,7 +51,7 @@ test('builds kernel-backed structured replies for all triad roles', () => {
   const request = validateAgentProtocolRequest({ command: 'SYSTEM_STATUS', agent: 'triad' }).request;
   const result = buildAgentProtocolReplies(request, store);
 
-  assert.deepEqual(Object.keys(result.replies), ['Alex', 'Astyria', 'Aurelius', 'si_1']);
+  assert.deepEqual(Object.keys(result.replies), TRIAD_AGENT_NAMES);
   assert.equal(result.data.version, '9.1.0');
   assert.equal(result.data.updateHistoryCount, 1);
   for (const reply of Object.values(result.replies)) {

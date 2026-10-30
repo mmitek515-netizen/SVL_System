@@ -136,7 +136,7 @@ log "Odpowiedź: ${reply//_/ }"
 log "Prędkość generowania: ${speed} tokenów/s."
 if [ "$vram_gb" -lt 8 ] && awk "BEGIN { exit !($speed > 0 && $speed < 4) }"; then
   warn "Model jest wolny na tym sprzęcie (<4 tokeny/s). Dla szybszych odpowiedzi wybierz mniejszy:"
-  warn "  bash scripts/setup-ollama.sh qwen3.5:2b"
+  warn "  bash scripts/setup-ollama.sh llava-phi3:3.8b"
 fi
 
 # ── 6. Zapis konfiguracji ────────────────────────────────────────────────────

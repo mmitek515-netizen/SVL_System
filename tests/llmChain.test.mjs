@@ -153,7 +153,7 @@ test('awaria Gemini i xAI → lokalny model Ollama', async () => {
   const call = calls.find((c) => c.url.includes('11434'));
   assert.equal(call.body.stream, false);
   assert.equal(call.body.think, false);
-  assert.ok(call.body.options.num_predict <= 2048);
+  assert.ok(call.body.options.num_predict <= 3072);
   assert.deepEqual(call.body.messages.map((m) => m.role), ['system', 'user', 'assistant', 'user']);
 });
 
@@ -223,13 +223,18 @@ test('Ollama: keep_alive, num_ctx i num_thread trafiają do żądania', async ()
   assert.equal(body.keep_alive, '24h');
   assert.equal(body.options.num_ctx, 4096);
   assert.equal(body.options.num_thread, 4);
-  assert.equal(body.options.num_predict, 2048);
+  assert.equal(body.options.num_predict, 3072);
   const custom = mockFetch([[/api\/chat/, { respond: () => ollamaOk('ok') }]]);
   await generateWithChain({ providers: ['ollama'], ollamaModel: 'm', ollamaKeepAlive: '-1', ollamaNumCtx: 2048, ollamaNumPredict: 512, fetchImpl: custom.impl }, request);
   assert.equal(custom.calls[0].body.keep_alive, -1);
   assert.equal(custom.calls[0].body.options.num_ctx, 2048);
   assert.equal(custom.calls[0].body.options.num_predict, 512);
   assert.equal('num_thread' in custom.calls[0].body.options, false);
+
+  const lowContext = mockFetch([[/api\/chat/, { respond: () => ollamaOk('ok') }]]);
+  await generateWithChain({ providers: ['ollama'], ollamaModel: 'm', ollamaNumCtx: 256, fetchImpl: lowContext.impl }, request);
+  assert.equal(lowContext.calls[0].body.options.num_ctx, 512);
+
   assert.equal(parseKeepAlive('30m'), '30m');
   assert.equal(parseKeepAlive(''), '24h');
 });

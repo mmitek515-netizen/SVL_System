@@ -95,10 +95,11 @@ export const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.co
 export const DEFAULT_XAI_BASE_URL = 'https://api.x.ai/v1';
 export const DEFAULT_XAI_MODEL = 'grok-3-mini';
 export const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
-/** Górny limit tokenów odpowiedzi lokalnego modelu — podniesiony, by odpowiedzi nie były ucinane. */
-export const OLLAMA_MAX_OUTPUT_TOKENS = 2048;
+/** Domyślny limit pozwala na długie odpowiedzi w oknie kontekstu 4096 tokenów. */
+export const OLLAMA_MAX_OUTPUT_TOKENS = 3072;
 export const OLLAMA_DEFAULT_KEEP_ALIVE = '24h';
 export const OLLAMA_DEFAULT_NUM_CTX = 4096;
+const OLLAMA_MIN_NUM_CTX = 512;
 
 /** keep_alive: liczba (sekundy / ujemna = na stałe) albo tekst typu "24h". */
 export function parseKeepAlive(value: string | undefined): string | number {
@@ -114,7 +115,7 @@ function ollamaOptions(config: LlmChainConfig, request: LlmRequest): Record<stri
   return {
     temperature: request.temperature ?? 0.7,
     num_predict: Math.min(request.maxOutputTokens ?? configuredPredict, OLLAMA_MAX_OUTPUT_TOKENS),
-    num_ctx: Math.max(1024, Math.floor(config.ollamaNumCtx || OLLAMA_DEFAULT_NUM_CTX)),
+    num_ctx: Math.max(OLLAMA_MIN_NUM_CTX, Math.floor(config.ollamaNumCtx || OLLAMA_DEFAULT_NUM_CTX)),
     ...(config.ollamaNumThread && config.ollamaNumThread > 0 ? { num_thread: Math.floor(config.ollamaNumThread) } : {}),
   };
 }
@@ -185,7 +186,7 @@ export async function generateGemini(
         contents,
         generationConfig: {
           temperature: request.temperature ?? 0.7,
-          maxOutputTokens: request.maxOutputTokens ?? 2048,
+          maxOutputTokens: request.maxOutputTokens ?? OLLAMA_MAX_OUTPUT_TOKENS,
         },
       }),
       signal,
@@ -278,7 +279,7 @@ export async function generateXai(
         model,
         messages,
         temperature: request.temperature ?? 0.7,
-        max_tokens: request.maxOutputTokens ?? 2048,
+        max_tokens: request.maxOutputTokens ?? OLLAMA_MAX_OUTPUT_TOKENS,
       }),
       signal,
     });
@@ -476,7 +477,7 @@ export async function warmupOllama(
         messages: [],
         stream: false,
         keep_alive: parseKeepAlive(config.ollamaKeepAlive),
-        options: { num_ctx: Math.max(1024, Math.floor(config.ollamaNumCtx || OLLAMA_DEFAULT_NUM_CTX)) },
+        options: { num_ctx: Math.max(OLLAMA_MIN_NUM_CTX, Math.floor(config.ollamaNumCtx || OLLAMA_DEFAULT_NUM_CTX)) },
       }),
       signal,
     });

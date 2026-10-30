@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { DataStore, OPERATOR_NAME } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS, AgentProfile } from '../kernel/agents';
 import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Paperclip, Send, X } from 'lucide-react';
@@ -64,11 +64,20 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [mobileSection, setMobileSection] = useState<'chat' | 'agents'>('chat');
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const followLatestMessagesRef = useRef(true);
   const transmissionStatus = sendError
     ? { label: 'BŁĄD TRANSMISJI', color: 'rose' }
     : isLoading
     ? { label: 'PRZETWARZANIE', color: 'cyan' }
     : { label: 'OCZEKUJE', color: 'slate' };
+
+  useEffect(() => {
+    const chatScroll = chatScrollRef.current;
+    if (chatScroll && followLatestMessagesRef.current) {
+      chatScroll.scrollTop = chatScroll.scrollHeight;
+    }
+  }, [dataStore.chat_history.length, isLoading]);
 
   const handleSendProtocol = async () => {
     if (isLoading) return;
@@ -196,7 +205,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               disabled={isLoading}
               className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-200 outline-none transition focus:border-cyan-500 disabled:opacity-50"
             >
-              <option value="triad">Triada</option>
+              <option value="triad">Triada · Alex, Astyria, si_1, Aurelius</option>
               <option value="Alex">Alex</option>
               <option value="Astyria">Astyria</option>
               <option value="Aurelius">Aurelius</option>
@@ -348,7 +357,14 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
         </div>
 
         {/* Messages Stream */}
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5 scrollbar-thin">
+        <div
+          ref={chatScrollRef}
+          onScroll={(event) => {
+            const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+            followLatestMessagesRef.current = scrollHeight - scrollTop - clientHeight < 120;
+          }}
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4 space-y-3.5 scrollbar-thin"
+        >
           {sendError && (
             <div role="alert" aria-live="assertive" className="rounded-lg border border-rose-500/40 bg-rose-950/40 p-3 text-xs text-rose-200">
               Nie udało się wykonać polecenia ani misji: {sendError}

@@ -200,7 +200,7 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
       out.push({
         agent: 'Astyria',
         text: `Prędkość ${speed} tokenów/s na samym CPU jest za niska dla płynnej rozmowy trzech agentów. Mniejszy model odpowiada kilka razy szybciej.`,
-        command: 'bash scripts/setup-ollama.sh qwen3.5:2b',
+        command: 'bash scripts/setup-ollama.sh llava-phi3:3.8b',
       });
     } else if (speed >= 15 && diag.ramGb >= 16) {
       out.push({

@@ -32,7 +32,8 @@ export const ASTYRIA_MISSION_LABELS: Record<AstyriaMissionAction, string> = {
 };
 
 export type AgentProtocolCommand = (typeof AGENT_PROTOCOL_COMMANDS)[number];
-export type TriadAgentName = 'Alex' | 'Astyria' | 'Aurelius' | 'si_1';
+export const TRIAD_AGENT_NAMES = ['Alex', 'Astyria', 'si_1', 'Aurelius'] as const;
+export type TriadAgentName = (typeof TRIAD_AGENT_NAMES)[number];
 
 export interface AgentProtocolPayload {
   signal?: string;
@@ -104,7 +105,7 @@ export interface AgentProtocolTranscriptEntry {
   tekst: string;
 }
 
-const AGENT_PROTOCOL_AGENTS = ['triad', 'Alex', 'Astyria', 'Aurelius', 'si_1'] as const;
+const AGENT_PROTOCOL_AGENTS = ['triad', ...TRIAD_AGENT_NAMES] as const;
 const REQUEST_KEYS = ['command', 'agent', 'payload'];
 const PAYLOAD_KEYS = ['signal', 'omega', 'time'];
 const MAX_SIGNAL_LENGTH = 256;
@@ -256,7 +257,7 @@ export function buildAgentProtocolReplies(
       break;
   }
 
-  const agents: TriadAgentName[] = request.agent === 'triad' ? ['Alex', 'Astyria', 'Aurelius', 'si_1'] : [request.agent];
+  const agents: TriadAgentName[] = request.agent === 'triad' ? [...TRIAD_AGENT_NAMES] : [request.agent];
   const replies: Partial<Record<TriadAgentName, AgentProtocolReply>> = {};
   for (const agent of agents) {
     replies[agent] = {
