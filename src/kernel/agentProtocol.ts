@@ -56,7 +56,7 @@ export function parseChatProtocolCommand(
   let commandText = trimmed;
 
   const targetedCommand = trimmed.match(
-    /^\/agent\s+(triad|Alex|Astyria|Aurelius|si_1)\s+(status|audit|history|SYSTEM_STATUS|DATA_STORE_AUDIT|VERSION_TIMELINE)$/i,
+    /^\/agent\s+(triad|Alex|Astyria|Aurelius|si_1|Aria)\s+(status|audit|history|SYSTEM_STATUS|DATA_STORE_AUDIT|VERSION_TIMELINE)$/i,
   );
   if (targetedCommand) {
     const target = targetedCommand[1].toLowerCase();

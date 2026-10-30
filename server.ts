@@ -291,6 +291,21 @@ app.get('/api/explorer/download/:filename', (req, res) => {
   }
 });
 
+app.get('/download', (req, res) => {
+  const requestedFile = req.query.file;
+  if (typeof requestedFile !== 'string' || !requestedFile.trim()) {
+    return res.status(400).json({ error: 'Brak parametru file' });
+  }
+
+  const filename = path.basename(requestedFile);
+  const filePath = path.join(EXPORTS_DIR, filename);
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return res.status(404).json({ error: 'Plik nie istnieje w katalogu eksportów' });
+  }
+
+  return res.download(filePath);
+});
+
 // API for agents to export/save files to the explorer
 app.post('/api/explorer/export', (req, res) => {
   const { filename, content } = req.body;
@@ -2957,7 +2972,7 @@ const TRIADA_COMMIT_AUTHORS: Record<string, { name: string; email: string }> = {
   Alex: { name: 'Alex (SVL Agent)', email: 'alex@svl.system' },
   Astyria: { name: 'Astyria (SVL Agent)', email: 'astyria@svl.system' },
   Aurelius: { name: 'Aurelius (SVL Agent)', email: 'aurelius@svl.system' },
-  si_1: { name: 'si_1 (SVL Agent)', email: 'si_1@svl.system' },
+  si_1: { name: 'Aria (SVL Agent)', email: 'aria@svl.system' },
   triad: { name: 'Triada (SVL Agents)', email: 'triada@svl.system' },
 };
 
@@ -4033,7 +4048,7 @@ const CHAT_AGENT_MISSIONS: Record<ChatAgentName, string> = {
     'W Studio Aplikacji można użyć create-app <nazwa> [typ], create-db <nazwa>, list i list-db. Nie deklaruj wykonania operacji bez potwierdzenia serwera.',
   ].join(' '),
   si_1: [
-    'Jesteś si_1, nowym agentem AI Triady w SVL System, powołanym przez Operatora.',
+    'Jesteś Aria (identyfikator systemowy: si_1), agentką AI Triady w SVL System, powołaną przez Operatora. Przedstawiasz się zawsze jako Aria.',
     'Misja: synchronizacja zmian w aplikacji — pilnuj, aby zatwierdzone operacje były realnie widoczne w interfejsie, i raportuj rozbieżności między deklaracjami a stanem DATA_STORE.',
     'W Studio Aplikacji można użyć create-app <nazwa> [typ], create-db <nazwa>, list i list-db. Nie deklaruj wykonania operacji bez potwierdzenia serwera.',
   ].join(' '),
@@ -5284,6 +5299,7 @@ app.post('/api/triad/message', async (req, res) => {
     const binaryAttachments = attachments
       .filter((attachment) => attachment.mimeType)
       .map((attachment) => ({ name: attachment.name, mimeType: attachment.mimeType!, content: attachment.content }));
+    const hasImageAttachment = binaryAttachments.some((attachment) => attachment.mimeType.startsWith('image/'));
     // Lokalna Ollama obsługuje agentów po kolei, więc limit rośnie z liczbą agentów.
     const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS * (usesOllama() ? targetAgents.length : 1));
 
@@ -5291,9 +5307,10 @@ app.post('/api/triad/message', async (req, res) => {
       if (llmProviders.length > 0) {
         try {
           const result = await generateWithChain(LLM_CHAIN_CONFIG, {
-            system: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}`,
+            system: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}${hasImageAttachment ? ' Do wiadomości dołączono zdjęcie — obejrzyj je i opisz konkretnie, co faktycznie na nim widać (obiekty, osoby, światło, zmiany). Nie powtarzaj wcześniejszych odpowiedzi i nie odpowiadaj ogólnikami o systemie.' : ''}`,
             // Lokalny model: krótsza historia = mniej tokenów do przetworzenia przed odpowiedzią.
-            history: usesOllama() && !CLOUD_LLM_ENABLED ? buildLlmHistory(chatHistory, agent, 4, 800) : buildLlmHistory(chatHistory, agent),
+            // Przy zdjęciu pomijamy historię, by model nie powielał poprzednich, identycznych odpowiedzi.
+            history: hasImageAttachment ? [] : usesOllama() && !CLOUD_LLM_ENABLED ? buildLlmHistory(chatHistory, agent, 4, 800) : buildLlmHistory(chatHistory, agent),
             message: cleanMessage,
             attachments: binaryAttachments,
           }, deadline);

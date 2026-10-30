@@ -205,11 +205,11 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               disabled={isLoading}
               className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-200 outline-none transition focus:border-cyan-500 disabled:opacity-50"
             >
-              <option value="triad">Triada · Alex, Astyria, si_1, Aurelius</option>
+              <option value="triad">Triada · Alex, Astyria, Aria, Aurelius</option>
               <option value="Alex">Alex</option>
               <option value="Astyria">Astyria</option>
               <option value="Aurelius">Aurelius</option>
-              <option value="si_1">si_1</option>
+              <option value="si_1">Aria</option>
             </select>
           </div>
 
@@ -446,7 +446,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 text-slate-300 p-3 bg-slate-900/70 rounded-lg border border-slate-800">
               <div className="flex items-center gap-2">
                 <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-                <span className="text-xs">Przetwarzanie transmisji przez węzły (Alex, Astyria, Aurelius, si_1)...</span>
+                <span className="text-xs">Przetwarzanie transmisji przez węzły (Alex, Astyria, Aurelius, Aria)...</span>
               </div>
               {onForceSync && (
                 <button

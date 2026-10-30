@@ -114,8 +114,8 @@ Set `agent` to `triad`, `Alex`, `Astyria` or `Aurelius`. The API returns
 structured agent replies and the updated local kernel state. Natural-language
 chat is provided separately at `POST /api/triad/message` and uses local Ollama.
 In the Triad tab, the default shared channel sends one message to Alex, Astyria,
-si_1 and Aurelius; each reply is saved as a separate author entry in the same
-chat history.
+Aria (internal id `si_1`) and Aurelius; each reply is saved as a separate author
+entry in the same chat history.
 Alex receives project-development guidance and can direct you to the supported
 Studio commands. Alex, Astyria and Aurelius each receive a mission focused on
 project development, application reliability, database workflows and validating
