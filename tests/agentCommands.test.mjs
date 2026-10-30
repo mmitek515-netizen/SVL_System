@@ -26,6 +26,22 @@ test('obsługuje składnię wykrzyknikową !polecenie, ale ignoruje obrazki mark
   assert.deepEqual(extractAgentCommands('![alt text](obraz.png)'), []);
 });
 
+test('pomija przykłady składni z placeholderami — nie wykonuje dokumentacji', () => {
+  const reply = [
+    'Dostępne polecenia:',
+    '/propose create-app <nazwa> [typ]',
+    '/propose create-app my_project [typ]',
+    '/propose create-db <nazwa>',
+    '/exec <polecenie powłoki>',
+    '/propose create-app realna-app cli-utility',
+  ].join('\n');
+  assert.deepEqual(extractAgentCommands(reply), ['/propose create-app realna-app cli-utility']);
+});
+
+test('nawiasy kwadratowe w /exec pozostają legalne (składnia powłoki)', () => {
+  assert.deepEqual(extractAgentCommands('/exec ls [a-z]*.txt'), ['/exec ls [a-z]*.txt']);
+});
+
 test('czysty tekst bez poleceń zwraca pustą listę', () => {
   assert.deepEqual(extractAgentCommands('Zrobione! Aplikacja powinna działać.'), []);
   assert.deepEqual(extractAgentCommands(''), []);
