@@ -29,7 +29,9 @@ export const FileExplorer: React.FC = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setDeployMessage(`Wysłano na GitHub: commit ${data.sha ?? 'bez nowych zmian'} → origin/main`);
+        setDeployMessage(data.sha
+          ? `Zapisano commit ${data.sha} i wysłano do origin/${data.branch}.`
+          : `Brak nowych zmian do commita; origin/${data.branch} jest zsynchronizowane.`);
       } else {
         setDeployMessage(`Błąd synchronizacji z GitHub: ${data.error || `HTTP ${res.status}`}`);
       }
@@ -172,10 +174,10 @@ export const FileExplorer: React.FC = () => {
             onClick={handleGithubSync}
             disabled={syncing}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-indigo-950/70 border border-indigo-700/60 text-indigo-300 text-[10px] font-bold hover:bg-indigo-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
-            title="Pełna synchronizacja z GitHub: commit + push do origin/main (FULL_READ_WRITE)"
+            title="Synchronizuj kod aplikacji: commit + push do bieżącej gałęzi origin"
           >
             <UploadCloud className={`w-3.5 h-3.5 ${syncing ? 'animate-bounce' : ''}`} />
-            {syncing ? 'WYSYŁAM...' : 'WYŚLIJ NA GITHUB'}
+            {syncing ? 'SYNCHRONIZUJĘ...' : 'SYNCHRONIZUJ APLIKACJĘ'}
           </button>
           {loading && <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin" />}
         </div>

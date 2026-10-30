@@ -2977,20 +2977,158 @@ const TRIADA_COMMIT_AUTHORS: Record<string, { name: string; email: string }> = {
 };
 
 const TRIADA_COMMIT_ALLOWED_ROOTS = [
+  '.devcontainer',
+  '.github',
+  '.gitignore',
+  '.vscode',
   'apps',
   'Nowy_system',
-  'exports',
+  'bastillaos',
+  'scripts',
   'src',
   'tests',
+  'README.md',
+  'bun.lock',
+  'index.html',
+  'metadata.json',
+  'package-lock.json',
+  'package.json',
+  'tsconfig.json',
+  'vite.config.ts',
   'server.ts',
   'svl_kernel.py',
-  '.svl_deployments.json',
+  'update_kernel.py',
   '.env.example',
-  'package.json',
-  'package-lock.json',
 ];
 
-const TRIADA_DEFAULT_COMMIT_PATHS = ['apps', 'Nowy_system', 'exports', '.svl_deployments.json'];
+const TRIADA_DEFAULT_COMMIT_PATHS = [...TRIADA_COMMIT_ALLOWED_ROOTS];
+const AUTO_GIT_SYNC_INTERVAL_MS = 15_000;
+const AUTO_GIT_SYNC_STABLE_MS = 15_000;
+const autoGitSyncStartupDirtyPaths = new Set<string>();
+const autoGitSyncObservedPaths = new Map<string, { signature: string; firstSeen: number }>();
+let autoGitSyncEnabled = false;
+let autoGitSyncRunning = false;
+let autoGitPushPending = false;
+
+function parseGitStatusPaths(output: string): string[] {
+  return output.split('\0')
+    .filter((entry) => entry.length >= 4)
+    .map((entry) => entry.slice(3));
+}
+
+async function getAutoGitSyncChanges(): Promise<string[]> {
+  const { stdout } = await execFileAsync('git', [
+    'status',
+    '--porcelain=v1',
+    '-z',
+    '--no-renames',
+    '--untracked-files=all',
+    '--',
+    ...TRIADA_DEFAULT_COMMIT_PATHS,
+  ], { timeout: 10000 });
+  return parseGitStatusPaths(stdout);
+}
+
+function getAutoGitSyncFileSignature(file: string): string {
+  try {
+    const stat = fs.lstatSync(path.resolve(file));
+    return `${stat.mode}:${stat.size}:${stat.mtimeMs}`;
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return 'deleted';
+    throw error;
+  }
+}
+
+async function pushCurrentBranch(): Promise<void> {
+  await execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 45000 });
+}
+
+async function autoSyncGitChanges(): Promise<void> {
+  if (!autoGitSyncEnabled || !triadaGithubAutoPush || autoGitSyncRunning) return;
+  autoGitSyncRunning = true;
+  try {
+    if (autoGitPushPending) {
+      await pushCurrentBranch();
+      autoGitPushPending = false;
+      pushSystemLog('healed', 'KERNEL', '[GITHUB AUTO] Oczekujący commit został wypchnięty do origin.');
+    }
+
+    const changedPaths = await getAutoGitSyncChanges();
+    const currentPaths = new Set(changedPaths);
+    for (const startupPath of autoGitSyncStartupDirtyPaths) {
+      if (!currentPaths.has(startupPath)) autoGitSyncStartupDirtyPaths.delete(startupPath);
+    }
+    for (const observedPath of autoGitSyncObservedPaths.keys()) {
+      if (!currentPaths.has(observedPath)) autoGitSyncObservedPaths.delete(observedPath);
+    }
+
+    const now = Date.now();
+    const stablePaths: string[] = [];
+    for (const file of changedPaths) {
+      if (autoGitSyncStartupDirtyPaths.has(file)) continue;
+      const signature = getAutoGitSyncFileSignature(file);
+      const observed = autoGitSyncObservedPaths.get(file);
+      if (!observed || observed.signature !== signature) {
+        autoGitSyncObservedPaths.set(file, { signature, firstSeen: now });
+      } else if (now - observed.firstSeen >= AUTO_GIT_SYNC_STABLE_MS) {
+        stablePaths.push(file);
+      }
+    }
+    if (stablePaths.length === 0) return;
+
+    const validations = [
+      ['test', []],
+      ['run', ['lint']],
+      ['run', ['build']],
+    ] as const;
+    for (const [command, args] of validations) {
+      await execFileAsync('npm', [command, ...args], { timeout: 180000 });
+    }
+    if (stablePaths.some((file) => {
+      const observed = autoGitSyncObservedPaths.get(file);
+      return !observed || observed.signature !== getAutoGitSyncFileSignature(file);
+    })) {
+      for (const file of stablePaths) {
+        autoGitSyncObservedPaths.set(file, { signature: getAutoGitSyncFileSignature(file), firstSeen: Date.now() });
+      }
+      return;
+    }
+
+    const sha = await triadGitCommit(
+      'triad',
+      `Automatyczna synchronizacja aplikacji (${stablePaths.length} plików)`,
+      stablePaths,
+      'auto-github-sync',
+    );
+    if (!sha) {
+      for (const file of stablePaths) autoGitSyncStartupDirtyPaths.add(file);
+      return;
+    }
+
+    autoGitPushPending = true;
+    await pushCurrentBranch();
+    autoGitPushPending = false;
+    for (const file of stablePaths) autoGitSyncObservedPaths.delete(file);
+    pushSystemLog('healed', 'KERNEL', `[GITHUB AUTO] Zmiany aplikacji przeszły testy, typecheck i build; commit ${sha} wypchnięty do origin.`);
+  } catch (error: any) {
+    pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Synchronizacja nie powiodła się; zmiany pozostają lokalnie i operacja zostanie ponowiona: ${error?.message || error}`);
+  } finally {
+    autoGitSyncRunning = false;
+  }
+}
+
+async function startAutoGitSync(): Promise<void> {
+  try {
+    for (const file of await getAutoGitSyncChanges()) autoGitSyncStartupDirtyPaths.add(file);
+  } catch (error: any) {
+    pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Nie można zainicjować obserwacji zmian: ${error?.message || error}`);
+    return;
+  }
+  autoGitSyncEnabled = true;
+  const timer = setInterval(() => void autoSyncGitChanges(), AUTO_GIT_SYNC_INTERVAL_MS);
+  timer.unref();
+  pushSystemLog('info', 'KERNEL', '[GITHUB AUTO] Automatyczna synchronizacja kodu włączona; zmiany są walidowane przed commitem i pushem.');
+}
 
 function sanitizeCommitPaths(files: unknown): string[] | null {
   if (files === undefined) return [...TRIADA_DEFAULT_COMMIT_PATHS];
@@ -3039,6 +3177,12 @@ async function triadGitCommit(agent: string, message: string, files: string[], o
 app.get('/api/triad/git/status', async (_req, res) => {
   try {
     const { stdout: branch } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 5000 });
+    let repositoryUrl: string | null = null;
+    try {
+      const { stdout: remote } = await execFileAsync('git', ['remote', 'get-url', 'origin'], { timeout: 5000 });
+      const match = remote.trim().match(/github\.com[:/]([^/\s]+\/[^/\s]+?)(?:\.git)?$/i);
+      repositoryUrl = match ? `https://github.com/${match[1].replace(/\.git$/i, '')}` : null;
+    } catch {}
     const { stdout: logOut } = await execFileAsync('git', ['log', '--pretty=format:%h|%an|%s|%cI', '-n', '10'], { timeout: 5000 });
     const { stdout: statusOut } = await execFileAsync('git', ['status', '--porcelain'], { timeout: 5000 });
     const commits = logOut.split('\n').filter(Boolean).map((line) => {
@@ -3056,11 +3200,13 @@ app.get('/api/triad/git/status', async (_req, res) => {
     return res.json({
       success: true,
       branch: branch.trim(),
+      repositoryUrl,
       commits,
       ahead,
       behind,
       githubPermissions: 'FULL_READ_WRITE',
       autoPush: triadaGithubAutoPush,
+      autoSync: autoGitSyncEnabled,
       dirtyFiles: statusOut.split('\n').filter((line) => line.trim().length > 0).length,
       commitPaths: TRIADA_DEFAULT_COMMIT_PATHS,
       authorizedAgents: Object.keys(TRIADA_COMMIT_AUTHORS),
@@ -3132,16 +3278,17 @@ app.post('/api/triad/github/sync', async (req, res) => {
     });
   }
   try {
-    const sha = await triadGitCommit(agentName, (message || 'Synchronizacja prac agentów z GitHub').trim(), commitPaths, 'github-sync');
-    await execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 45000 });
-    pushSystemLog('healed', 'KERNEL', `[GITHUB] ${agentName} zsynchronizował prace z GitHub (commit ${sha ?? 'bez nowych zmian'} → origin/main).`);
+    const sha = await triadGitCommit(agentName, (message || 'Synchronizacja aplikacji z GitHub').trim(), commitPaths, 'github-sync');
+    await pushCurrentBranch();
+    const { stdout: branch } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 5000 });
+    pushSystemLog('healed', 'KERNEL', `[GITHUB] ${agentName} zsynchronizował aplikację z GitHub (commit ${sha ?? 'bez nowych zmian'} → origin/${branch.trim()}).`);
     await runPythonKernel([
       '--action', 'batch_msg',
       '--msgs_json', JSON.stringify([
-        { agent: agentName === 'triad' ? 'Astyria' : agentName, tekst: `[GITHUB] Pełna synchronizacja z GitHub: commit ${sha ?? 'brak nowych zmian'} wypchnięty do origin/main. Uprawnienia: FULL_READ_WRITE.` },
+        { agent: agentName === 'triad' ? 'Astyria' : agentName, tekst: `[GITHUB] Pełna synchronizacja aplikacji z GitHub: commit ${sha ?? 'brak nowych zmian'} wypchnięty do origin/${branch.trim()}.` },
       ]),
     ]).catch(() => {});
-    return res.json({ success: true, synced: true, pushed: true, sha, files: commitPaths });
+    return res.json({ success: true, synced: true, pushed: true, sha, branch: branch.trim(), files: commitPaths });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'Błąd synchronizacji z GitHub.' });
   }
@@ -5535,6 +5682,7 @@ async function startServer() {
 
   // Podłączenie Triady, nadanie ROOT RING-0 i aktywacja misji BUILD_BEST_OS (idempotentne).
   await bootstrapTriadMission();
+  await startAutoGitSync();
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));

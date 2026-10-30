@@ -223,3 +223,11 @@ packages the server with the systemd unit in
 `bastillaos/system-package/systemd/`. Production deployment additionally
 requires the target host, its approved environment configuration and a release
 decision; builds and dependency checks do not publish or install to a host.
+
+The GitHub synchronization controls commit and push application source to the
+configured `origin` remote. Background synchronization watches the application
+source paths, waits for files to settle, runs tests, TypeScript validation and a
+Vite build, then pushes the resulting commit. Changes already present when the
+server starts and local runtime data are not pushed automatically. This does
+not deploy to a separate production host; configure and approve that target
+independently.
