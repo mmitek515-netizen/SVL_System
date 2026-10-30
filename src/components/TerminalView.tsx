@@ -465,7 +465,7 @@ Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
   set <klucz> <wartość>   - Zmienia lub dodaje parametr w DATA_STORE.config
   history                 - Wyświetla historię aktualizacji jądra (update_history)
   bump <wersja> <opis>    - Rejestruje nową wersję w osi czasu Chronolitu
-  agent status <cel>      - Typowane polecenie statusu (cel: triad, Alex, Astyria, Aurelius)
+  agent status <cel>      - Typowane polecenie statusu (cel: triad, Alex, Astyria, Aurelius, si_1)
   agent audit <cel>       - Typowana kontrola DATA_STORE
   agent history <cel>     - Typowana historia wersji
   agent signal <cel> <ω> <t> <sygnał> - Analiza sygnału bez NLP
@@ -521,7 +521,7 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
       }
 
       case 'agents': {
-        addLog('AGENTY SVL: Alex, Astyria, Aurelius', 'system');
+        addLog('AGENTY SVL: Alex, Astyria, Aurelius, si_1', 'system');
         break;
       }
 
@@ -562,7 +562,8 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
         const agent = target === 'triad' ? 'triad'
           : target === 'alex' ? 'Alex'
             : target === 'astyria' ? 'Astyria'
-              : target === 'aurelius' ? 'Aurelius' : null;
+              : target === 'aurelius' ? 'Aurelius'
+                : target === 'si_1' ? 'si_1' : null;
         const commandByAction: Record<string, AgentProtocolCommand> = {
           status: 'SYSTEM_STATUS',
           audit: 'DATA_STORE_AUDIT',

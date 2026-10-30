@@ -371,7 +371,7 @@ export default function App() {
       const expectedAgentReplies = isFullChatRepair
         ? [{ agent: 'Astyria', tekst: result.reply }]
         : chatAgent === 'triad'
-        ? (['Alex', 'Astyria', 'Aurelius'] as const).map((agent) => ({
+        ? (['Alex', 'Astyria', 'Aurelius', 'si_1'] as const).map((agent) => ({
             agent,
             tekst: result.replies?.[agent],
           }))

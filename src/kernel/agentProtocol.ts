@@ -32,7 +32,7 @@ export const ASTYRIA_MISSION_LABELS: Record<AstyriaMissionAction, string> = {
 };
 
 export type AgentProtocolCommand = (typeof AGENT_PROTOCOL_COMMANDS)[number];
-export type TriadAgentName = 'Alex' | 'Astyria' | 'Aurelius';
+export type TriadAgentName = 'Alex' | 'Astyria' | 'Aurelius' | 'si_1';
 
 export interface AgentProtocolPayload {
   signal?: string;
@@ -55,7 +55,7 @@ export function parseChatProtocolCommand(
   let commandText = trimmed;
 
   const targetedCommand = trimmed.match(
-    /^\/agent\s+(triad|Alex|Astyria|Aurelius)\s+(status|audit|history|SYSTEM_STATUS|DATA_STORE_AUDIT|VERSION_TIMELINE)$/i,
+    /^\/agent\s+(triad|Alex|Astyria|Aurelius|si_1)\s+(status|audit|history|SYSTEM_STATUS|DATA_STORE_AUDIT|VERSION_TIMELINE)$/i,
   );
   if (targetedCommand) {
     const target = targetedCommand[1].toLowerCase();
@@ -65,7 +65,9 @@ export function parseChatProtocolCommand(
       ? 'Alex'
       : target === 'astyria'
       ? 'Astyria'
-      : 'Aurelius';
+      : target === 'aurelius'
+      ? 'Aurelius'
+      : 'si_1';
     commandText = targetedCommand[2];
   } else {
     const directCommand = trimmed.match(/^(?:\/command\s+)?(SYSTEM_STATUS|DATA_STORE_AUDIT|VERSION_TIMELINE)$/i);
@@ -102,7 +104,7 @@ export interface AgentProtocolTranscriptEntry {
   tekst: string;
 }
 
-const AGENT_PROTOCOL_AGENTS = ['triad', 'Alex', 'Astyria', 'Aurelius'] as const;
+const AGENT_PROTOCOL_AGENTS = ['triad', 'Alex', 'Astyria', 'Aurelius', 'si_1'] as const;
 const REQUEST_KEYS = ['command', 'agent', 'payload'];
 const PAYLOAD_KEYS = ['signal', 'omega', 'time'];
 const MAX_SIGNAL_LENGTH = 256;
@@ -126,7 +128,7 @@ export function isAgentProtocolCommand(value: unknown): value is AgentProtocolCo
 }
 
 export function isTriadAgent(value: unknown): value is TriadAgentName {
-  return value === 'Alex' || value === 'Astyria' || value === 'Aurelius';
+  return value === 'Alex' || value === 'Astyria' || value === 'Aurelius' || value === 'si_1';
 }
 
 export function validateAgentProtocolRequest(value: unknown): AgentProtocolValidation {
@@ -254,7 +256,7 @@ export function buildAgentProtocolReplies(
       break;
   }
 
-  const agents: TriadAgentName[] = request.agent === 'triad' ? ['Alex', 'Astyria', 'Aurelius'] : [request.agent];
+  const agents: TriadAgentName[] = request.agent === 'triad' ? ['Alex', 'Astyria', 'Aurelius', 'si_1'] : [request.agent];
   const replies: Partial<Record<TriadAgentName, AgentProtocolReply>> = {};
   for (const agent of agents) {
     replies[agent] = {

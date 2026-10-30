@@ -353,7 +353,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
               <span className="text-[10px] font-mono text-blue-200/50">{dataStore.chat_history.length} WIADOMOŚCI</span>
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-              {recentMessages.length === 0 && <p className="text-xs text-slate-500">Napisz do Alexa, Astyrii, Aureliusa lub całej Triady.</p>}
+              {recentMessages.length === 0 && <p className="text-xs text-slate-500">Napisz do Alexa, Astyrii, Aureliusa, si_1 lub całej Triady.</p>}
               {recentMessages.map((message, index) => (
                 <article key={`${message.agent}-${index}`} className={`rounded-xl border p-3 ${message.agent === 'Mateusz Mitek' || message.agent === 'Operator' ? 'ml-5 border-blue-300/15 bg-blue-950/40' : 'mr-5 border-cyan-300/15 bg-slate-950/50'}`}>
                   <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
@@ -440,6 +440,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   <option value="Alex">Alex</option>
                   <option value="Astyria">Astyria</option>
                   <option value="Aurelius">Aurelius</option>
+                  <option value="si_1">si_1</option>
                 </select>
                 <input
                   id="hyperspace-command"

@@ -28,7 +28,7 @@ interface AgentCommsViewProps {
   onSendProtocol: (request: AgentProtocolRequest) => Promise<AgentProtocolReply | undefined>;
   onSendMessage: (
     message: string,
-    agent: 'triad' | 'Alex' | 'Astyria' | 'Aurelius',
+    agent: 'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1',
     attachments?: ChatAttachment[],
   ) => Promise<void>;
   onRunAstyriaMission: (action: AstyriaMissionAction) => Promise<void>;
@@ -54,7 +54,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   onUnclog,
   onRestoreBackup,
 }) => {
-  const [selectedTarget, setSelectedTarget] = useState<'triad' | 'Alex' | 'Astyria' | 'Aurelius'>('triad');
+  const [selectedTarget, setSelectedTarget] = useState<'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1'>('triad');
   const [selectedCommand, setSelectedCommand] = useState<AgentProtocolCommand>('SYSTEM_STATUS');
   const [signal, setSignal] = useState('');
   const [omega, setOmega] = useState('');
@@ -200,6 +200,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               <option value="Alex">Alex</option>
               <option value="Astyria">Astyria</option>
               <option value="Aurelius">Aurelius</option>
+              <option value="si_1">si_1</option>
             </select>
           </div>
 
@@ -429,7 +430,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 text-slate-300 p-3 bg-slate-900/70 rounded-lg border border-slate-800">
               <div className="flex items-center gap-2">
                 <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-                <span className="text-xs">Przetwarzanie transmisji przez węzły (Alex, Astyria, Aurelius)...</span>
+                <span className="text-xs">Przetwarzanie transmisji przez węzły (Alex, Astyria, Aurelius, si_1)...</span>
               </div>
               {onForceSync && (
                 <button
@@ -546,7 +547,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           </span>
         </div>
 
-        {(['Alex', 'Astyria', 'Aurelius'] as const).map((agentKey) => {
+        {(['Alex', 'Astyria', 'Aurelius', 'si_1'] as const).map((agentKey) => {
           const profile = SYSTEM_AGENTS[agentKey];
           return (
             <div
@@ -555,7 +556,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${profile.badgeBg.includes('emerald') ? 'bg-emerald-400' : profile.badgeBg.includes('cyan') ? 'bg-cyan-400' : 'bg-amber-400'} shadow-[0_0_8px_currentColor]`} />
+                  <span className={`w-2 h-2 rounded-full ${profile.badgeBg.includes('emerald') ? 'bg-emerald-400' : profile.badgeBg.includes('cyan') ? 'bg-cyan-400' : profile.badgeBg.includes('rose') ? 'bg-rose-400' : 'bg-amber-400'} shadow-[0_0_8px_currentColor]`} />
                   <span className={`font-bold ${profile.textColor} text-sm tracking-wide`}>
                     {profile.name}
                   </span>

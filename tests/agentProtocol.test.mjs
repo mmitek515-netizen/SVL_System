@@ -50,7 +50,7 @@ test('builds kernel-backed structured replies for all triad roles', () => {
   const request = validateAgentProtocolRequest({ command: 'SYSTEM_STATUS', agent: 'triad' }).request;
   const result = buildAgentProtocolReplies(request, store);
 
-  assert.deepEqual(Object.keys(result.replies), ['Alex', 'Astyria', 'Aurelius']);
+  assert.deepEqual(Object.keys(result.replies), ['Alex', 'Astyria', 'Aurelius', 'si_1']);
   assert.equal(result.data.version, '9.1.0');
   assert.equal(result.data.updateHistoryCount, 1);
   for (const reply of Object.values(result.replies)) {

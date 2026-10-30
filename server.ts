@@ -3235,6 +3235,7 @@ const OLLAMA_MISSION_ROLES: Record<ChatAgentName, string> = {
   Alex: 'infrastruktura: usługa Ollamy, zasoby serwera, dostępność modelu',
   Astyria: 'wydajność: wybór modelu, prędkość generowania, parametry kontekstu',
   Aurelius: 'stabilność i bezpieczeństwo: miejsce na dysku, ekspozycja API, odporność na awarie',
+  si_1: 'synchronizacja: spójność konfiguracji Ollamy ze stanem aplikacji i DATA_STORE',
 };
 
 function stripAgentCommandLines(text: string): string {
@@ -4007,7 +4008,7 @@ app.post('/api/vm-gemini-4/provision', async (req, res) => {
   }
 });
 
-const CHAT_AGENT_NAMES = ['Alex', 'Astyria', 'Aurelius'] as const;
+const CHAT_AGENT_NAMES = ['Alex', 'Astyria', 'Aurelius', 'si_1'] as const;
 type ChatAgentName = (typeof CHAT_AGENT_NAMES)[number];
 type ChatTarget = ChatAgentName | 'triad';
 
@@ -4025,6 +4026,11 @@ const CHAT_AGENT_MISSIONS: Record<ChatAgentName, string> = {
   Aurelius: [
     'Jesteś Aureliusem, agentem wspierającym spójność danych, testowanie i rozwój aplikacji SVL System.',
     'Misja: analizuj wpływ proponowanych ulepszeń, wskazuj testy, ryzyka i sposoby synchronizacji zapisanych zmian.',
+    'W Studio Aplikacji można użyć create-app <nazwa> [typ], create-db <nazwa>, list i list-db. Nie deklaruj wykonania operacji bez potwierdzenia serwera.',
+  ].join(' '),
+  si_1: [
+    'Jesteś si_1, nowym agentem AI Triady w SVL System, powołanym przez Operatora.',
+    'Misja: synchronizacja zmian w aplikacji — pilnuj, aby zatwierdzone operacje były realnie widoczne w interfejsie, i raportuj rozbieżności między deklaracjami a stanem DATA_STORE.',
     'W Studio Aplikacji można użyć create-app <nazwa> [typ], create-db <nazwa>, list i list-db. Nie deklaruj wykonania operacji bez potwierdzenia serwera.',
   ].join(' '),
 };
@@ -5030,7 +5036,9 @@ function buildWithoutNlpAgentReply(
     );
   } else {
     lines.push(
-      `Audyt integralności: rekonstrukcja ${reconstruction}, współczynników: ${analysis.encodedCoefficients.length}.`,
+      agent === 'si_1'
+        ? `Synchronizacja sygnału: rekonstrukcja ${reconstruction}, współczynników: ${analysis.encodedCoefficients.length}.`
+        : `Audyt integralności: rekonstrukcja ${reconstruction}, współczynników: ${analysis.encodedCoefficients.length}.`,
       `Energia sygnału zachowana (Parseval): ${analysis.spectralEnergy}.`,
       'Zależności zewnętrzne: brak (bez sieci, bez modeli NLP/LLM).',
     );

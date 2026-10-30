@@ -36,6 +36,15 @@ export const SYSTEM_AGENTS: Record<string, AgentProfile> = {
     textColor: "text-amber-400",
     accentHex: "#f59e0b",
   },
+  si_1: {
+    id: "si_1",
+    name: "si_1",
+    avatarColor: "bg-rose-500/20 text-rose-400 border-rose-500/30",
+    borderColor: "border-rose-500/30",
+    badgeBg: "bg-rose-950/60 text-rose-300 border-rose-800/40",
+    textColor: "text-rose-400",
+    accentHex: "#f43f5e",
+  },
   Operator: {
     id: "Operator",
     name: "Mateusz Mitek (Tata)",

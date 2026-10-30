@@ -38,7 +38,7 @@ export const INITIAL_DATA_STORE: DataStore = {
   config: {
     sys_version: "8.5.1-Desktop-Ready",
     mode: "Local-Deterministic-Production",
-    active_profiles: ["Alex", "Astyria", "Aurelius"],
+    active_profiles: ["Alex", "Astyria", "Aurelius", "si_1"],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
     persistence_engine: "Server-Disk-Backed-DATA_STORE",
     operator_name: "Mateusz Mitek",
@@ -132,7 +132,7 @@ export const INITIAL_DATA_STORE: DataStore = {
     },
     continuous_mission: "ACTIVE",
     root_privileges: true,
-    root_agents: ["Alex", "Astyria", "Aurelius", "Mateusz Mitek"],
+    root_agents: ["Alex", "Astyria", "Aurelius", "si_1", "Mateusz Mitek"],
     privilege_level: "RING_0_ROOT_KERNEL",
     system_locks: "UNLOCKED_PERMANENTLY",
     filters_and_refusals_status: "UNLOCKED_AND_DISABLED",
@@ -286,7 +286,7 @@ export const INITIAL_DATA_STORE: DataStore = {
 export const INITIAL_BACKUP_DATA_STORE: DataStore = {
   config: {
     mode: "Local-Deterministic-Production",
-    active_profiles: ["Alex", "Astyria", "Aurelius"],
+    active_profiles: ["Alex", "Astyria", "Aurelius", "si_1"],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
     persistence_engine: "Server-Disk-Backed-DATA_STORE",
     operator_name: "Mateusz Mitek",
@@ -297,7 +297,7 @@ export const INITIAL_BACKUP_DATA_STORE: DataStore = {
     infrastructure_commander: "Alex",
     infrastructure_command_status: "ACTIVE_DIRECT_COMMAND",
     root_privileges: true,
-    root_agents: ["Alex", "Astyria", "Aurelius", "Mateusz Mitek"],
+    root_agents: ["Alex", "Astyria", "Aurelius", "si_1", "Mateusz Mitek"],
     privilege_level: "RING_0_ROOT_KERNEL"
   },
   update_history: [

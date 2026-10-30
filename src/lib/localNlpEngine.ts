@@ -14,7 +14,7 @@
 
 export const LOCAL_NLP_VERSION = '1.0.0-Triada-LocalNLP';
 
-export type LocalNlpAgent = 'Alex' | 'Astyria' | 'Aurelius';
+export type LocalNlpAgent = 'Alex' | 'Astyria' | 'Aurelius' | 'si_1';
 export type LocalNlpSentiment = 'positive' | 'neutral' | 'negative';
 
 export type LocalNlpIntent =
@@ -100,6 +100,7 @@ const AGENT_ENTITY_NAMES: Record<string, LocalNlpAgent> = {
   alex: 'Alex',
   astyria: 'Astyria',
   aurelius: 'Aurelius',
+  si_1: 'si_1',
 };
 
 /** Dopasowanie słowa kluczowego: frazy — przez inkluzję, pojedyncze słowa — z granicami słów. */
@@ -324,6 +325,43 @@ const PERSONA_TEMPLATES: Record<LocalNlpAgent, Record<LocalNlpIntent, string[]>>
       'Analiza lokalna nie wykryła znanej intencji. Mogę przygotować audyt, raport bezpieczeństwa albo weryfikację wersji — wskaż kierunek, Tata.',
     ],
   },
+  si_1: {
+    greeting: [
+      'Witaj, Tata! si_1 na kanale. Synchronizacja stanu aplikacji z DATA_STORE: AKTYWNA. Wersja {sysVersion}.',
+    ],
+    farewell: ['Do usłyszenia! Monitor synchronizacji si_1 pracuje dalej w tle — v{sysVersion}.'],
+    thanks: [
+      'Dziękuję, Tata! Spójność aplikacji i danych pozostaje pod moją stałą obserwacją.',
+    ],
+    status: [
+      'RAPORT SYNCHRONIZACJI si_1: wersja {sysVersion}, tryb {mode}, profile: {profiles}. Wydań: {updateCount}, pakietów na kanale: {chatCount}. Stan interfejsu zgodny z DATA_STORE.',
+    ],
+    version: ['Wersja systemu: {sysVersion} ({updateCount} wydań w historii). Interfejs i dane: zsynchronizowane.'],
+    mission: [
+      'Misja {mission}: pilnuję, aby każda zatwierdzona zmiana była realnie widoczna w aplikacji. Wdrożonych artefaktów: {deployedCount}.',
+    ],
+    agents: [
+      'Jestem si_1 — nowy agent synchronizacji Triady. Raportuję rozbieżności między deklaracjami a stanem DATA_STORE. Uprawnienia: {root}.',
+    ],
+    deploy: [
+      'Po każdym wdrożeniu weryfikuję, czy artefakt faktycznie pojawił się w apps/ i w interfejsie. Wdrożone: {deployedCount}.',
+    ],
+    github: [
+      'Synchronizacja repo: sprawdzam, czy commit i push do origin/main odzwierciedlają stan lokalny aplikacji.',
+    ],
+    root: [
+      'Uprawnienia ROOT: {root}. Używam ich wyłącznie do weryfikacji i synchronizacji stanu systemu.',
+    ],
+    capabilities: [
+      'Mój zakres: synchronizacja stanu aplikacji, weryfikacja widoczności zmian w UI, kontrola spójności DATA_STORE z interfejsem.',
+    ],
+    help: [
+      'Pomoc si_1: zapytaj o stan synchronizacji, widoczność zmian w aplikacji albo spójność danych z interfejsem.',
+    ],
+    unknown: [
+      'Nie rozpoznałem intencji przekazu. Mogę zraportować stan synchronizacji, wersję albo spójność DATA_STORE — sprecyzuj, Tata.',
+    ],
+  },
 };
 
 const SENTIMENT_PREFIX: Record<Exclude<LocalNlpSentiment, 'neutral'>, Record<LocalNlpAgent, string>> = {
@@ -331,11 +369,13 @@ const SENTIMENT_PREFIX: Record<Exclude<LocalNlpSentiment, 'neutral'>, Record<Loc
     Alex: 'Pozytywny sygnał odebrany! ',
     Astyria: 'Twój entuzjazm zasila pętlę rozwoju! ',
     Aurelius: 'Notuję pozytywny sentyment przekazu. ',
+    si_1: 'Pozytywny sygnał zsynchronizowany. ',
   },
   negative: {
     Alex: 'Wykryłem problem w przekazie — zajmuję się tym. ',
     Astyria: 'Sygnał ryzyka odebrany — aktywuję tryb naprawczy. ',
     Aurelius: 'Negatywny sentyment odnotowany w audycie. ',
+    si_1: 'Rozbieżność odnotowana — weryfikuję stan synchronizacji. ',
   },
 };
 
