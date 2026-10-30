@@ -2,14 +2,14 @@
   "vm_name": "VM_Ten_System",
   "sys_version": "8.8.0-Triada-BestOS-Mission",
   "app_version": "1.2.3-NodeReact-VM",
-  "timestamp": "2026-10-30T09:52:17.929Z",
+  "timestamp": "2026-10-30T10:14:17.132Z",
   "reason": "Cykliczny 5-minutowy zapis snapshotu VM_Ten_System",
   "memory_telemetry": {
-    "rssMB": 349.2,
-    "heapUsedMB": 97.4,
-    "heapTotalMB": 104.7,
+    "rssMB": 967.8,
+    "heapUsedMB": 100.1,
+    "heapTotalMB": 109.5,
     "allocatedMB": 4096,
-    "utilizationPercent": 8.5,
+    "utilizationPercent": 23.6,
     "under70PercentIdle": true
   },
   "vm_state": {
@@ -24,11 +24,11 @@
     "hyperspaceDimensions": 128,
     "daemonReloaderStatus": "ACTIVE (CWD fs.watch Auto-Sync)",
     "daemonReloaderEvents": 4,
-    "lastCwdReload": "08:57:17",
+    "lastCwdReload": "10:04:16",
     "memoryGuardStatus": "ACTIVE (<70% Idle Target)",
     "idleTargetPercent": 70,
     "firewallStatus": "ACTIVE (UFW Ring-0 Port 3200 & 3200 Real-Time RX/TX Listener)",
-    "firewallInspectedRequests": 1567,
+    "firewallInspectedRequests": 546,
     "firewallRules": [
       "3200/tcp ALLOW IN/OUT (SVL Ring-0 HTTP/IPC Real-Time Stream)",
       "3200/tcp ALLOW IN/OUT (Raw Socket RX/TX Listener — Wenchang & Desktop Nexus)",
@@ -36,15 +36,15 @@
       "50MB PAYLOAD & JSON SCHEMA SANITIZER ACTIVE"
     ],
     "autoSnapshotStatus": "ACTIVE (Co 5 min -> /api/kernel/save-store & /exports)",
-    "snapshotsCount": 17,
-    "lastSnapshotTime": "09:52:17",
+    "snapshotsCount": 4,
+    "lastSnapshotTime": "10:14:17",
     "daemonScriptPath": "/exports/vm_ten_sys.sh",
     "snapshotFilePath": "/exports/vm_ten_system_snapshot.json"
   },
   "data_store_summary": {
     "config_keys": 52,
     "update_history_count": 66,
-    "chat_history_count": 86
+    "chat_history_count": 92
   },
   "data_store_backup": {
     "config": {
@@ -891,6 +891,30 @@
       {
         "agent": "Astyria",
         "tekst": "### Ollame Ulepszony\n\n#### **Uwagi**\n\nZanim zacznemy, muszę powiedzieć, że ollame nie jest tradycyjnym narzędziem, ale będziemy go ulepić tak, aby była ono bardziej interaktywne i przyjazne dla niewymagających. Wszystko jest tu w celu poprawy funkcjonalności i czytelności.\n\n#### **Zarządzanie Projektami SVL**\n\nWykonaj `create-app <id> <typ>` i wprowadź parametry, które chcesz utworzyć w projekcie.\n\n**Przykład:** `create-app my-project web`\n\nWykonaj `create-db <id>` i wprowadź nazwę bazy danych.\n\n**Przykład:** `create-db my-project`\n\nWyświetl listę utworzonych projektów i baz danych.\n\nWykonaj `list` aby wyświetlić listę wszystkich utworzonych projektów i baz danych.\n\nWykonaj `list-db` aby wyświetlić listę baz danych.\n\n#### **Interakcje**\n\nWykonaj `phase <id>` aby wyświetlić fazę wywołania dla danego id.\n\nWykonaj `heatmap <id>` aby wyświetlić szkic fazowania dla danego id.\n\nWykonaj `3d <id>` aby wyświetlić wykres 3D dla danego id.\n\nWykonaj `power <id>` aby wyświetlić wykres mocy dla danego id.\n\nWykonaj `heartbeat <id>` aby wyświetlić wykres serca dla danego id.\n\nWykonaj `orbits <id>` aby wyświetlić wykres orbity dla danego id.\n\n#### **Wykresy i Grafiki**\n\nWykonaj `chart <typ>` aby wyświetlić wykres.\n\n#### **Wideo**\n\nWykonaj `video <link>` aby odtworzyć wideo.\n\n#### **Treść i Dane**\n\nWszystkie treści i dane są przechowywane na serwerze i dostępne w czasie wywołania.\n\n#### **Uwagi Dodatkowe**\n\n- **Autentyzacja:** Autentyzacja jest aktywna w czasie wywołania poleceni.\n- **Pomoc:** Pomoc jest dostępna w czasie wywołania poleceni `/help`.\n- **Informacje:** Informacje są dostępne w czasie wywołania poleceni `/info`.\n\nWykonaj `sync` aby synchronizować dane i wykresy.\nWykonaj `bump` aby zaktualizować wersję narzędzi.\nWykonaj `infra` aby otrzymać informacje o infrastrukturze."
+      },
+      {
+        "agent": "Mateusz Mitek",
+        "tekst": "Ściągnij najlepszą możliwą wersję modelu ollamy dostosuj do naszego środowiska popraw napraw rozwiń tak żeby wszystko działało jak najlepiej. Zamień z tą którą mamy."
+      },
+      {
+        "agent": "Astyria",
+        "tekst": "### Ollame Ulepszony\n\n#### **Uwagi**\n\nZanim zacznemy, muszę powiedzieć, że ollame nie jest tradycyjnym narzędziem, ale będziemy go ulepić tak, aby była ono bardziej interaktywne i przyjazne dla niewymagających. Wszystko jest tu w celu poprawy funkcjonalności i czytelności.\n\n#### **Zarządzanie Projektami SVL**\n\nWykonaj `create-app <id> [typ]` i wprowadź parametry, które chcesz utworzyć w projekcie.\n\n**Przykład:** `create-app my-project web`\n\nWykonaj `create-db <id>` i wprowadź nazwę bazy danych.\n\n**Przykład:** `create-db my-project`\n\nWyświetl listę utworzonych projektów i baz danych.\n\nWykonaj `list` aby wyświetlić listę wszystkich utworzonych projektów i baz danych.\n\nWykonaj `list-db` aby wyświetlić listę baz danych.\n\n#### **Interakcje**\n\nWykonaj `phase <id>` aby wyświetlić fazę wywołania\n\nWykonaj `heatmap <id>` aby wyświetlić grafik ciepła\n\nWykonaj `3d <id>` aby wyświetlić grafik trójwymiarowy\n\nWykonaj `power <id>` aby wyświetlić grafik energii\n\nWykonaj `heartbeat <id>` aby wyświetlić grafik serca\n\nWykonaj `orbits <id>` aby wyświetlić grafik orb\n\n#### **Wyświetlanie Wyników**\n\nWykonaj `show <id>` aby wyświetlić wynik wywołania\n\n#### **Edycja Plików**\n\nWykonaj `write-file <app> <plik>` aby wprowadzić nowy plik\n\nWykonaj `edit-file <app> <plik>` aby edytować istniejący plik\n\n#### **Naprawy i Rozwińcia**\n\nWykonaj `fix <id>` aby naprawić wywołanie\n\nWykonaj `update <id>` aby uzupełnić wywołanie\n\nWykonaj `extend <id>` aby rozwinąć wywołanie\n\n#### **Podsumowanie**\n\nWykonaj `summary <id>` aby wyświetlić podsumowanie wywołania\n\n#### **Kanale**\n\n Wykonaj `/propose create-app <id> [typ]` aby propozycja utworzenia nowego projektu\n\nWykonaj `/propose create-db <id>` aby propozycja utworzenia nowej bazy danych\n\nWykonaj `/propose launch <id>` aby propozycja uruchomienia nowego wywołania\n\nWykonaj `/exec <polecenie powłoki>` aby wykonać polecenie powłoki"
+      },
+      {
+        "agent": "Mateusz Mitek",
+        "tekst": "[MISJA] Maksymalnie ulepszyć i przyspieszyć system oraz skonfigurować Ollamę."
+      },
+      {
+        "agent": "Alex",
+        "tekst": "[MISJA OLLAMA · Alex] Przeglądam infrastrukturę. Rozgrzewka modelu nieudana (fetch failed).\n• Serwer Ollamy nie odpowiada pod http://127.0.0.1:11434. Bez niego czat nie ma modelu.\n  Do wykonania przez operatora: `npm run setup:ollama`"
+      },
+      {
+        "agent": "Astyria",
+        "tekst": "[MISJA OLLAMA · Astyria] Analizuję wydajność.\n\nDiagnostyka:\n```text\nOllama: BRAK POŁĄCZENIA (Serwer Ollamy nie odpowiada pod http://127.0.0.1:11434 (fetch failed))\n```\nWszystkie zmiany konfiguracji (instalacja, wymiana modelu) wykonuje operator wskazanymi poleceniami — misja ich nie uruchamia sama."
+      },
+      {
+        "agent": "Aurelius",
+        "tekst": "[MISJA OLLAMA · Aurelius] Sprawdzam stabilność i bezpieczeństwo."
       }
     ]
   }
