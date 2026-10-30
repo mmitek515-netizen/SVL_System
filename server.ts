@@ -3009,6 +3009,8 @@ const autoGitSyncObservedPaths = new Map<string, { signature: string; firstSeen:
 let autoGitSyncEnabled = false;
 let autoGitSyncRunning = false;
 let autoGitPushPending = false;
+let autoGitSyncLastWarning = '';
+let autoGitSyncLastWarningAt = 0;
 
 function parseGitStatusPaths(output: string): string[] {
   return output.split('\0')
@@ -3040,7 +3042,15 @@ function getAutoGitSyncFileSignature(file: string): string {
 }
 
 async function pushCurrentBranch(): Promise<void> {
-  await execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 45000 });
+  try {
+    await execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 45000 });
+  } catch (error: any) {
+    const details = String(error?.stderr || error?.message || error);
+    if (/unable to get password|could not read (?:Username|Password)|authentication failed|permission denied/i.test(details)) {
+      throw new Error('GitHub nie ma skonfigurowanego uwierzytelnienia w tym środowisku. Zaloguj `gh auth login` lub skonfiguruj git credential helper; commit lokalny został zachowany, a push będzie ponawiany.');
+    }
+    throw error;
+  }
 }
 
 async function autoSyncGitChanges(): Promise<void> {
@@ -3050,6 +3060,7 @@ async function autoSyncGitChanges(): Promise<void> {
     if (autoGitPushPending) {
       await pushCurrentBranch();
       autoGitPushPending = false;
+      autoGitSyncLastWarning = '';
       pushSystemLog('healed', 'KERNEL', '[GITHUB AUTO] Oczekujący commit został wypchnięty do origin.');
     }
 
@@ -3111,7 +3122,12 @@ async function autoSyncGitChanges(): Promise<void> {
     for (const file of stablePaths) autoGitSyncObservedPaths.delete(file);
     pushSystemLog('healed', 'KERNEL', `[GITHUB AUTO] Zmiany aplikacji przeszły testy, typecheck i build; commit ${sha} wypchnięty do origin.`);
   } catch (error: any) {
-    pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Synchronizacja nie powiodła się; zmiany pozostają lokalnie i operacja zostanie ponowiona: ${error?.message || error}`);
+    const message = String(error?.message || error);
+    if (message !== autoGitSyncLastWarning || Date.now() - autoGitSyncLastWarningAt >= 5 * 60 * 1000) {
+      pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Synchronizacja nie powiodła się; zmiany pozostają lokalnie i operacja zostanie ponowiona: ${message}`);
+      autoGitSyncLastWarning = message;
+      autoGitSyncLastWarningAt = Date.now();
+    }
   } finally {
     autoGitSyncRunning = false;
   }
@@ -3120,9 +3136,16 @@ async function autoSyncGitChanges(): Promise<void> {
 async function startAutoGitSync(): Promise<void> {
   try {
     for (const file of await getAutoGitSyncChanges()) autoGitSyncStartupDirtyPaths.add(file);
+    const { stdout: ahead } = await execFileAsync('git', ['rev-list', '--count', '@{upstream}..HEAD'], { timeout: 10000 });
+    if (Number(ahead.trim()) > 0) {
+      const { stdout: subjects } = await execFileAsync('git', ['log', '--format=%s', '@{upstream}..HEAD'], { timeout: 10000 });
+      autoGitPushPending = subjects.split('\n').some((subject) => /^\[triad\] (?:Automatyczna synchronizacja aplikacji|Synchronizacja aplikacji)/.test(subject));
+    }
   } catch (error: any) {
-    pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Nie można zainicjować obserwacji zmian: ${error?.message || error}`);
-    return;
+    if (!String(error?.message || error).includes('upstream')) {
+      pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Nie można zainicjować obserwacji zmian: ${error?.message || error}`);
+      return;
+    }
   }
   autoGitSyncEnabled = true;
   const timer = setInterval(() => void autoSyncGitChanges(), AUTO_GIT_SYNC_INTERVAL_MS);
@@ -3277,9 +3300,16 @@ app.post('/api/triad/github/sync', async (req, res) => {
       error: `Nieprawidłowe ścieżki. Dozwolone korzenie: ${TRIADA_COMMIT_ALLOWED_ROOTS.join(', ')}.`,
     });
   }
+  if (autoGitSyncRunning) {
+    return res.status(409).json({ success: false, error: 'Synchronizacja już trwa. Spróbuj ponownie za chwilę.' });
+  }
+  autoGitSyncRunning = true;
   try {
     const sha = await triadGitCommit(agentName, (message || 'Synchronizacja aplikacji z GitHub').trim(), commitPaths, 'github-sync');
+    autoGitPushPending = true;
     await pushCurrentBranch();
+    autoGitPushPending = false;
+    autoGitSyncLastWarning = '';
     const { stdout: branch } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 5000 });
     pushSystemLog('healed', 'KERNEL', `[GITHUB] ${agentName} zsynchronizował aplikację z GitHub (commit ${sha ?? 'bez nowych zmian'} → origin/${branch.trim()}).`);
     await runPythonKernel([
@@ -3291,6 +3321,8 @@ app.post('/api/triad/github/sync', async (req, res) => {
     return res.json({ success: true, synced: true, pushed: true, sha, branch: branch.trim(), files: commitPaths });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'Błąd synchronizacji z GitHub.' });
+  } finally {
+    autoGitSyncRunning = false;
   }
 });
 
