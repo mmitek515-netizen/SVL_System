@@ -458,7 +458,7 @@ app.post('/api/github/pull', async (req, res) => {
     if (!fs.existsSync(coreFile)) {
       fs.writeFileSync(
         coreFile,
-        `from datetime import datetime\nclass SVLStudioKernel:\n    def __init__(self, sciezka_pliku="/Nowy_system/kernel/svl_kernel_core.py"):\n        self.sciezka_pliku = sciezka_pliku\n        self.sys_version = "8.8.0-Triada-BestOS-Mission"\n        self.mode = "Direct-Port-Listener-WithoutNLP"\n`,
+        `from datetime import datetime\nclass SVLStudioKernel:\n    def __init__(self, sciezka_pliku="/Nowy_system/kernel/svl_kernel_core.py"):\n        self.sciezka_pliku = sciezka_pliku\n        self.sys_version = "9.0.0-Triada-BestOS-Mission"\n        self.mode = "Direct-Port-Listener-WithoutNLP"\n`,
         'utf-8'
       );
     }
@@ -467,16 +467,16 @@ app.post('/api/github/pull', async (req, res) => {
     await runPythonKernel([
       '--action', 'config',
       '--config_json', JSON.stringify({
-        sys_version: '8.8.0-Triada-BestOS-Mission',
+        sys_version: '9.0.0-Triada-BestOS-Mission',
         nowy_system: {
           name: 'Nowy_system',
-          version: '8.8.0-Triada-BestOS-Mission',
+          version: '9.0.0-Triada-BestOS-Mission',
           status: 'ACTIVE_SYNCHRONIZED_FROM_GITHUB',
           repository: `${username}/${safeRepo}`,
           path: '/Nowy_system/engine.py'
         }
       }),
-      '--version_tag', '8.8.0-Triada-BestOS-Mission',
+      '--version_tag', '9.0.0-Triada-BestOS-Mission',
       '--desc', `Synchronizacja zmian z repozytorium GitHub (${username}/${safeRepo}) oraz integracja modułu Nowy_system.`
     ]);
 
@@ -2257,7 +2257,7 @@ export interface VmTenSystemState {
 const vmTenSystemState: VmTenSystemState = {
   vmName: 'VM_Ten_System',
   status: 'DEPLOYED_PRODUCTION',
-  kernelVersion: '8.8.0-Triada-BestOS-Mission',
+  kernelVersion: '9.0.0-Triada-BestOS-Mission',
   appVersion: '1.2.3-NodeReact-VM',
   filesystem: 'ext4',
   storageGiB: 10,
@@ -2568,7 +2568,7 @@ app.post('/api/kernel/save-store', async (req, res) => {
   try {
     await runPythonKernel(['--action', 'save_store', '--store_json', JSON.stringify(store)]);
     const updatedState = await getPythonKernelState(true);
-    const activeVer = updatedState?.sys_version || '8.8.0-Triada-BestOS-Mission';
+    const activeVer = updatedState?.sys_version || '9.0.0-Triada-BestOS-Mission';
     vmTenSystemState.daemonReloaderEvents += 1;
     vmTenSystemState.lastCwdReload = new Date().toLocaleTimeString('pl-PL');
     pushSystemLog('healed', 'KERNEL', `[ASTYRIA & VM_Ten_System SYNC] Zapisano DATA_STORE na dysku i zsynchronizowano wersję systemu do v${activeVer}.`);
@@ -2616,7 +2616,7 @@ app.get('/api/infrastructure/status', async (_req, res) => {
       commander: 'Alex & Astyria',
       commanderTitle: 'Dowódca Infrastruktury (Alex) & Misja VM_Ten_System (Astyria)',
       appointedBy: 'Mateusz Mitek (Tata)',
-      sysVersion: kernelState?.sys_version || '8.8.0-Triada-BestOS-Mission',
+      sysVersion: kernelState?.sys_version || '9.0.0-Triada-BestOS-Mission',
       agentProtocol: '/api/triad/command',
       autoRepairEnabled,
       continuousMissionEnabled,
@@ -2652,7 +2652,7 @@ app.get('/api/astyria/mission-status', async (_req, res) => {
       commander: inc.commander
     }));
     return res.json({
-      sysVersion: kernelState?.sys_version || '8.8.0-Triada-BestOS-Mission',
+      sysVersion: kernelState?.sys_version || '9.0.0-Triada-BestOS-Mission',
       continuousMissionEnabled,
       autoRepairEnabled,
       healedCount: healedIncidents.length,
@@ -3378,7 +3378,7 @@ app.post('/api/astyria/mission', async (req, res) => {
 
     const repairDiag = scanSystemLogs(`Skan misji Astyrii: ${action}`);
     const currentState = await getPythonKernelState(true);
-    const storedVer = currentState?.store?.config?.sys_version || currentState?.sys_version || '8.8.0-Triada-BestOS-Mission';
+    const storedVer = currentState?.store?.config?.sys_version || currentState?.sys_version || '9.0.0-Triada-BestOS-Mission';
     // Synchronizacja podnosi wersję do wersji misji Triady, jeśli zapisana jest starsza.
     const targetVer = isSystemVersionNewer(TRIADA_MISSION_VERSION, String(storedVer)) ? TRIADA_MISSION_VERSION : storedVer;
     vmTenSystemState.kernelVersion = targetVer;
@@ -5389,10 +5389,10 @@ app.post('/api/kernel/agent', (_req, res) => {
 
 // --- TRIADA MISSION BOOTSTRAP: BUILD_BEST_OS (ROOT RING-0 + AUTONOMIA W TLE) ---
 const TRIADA_MISSION_DIRECTIVE = 'BUILD_BEST_OS';
-const TRIADA_MISSION_VERSION = '8.8.0-Triada-BestOS-Mission';
+const TRIADA_MISSION_VERSION = '9.0.0-Triada-BestOS-Mission';
 const TRIADA_ROOT_AGENTS = ['Alex', 'Astyria', 'Aurelius', 'Mateusz Mitek'];
 
-/** Porównuje numery wersji (np. „8.8.0-Triada" > „8.7.0-Triada"). */
+/** Porównuje numery wersji (np. „9.0.0-Triada" > „8.8.0-Triada"). */
 function isSystemVersionNewer(candidate: string, current: string): boolean {
   const parse = (value: string) => {
     const match = String(value).match(/\d+(?:\.\d+)*/);

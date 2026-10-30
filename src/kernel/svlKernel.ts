@@ -38,7 +38,7 @@ export interface DataStore {
 
 export const INITIAL_DATA_STORE: DataStore = {
   config: {
-    sys_version: "8.8.0-Triada-BestOS-Mission",
+    sys_version: "9.0.0-Triada-BestOS-Mission",
     mode: "Local-Deterministic-Production",
     active_profiles: [...TRIAD_AGENT_NAMES],
     fiction_layer_status: "DEACTIVATED_PERMANENTLY",
@@ -70,7 +70,7 @@ export const INITIAL_DATA_STORE: DataStore = {
       vcpu: 4,
       ram: "8 GiB",
       storage: "40 GiB NVMe",
-      sys_version: "8.8.0-Triada-BestOS-Mission"
+      sys_version: "9.0.0-Triada-BestOS-Mission"
     },
     vm_dalle_3: {
       vm_name: "VM_Dalle_3",
@@ -80,7 +80,7 @@ export const INITIAL_DATA_STORE: DataStore = {
     vm_ten_system: {
       vm_name: "VM_Ten_System",
       status: "DEPLOYED_PRODUCTION",
-      kernel: "v8.8.0-Triada-BestOS-Mission",
+      kernel: "v9.0.0-Triada-BestOS-Mission",
       app_version: "1.2.3-NodeReact-VM",
       filesystem: "ext4 (10 GiB)",
       ram_allocation: "4 GiB (<70% Idle Target)",
@@ -332,7 +332,7 @@ export const INITIAL_BACKUP_DATA_STORE: DataStore = {
 
 export const OPERATOR_NAME = "Mateusz Mitek";
 export const OPERATOR_TITLE = "Tata";
-export const SYS_VERSION = "8.8.0-Triada-BestOS-Mission";
+export const SYS_VERSION = "9.0.0-Triada-BestOS-Mission";
 
 /**
  * Safely normalizes any raw or nested DataStore object (e.g. { store: { config, update_history, chat_history } })
