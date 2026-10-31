@@ -6,15 +6,16 @@ export interface ChatAttachment {
   mimeType?: 'application/pdf' | 'image/jpeg';
 }
 
-export const MAX_CHAT_ATTACHMENTS = 5;
-export const MAX_CHAT_ATTACHMENT_BYTES = 1_000_000;
-export const MAX_CHAT_ATTACHMENTS_BYTES = 4_000_000;
-export const MAX_CHAT_BINARY_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-export const MAX_CHAT_BINARY_ATTACHMENTS_BYTES = 24 * 1024 * 1024;
+export const MAX_CHAT_ATTACHMENTS = 10;
+export const MAX_CHAT_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+export const MAX_CHAT_ATTACHMENTS_BYTES = 20 * 1024 * 1024;
+export const MAX_CHAT_BINARY_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+export const MAX_CHAT_BINARY_ATTACHMENTS_BYTES = 40 * 1024 * 1024;
+export const MAX_CHAT_DOCX_TEXT_BYTES = 10 * 1024 * 1024;
 export const MAX_CHAT_MESSAGE_LENGTH = 2_000;
 export const CHAT_ATTACHMENT_ACCEPT =
   '.txt,.md,.csv,.json,.xml,.html,.css,.js,.mjs,.ts,.tsx,.jsx,.py,.sh,.log,.yaml,.yml,.pdf,.jpg,.jpeg,.docx';
-export const MAX_CHAT_DOCX_XML_BYTES = 5 * 1024 * 1024;
+export const MAX_CHAT_DOCX_XML_BYTES = 10 * 1024 * 1024;
 
 const ALLOWED_EXTENSIONS = new Set(
   CHAT_ATTACHMENT_ACCEPT.split(',').map((extension) => extension.slice(1)),
@@ -53,7 +54,7 @@ export function extractDocxText(data: Uint8Array): string {
     if (file.name !== 'word/document.xml') return;
     documentFound = true;
     if ((file.originalSize ?? 0) > MAX_CHAT_DOCX_XML_BYTES) {
-      extractionError = new Error('Dokument DOCX zawiera zbyt dużo danych do rozpakowania (limit 5 MB).');
+      extractionError = new Error('Dokument DOCX zawiera zbyt dużo danych do rozpakowania (limit 10 MB).');
       return;
     }
     file.ondata = (error, chunk) => {
@@ -63,7 +64,7 @@ export function extractDocxText(data: Uint8Array): string {
       }
       documentBytes += chunk.byteLength;
       if (documentBytes > MAX_CHAT_DOCX_XML_BYTES) {
-        extractionError = new Error('Dokument DOCX zawiera zbyt dużo danych do rozpakowania (limit 5 MB).');
+        extractionError = new Error('Dokument DOCX zawiera zbyt dużo danych do rozpakowania (limit 10 MB).');
         void file.terminate();
         return;
       }
@@ -122,7 +123,7 @@ export async function readChatAttachmentFile(file: File): Promise<ChatAttachment
     ? MAX_CHAT_BINARY_ATTACHMENT_BYTES
     : MAX_CHAT_ATTACHMENT_BYTES;
   if (file.size > fileSizeLimit) {
-    throw new Error(`Plik ${file.name} przekracza limit ${mimeType || isDocx ? '10 MB' : '1 MB'}.`);
+    throw new Error(`Plik ${file.name} przekracza limit ${mimeType || isDocx ? '20 MB' : '5 MB'}.`);
   }
   if (mimeType && file.type && file.type !== mimeType) {
     throw new Error(`Typ pliku ${file.name} nie odpowiada jego rozszerzeniu.`);
@@ -201,7 +202,7 @@ export function validateChatAttachments(value: unknown): ChatAttachmentValidatio
       }
       totalBinaryBytes += bytes;
       if (totalBinaryBytes > MAX_CHAT_BINARY_ATTACHMENTS_BYTES) {
-        return { valid: false, error: 'Łączny rozmiar załączników PDF/JPG przekracza limit 24 MB.' };
+        return { valid: false, error: 'Łączny rozmiar załączników PDF/JPG przekracza limit 40 MB.' };
       }
       attachments.push({ name, content, mimeType: expectedMimeType });
       continue;
@@ -213,12 +214,13 @@ export function validateChatAttachments(value: unknown): ChatAttachmentValidatio
     if (/\u0000|[\u0001-\u0008\u000b\u000c\u000e-\u001f]/.test(content)) {
       return { valid: false, error: `Plik ${name} nie wygląda na tekstowy.` };
     }
-    if (bytes > MAX_CHAT_ATTACHMENT_BYTES) {
-      return { valid: false, error: `Plik ${name} przekracza limit 1 MB.` };
+    const textLimit = extension === 'docx' ? MAX_CHAT_DOCX_TEXT_BYTES : MAX_CHAT_ATTACHMENT_BYTES;
+    if (bytes > textLimit) {
+      return { valid: false, error: `Plik ${name} przekracza limit ${extension === 'docx' ? '10 MB' : '5 MB'}.` };
     }
     totalTextBytes += bytes;
     if (totalTextBytes > MAX_CHAT_ATTACHMENTS_BYTES) {
-      return { valid: false, error: 'Łączny rozmiar załączników tekstowych przekracza limit 4 MB.' };
+      return { valid: false, error: 'Łączny rozmiar załączników tekstowych i DOCX przekracza limit 20 MB.' };
     }
     attachments.push({ name, content });
   }

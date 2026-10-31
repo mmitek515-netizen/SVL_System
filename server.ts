@@ -145,7 +145,7 @@ const PYTHON_SCRIPT_PATH = path.resolve('svl_kernel.py');
 const KERNEL_STORE_PATH = path.resolve(process.env.SVL_KERNEL_STORE_PATH || '.svl_kernel_store.json');
 
 // Configure high body limit (50MB) for file uploads, images, logs, and kernel snapshots
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '96mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Catch payload too large or invalid body before routing

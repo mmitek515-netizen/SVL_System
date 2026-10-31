@@ -483,7 +483,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               </button>
             )}
           </div>
-          <label className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-700 text-cyan-200 hover:border-cyan-400 ${isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, DOCX, PDF lub JPG (maks. 5 plików; tekst do 1 MB, PDF/JPG do 10 MB każdy)">
+          <label className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-700 text-cyan-200 hover:border-cyan-400 ${isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, DOCX, PDF lub JPG (maks. 10 plików; tekst 5 MB/plik, DOCX 20 MB, PDF/JPG 20 MB/plik)">
             <Paperclip className="h-4 w-4" />
             <input
               type="file"
@@ -506,7 +506,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           </button>
           </div>
           <p className="mt-1 px-1 text-[9px] text-slate-500">
-            Tekst: 40 KB/plik. PDF/JPG: 5 MB/plik, maks. 12 MB łącznie — trafiają do Gemini (zdjęcia także do xAI).
+            Maks. 10 plików; tekst 5 MB/plik i 20 MB łącznie, DOCX 20 MB (10 MB po rozpakowaniu), PDF/JPG 20 MB/plik i 40 MB łącznie.
           </p>
         </form>
 

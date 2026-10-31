@@ -430,7 +430,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   disabled={isTerminalLoading}
                   className="min-w-0 flex-1 bg-transparent py-3 font-mono text-xs text-white outline-none placeholder:text-slate-700"
                 />
-                <label className={`grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 ${isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, DOCX, PDF lub JPG (maks. 5 plików; tekst do 1 MB, PDF/JPG do 10 MB każdy)">
+                <label className={`grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 ${isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, DOCX, PDF lub JPG (maks. 10 plików; tekst 5 MB/plik, DOCX 20 MB, PDF/JPG 20 MB/plik)">
                   <Paperclip className="h-3.5 w-3.5" />
                   <input
                     type="file"
@@ -446,7 +446,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   <Send className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="mt-1 px-1 text-[9px] text-slate-500">Tekst: 40 KB/plik. PDF/JPG: 5 MB/plik, maks. 12 MB łącznie — trafiają do Gemini (zdjęcia także do xAI).</p>
+              <p className="mt-1 px-1 text-[9px] text-slate-500">Maks. 10 plików; tekst 5 MB/plik i 20 MB łącznie, DOCX 20 MB (10 MB po rozpakowaniu), PDF/JPG 20 MB/plik i 40 MB łącznie.</p>
             </form>
           </section>
         </div>
