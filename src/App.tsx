@@ -574,6 +574,28 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'hyper_com' && (
+            <section className="flex min-h-0 flex-1 flex-col bg-slate-950">
+              <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-2">
+                <h1 className="text-xs font-semibold text-cyan-200">HyperCom — konsola transmisji</h1>
+                <a
+                  href="/api/apps/preview/hyper_com_module/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-cyan-300 hover:text-cyan-100"
+                >
+                  Otwórz osobno
+                </a>
+              </header>
+              <iframe
+                src="/api/apps/preview/hyper_com_module/"
+                title="HyperCom — konsola transmisji"
+                className="min-h-0 w-full flex-1 border-0"
+                sandbox="allow-scripts allow-forms allow-same-origin allow-modals"
+              />
+            </section>
+          )}
+
           {activeTab === 'without_nlp' && (
             <WithoutNlpView onSendProtocol={handleSendProtocol} />
           )}

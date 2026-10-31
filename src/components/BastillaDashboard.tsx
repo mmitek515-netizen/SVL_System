@@ -65,6 +65,7 @@ const featureLaunchers: Array<{
   { id: 'astyria_mission', title: 'Centrum misji', description: 'Misje, synchronizacja i snapshoty', icon: Sparkles },
   { id: 'terminal', title: 'Terminal', description: 'Konsola jądra i polecenia systemowe', icon: Terminal },
   { id: 'apps', title: 'Studio aplikacji', description: 'Instaluj, uruchamiaj i podglądaj aplikacje', icon: LayoutGrid },
+  { id: 'hyper_com', title: 'HyperCom', description: 'Lokalny rejestr transmisji Astra_1', icon: Radio },
   { id: 'file_explorer', title: 'Pliki i eksporty', description: 'Eksplorator RING-0 i przechowywanie', icon: FolderOpen },
   { id: 'datastore', title: 'DATA_STORE', description: 'Dane systemowe i konfiguracja', icon: Database },
   { id: 'temporal', title: 'Chronolit', description: 'Historia zmian i migawki', icon: Clock3 },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, MessagesSquare, FileCode2, Database, History, Activity, Cpu, GitBranch, Clock, Sigma, FolderOpen, HardDrive, LayoutGrid, Brain, Github, Home, ClipboardCheck } from 'lucide-react';
+import { Terminal, MessagesSquare, FileCode2, Database, History, Activity, Cpu, GitBranch, Clock, Sigma, FolderOpen, HardDrive, LayoutGrid, Brain, Github, Home, ClipboardCheck, Radio } from 'lucide-react';
 
 export type TabId =
   | 'home'
@@ -16,13 +16,14 @@ export type TabId =
   | 'visualizer'
   | 'file_explorer'
   | 'apps'
+  | 'hyper_com'
   | 'without_nlp'
   | 'github';
 
 export const TAB_IDS: readonly TabId[] = [
   'home', 'comms', 'approvals', 'process_matrix', 'astyria_mission', 'schema_graph', 'temporal',
   'terminal', 'monolith', 'datastore', 'diagnostics', 'visualizer', 'file_explorer',
-  'apps', 'without_nlp', 'github',
+  'apps', 'hyper_com', 'without_nlp', 'github',
 ];
 
 /** Widok startowy z adresu, np. /?view=without_nlp (launchery KDE w BastillaOS). */
@@ -132,6 +133,12 @@ export const Navigation: React.FC<NavigationProps> = ({
       label: 'Aplikacje [Terminal Forge]',
       icon: LayoutGrid,
       badge: 'FORGE'
+    },
+    {
+      id: 'hyper_com' as TabId,
+      label: 'HyperCom — transmisje',
+      icon: Radio,
+      badge: 'HYPERCOM'
     },
     {
       id: 'without_nlp' as TabId,
