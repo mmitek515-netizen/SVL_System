@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,6 +13,13 @@ function runTransmitter(directory, ...args) {
     env: { ...process.env, HYPER_COM_DB_PATH: join(directory, 'hyper_com_test.sqlite') },
   });
   return JSON.parse(output);
+}
+
+function runTransmitterExpectingFailure(directory, ...args) {
+  return spawnSync('python3', [transmitterPath.pathname, ...args], {
+    encoding: 'utf8',
+    env: { ...process.env, HYPER_COM_DB_PATH: join(directory, 'hyper_com_test.sqlite') },
+  });
 }
 
 function withTemporaryDatabase(t, callback) {
@@ -48,9 +55,8 @@ test('queues broadcasts locally without a network send', (t) => {
 
 test('rejects replies to missing messages', (t) => {
   withTemporaryDatabase(t, (directory) => {
-    assert.throws(
-      () => runTransmitter(directory, 'reply', '--reply-to', '99', '--content', 'Hello'),
-      /Command failed/,
-    );
+    const result = runTransmitterExpectingFailure(directory, 'reply', '--reply-to', '99', '--content', 'Hello');
+    assert.equal(result.status, 1);
+    assert.equal(JSON.parse(result.stderr).error, 'Nie znaleziono wiadomości przychodzącej o podanym ID.');
   });
 });
