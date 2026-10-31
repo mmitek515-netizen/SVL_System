@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { zipSync } from 'fflate';
 import {
+  CHAT_ATTACHMENT_ACCEPT,
+  extractDocxText,
   formatChatMessage,
   MAX_CHAT_ATTACHMENT_BYTES,
   MAX_CHAT_ATTACHMENTS_BYTES,
+  MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_BINARY_ATTACHMENT_BYTES,
   MAX_CHAT_BINARY_ATTACHMENTS_BYTES,
   getChatAttachmentMimeType,
@@ -50,7 +54,38 @@ test('rejects unsupported names, binary content and oversized attachments', () =
   assert.equal(validateChatAttachments(Array.from({ length: 4 }, (_, index) => ({
     name: `file${index}.txt`,
     content: 'text',
+  }))).valid, true);
+  assert.equal(validateChatAttachments(Array.from({ length: MAX_CHAT_ATTACHMENTS + 1 }, (_, index) => ({
+    name: `file${index}.txt`,
+    content: 'text',
   }))).valid, false);
+});
+
+test('extracts readable text from DOCX documents', () => {
+  const documentXml = '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:body><w:p><w:r><w:t>Zażółć &amp; gęślą</w:t></w:r></w:p>' +
+    '<w:p><w:r><w:t>Drugi akapit</w:t><w:tab/><w:t>kolumna</w:t></w:r></w:p>' +
+    '</w:body></w:document>';
+  const docx = zipSync({
+    'word/document.xml': new TextEncoder().encode(documentXml),
+    'word/styles.xml': new TextEncoder().encode('<styles/>'),
+  });
+  assert.equal(extractDocxText(docx), 'Zażółć & gęślą\nDrugi akapit\tkolumna');
+  assert.ok(CHAT_ATTACHMENT_ACCEPT.endsWith('.docx'));
+});
+
+test('rejects invalid DOCX archives and oversized document XML', () => {
+  assert.throws(() => extractDocxText(new Uint8Array([1, 2, 3])), /DOCX/);
+  assert.throws(() => extractDocxText(zipSync({
+    'word/styles.xml': new TextEncoder().encode('<styles/>'),
+  })), /Nie znaleziono treści/);
+  const oversizedDocx = zipSync({
+    'word/document.xml': new TextEncoder().encode(
+      'x'.repeat(5 * 1024 * 1024 + 1),
+    ),
+  });
+  assert.throws(() => extractDocxText(oversizedDocx), /limit 5 MB/);
 });
 
 test('accepts PDF and JPEG attachments as verified base64 multimodal data', () => {
