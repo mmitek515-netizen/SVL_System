@@ -1499,6 +1499,20 @@ app.post('/api/databases/create', async (req, res) => {
 
 const HYPER_COM_TRANSMITTER_PATH = path.join(APPS_DIR, 'hyper_com_module', 'transmitter.py');
 
+function hyperComErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'stderr' in error && typeof error.stderr === 'string') {
+    try {
+      const result: unknown = JSON.parse(error.stderr);
+      if (result && typeof result === 'object' && 'error' in result && typeof result.error === 'string') {
+        return result.error;
+      }
+    } catch {
+      // The process may fail before the Python CLI can return structured output.
+    }
+  }
+  return 'Lokalna operacja HyperCom nie powiodła się.';
+}
+
 app.get('/api/hyper-com/transmissions', async (_req, res) => {
   try {
     const { stdout } = await execFileAsync('python3', [HYPER_COM_TRANSMITTER_PATH, 'list'], {
@@ -1511,7 +1525,7 @@ app.get('/api/hyper-com/transmissions', async (_req, res) => {
     }
     return res.json({ success: true, transmissions: result.transmissions });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = hyperComErrorMessage(error);
     console.error('[HYPER COM] Failed to load transmissions:', message);
     return res.status(500).json({ success: false, error: `Nie można pobrać rejestru HyperCom: ${message}` });
   }
@@ -1550,9 +1564,9 @@ app.post('/api/hyper-com/transmissions', async (req, res) => {
     }
     return res.status(201).json({ success: true, transmission: result.transmission });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = hyperComErrorMessage(error);
     console.error('[HYPER COM] Failed to save transmission:', message);
-    const status = message.includes('Nie znaleziono wiadomości') ? 404 : 500;
+    const status = message === 'Nie znaleziono wiadomości przychodzącej o podanym ID.' ? 404 : 500;
     return res.status(status).json({ success: false, error: `Nie można zapisać transmisji: ${message}` });
   }
 });
