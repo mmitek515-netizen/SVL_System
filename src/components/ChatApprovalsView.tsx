@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Check, ClipboardCheck, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import { DataStore, normalizeDataStore } from '../kernel/svlKernel';
 import type { ChatApprovalAction } from '../kernel/chatApprovals';
+import { isChatSystemChange } from '../kernel/chatChanges';
+import type { ChatSystemChange } from '../kernel/chatChanges';
 
 interface ChatApproval {
   id: string;
@@ -13,9 +15,10 @@ interface ChatApproval {
 
 interface ChatApprovalsViewProps {
   onUpdateDataStore: (store: DataStore) => void;
+  onChatChange: (change: ChatSystemChange) => void;
 }
 
-export const ChatApprovalsView: React.FC<ChatApprovalsViewProps> = ({ onUpdateDataStore }) => {
+export const ChatApprovalsView: React.FC<ChatApprovalsViewProps> = ({ onUpdateDataStore, onChatChange }) => {
   const [approvals, setApprovals] = useState<ChatApproval[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -63,6 +66,7 @@ export const ChatApprovalsView: React.FC<ChatApprovalsViewProps> = ({ onUpdateDa
         throw new Error(result.error || `Nie udało się rozstrzygnąć propozycji (HTTP ${response.status}).`);
       }
       if (result.state?.store) onUpdateDataStore(normalizeDataStore(result.state.store));
+      if (isChatSystemChange(result.change)) onChatChange(result.change);
       setNotice(result.reply || (decision === 'approve' ? 'Propozycja zatwierdzona.' : 'Propozycja odrzucona.'));
       await loadApprovals(true);
     } catch (requestError) {

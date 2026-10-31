@@ -501,7 +501,10 @@ export default function App() {
           )}
 
           {activeTab === 'approvals' && (
-            <ChatApprovalsView onUpdateDataStore={setDataStore} />
+            <ChatApprovalsView
+              onUpdateDataStore={setDataStore}
+              onChatChange={setChatSystemChange}
+            />
           )}
 
           {activeTab === 'process_matrix' && (
