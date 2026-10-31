@@ -51,7 +51,7 @@ test('rejects unsupported names, binary content and oversized attachments', () =
     ]).valid,
     false,
   );
-  assert.equal(validateChatAttachments(Array.from({ length: 4 }, (_, index) => ({
+  assert.equal(validateChatAttachments(Array.from({ length: MAX_CHAT_ATTACHMENTS }, (_, index) => ({
     name: `file${index}.txt`,
     content: 'text',
   }))).valid, true);
@@ -59,6 +59,14 @@ test('rejects unsupported names, binary content and oversized attachments', () =
     name: `file${index}.txt`,
     content: 'text',
   }))).valid, false);
+  assert.equal(validateChatAttachments([{
+    name: 'document.docx',
+    content: 'x'.repeat(MAX_CHAT_ATTACHMENT_BYTES + 1),
+  }]).valid, true);
+  assert.equal(validateChatAttachments([{
+    name: 'large-document.docx',
+    content: 'x'.repeat(10 * 1024 * 1024 + 1),
+  }]).valid, false);
 });
 
 test('extracts readable text from DOCX documents', () => {
@@ -82,10 +90,10 @@ test('rejects invalid DOCX archives and oversized document XML', () => {
   })), /Nie znaleziono treści/);
   const oversizedDocx = zipSync({
     'word/document.xml': new TextEncoder().encode(
-      'x'.repeat(5 * 1024 * 1024 + 1),
+      'x'.repeat(10 * 1024 * 1024 + 1),
     ),
   });
-  assert.throws(() => extractDocxText(oversizedDocx), /limit 5 MB/);
+  assert.throws(() => extractDocxText(oversizedDocx), /limit 10 MB/);
 });
 
 test('accepts PDF and JPEG attachments as verified base64 multimodal data', () => {
