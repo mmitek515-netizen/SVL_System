@@ -1497,6 +1497,66 @@ app.post('/api/databases/create', async (req, res) => {
   }
 });
 
+const HYPER_COM_TRANSMITTER_PATH = path.join(APPS_DIR, 'hyper_com_module', 'transmitter.py');
+
+app.get('/api/hyper-com/transmissions', async (_req, res) => {
+  try {
+    const { stdout } = await execFileAsync('python3', [HYPER_COM_TRANSMITTER_PATH, 'list'], {
+      timeout: 10000,
+      maxBuffer: 1024 * 1024,
+    });
+    const result = JSON.parse(stdout) as { success?: unknown; transmissions?: unknown; error?: unknown };
+    if (result.success !== true || !Array.isArray(result.transmissions)) {
+      throw new Error(typeof result.error === 'string' ? result.error : 'Nieprawidłowa odpowiedź modułu HyperCom.');
+    }
+    return res.json({ success: true, transmissions: result.transmissions });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[HYPER COM] Failed to load transmissions:', message);
+    return res.status(500).json({ success: false, error: `Nie można pobrać rejestru HyperCom: ${message}` });
+  }
+});
+
+app.post('/api/hyper-com/transmissions', async (req, res) => {
+  const { action, content } = req.body ?? {};
+  if (typeof content !== 'string' || content.trim().length === 0 || content.length > 4000) {
+    return res.status(400).json({ success: false, error: 'Treść wiadomości musi mieć od 1 do 4000 znaków.' });
+  }
+
+  let command: string[];
+  if (action === 'receive') {
+    const { sender } = req.body;
+    if (typeof sender !== 'string' || sender.trim().length === 0 || sender.trim().length > 120) {
+      return res.status(400).json({ success: false, error: 'Nadawca musi mieć od 1 do 120 znaków.' });
+    }
+    command = [HYPER_COM_TRANSMITTER_PATH, 'receive', '--sender', sender.trim(), '--content', content];
+  } else if (action === 'reply') {
+    const { replyTo } = req.body;
+    if (!Number.isSafeInteger(replyTo) || replyTo < 1) {
+      return res.status(400).json({ success: false, error: 'Nieprawidłowe ID wiadomości do odpowiedzi.' });
+    }
+    command = [HYPER_COM_TRANSMITTER_PATH, 'reply', '--reply-to', String(replyTo), '--content', content];
+  } else if (action === 'broadcast') {
+    command = [HYPER_COM_TRANSMITTER_PATH, 'broadcast', '--content', content];
+  } else {
+    return res.status(400).json({ success: false, error: 'Nieobsługiwana operacja HyperCom.' });
+  }
+
+  try {
+    const { stdout } = await execFileAsync('python3', command, { timeout: 10000, maxBuffer: 1024 * 1024 });
+    const result = JSON.parse(stdout) as { success?: unknown; transmission?: unknown; error?: unknown };
+    if (result.success !== true || !result.transmission) {
+      throw new Error(typeof result.error === 'string' ? result.error : 'Nie udało się zapisać transmisji.');
+    }
+    return res.status(201).json({ success: true, transmission: result.transmission });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[HYPER COM] Failed to save transmission:', message);
+    const status = message.includes('Nie znaleziono wiadomości') ? 404 : 500;
+    return res.status(status).json({ success: false, error: `Nie można zapisać transmisji: ${message}` });
+  }
+});
+
 app.post('/api/apps/:id/launch', (req, res) => {
   const appId = path.basename(req.params.id);
   const appPath = path.join(APPS_DIR, appId);

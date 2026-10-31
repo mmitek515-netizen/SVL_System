@@ -83,7 +83,7 @@
         <form id="compose-form">
           <label>
             Odbiorca
-            <input id="recipient" maxlength="120" value="GLOBAL_BROADCAST_QUEUE" required>
+            <input id="recipient" maxlength="120" value="GLOBAL_BROADCAST_QUEUE" readonly>
           </label>
           <label>
             Treść
@@ -165,13 +165,10 @@
     document.getElementById('compose-form').addEventListener('submit', async (event) => {
       event.preventDefault();
       const content = document.getElementById('content').value.trim();
-      const recipient = document.getElementById('recipient').value.trim();
       if (!content) return;
       const request = replyTo
         ? { action: 'reply', replyTo, content }
-        : recipient === 'GLOBAL_BROADCAST_QUEUE'
-          ? { action: 'broadcast', content }
-          : { action: 'broadcast', recipient, content };
+        : { action: 'broadcast', content };
       try {
         await requestJson(API_URL, {
           method: 'POST',

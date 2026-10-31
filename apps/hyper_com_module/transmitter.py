@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import sys
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -85,7 +86,7 @@ def list_messages(connection: sqlite3.Connection) -> list[dict]:
 
 
 def run_command(args: argparse.Namespace) -> dict:
-    with connect_database() as connection:
+    with closing(connect_database()) as connection:
         if args.command == "list":
             return {"success": True, "transmissions": list_messages(connection)}
 
