@@ -16,10 +16,8 @@ import {
 import {
   CHAT_ATTACHMENT_ACCEPT,
   ChatAttachment,
-  MAX_CHAT_ATTACHMENT_BYTES,
-  MAX_CHAT_BINARY_ATTACHMENT_BYTES,
   MAX_CHAT_ATTACHMENTS,
-  getChatAttachmentMimeType,
+  readChatAttachmentFile,
   validateChatAttachments,
 } from '../kernel/chatAttachments';
 
@@ -135,31 +133,11 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
       setAttachmentError(`Możesz dołączyć maksymalnie ${MAX_CHAT_ATTACHMENTS} pliki.`);
       return;
     }
-    if (files.some((file) => {
-      const mimeType = getChatAttachmentMimeType(file.name);
-      const limit = mimeType ? MAX_CHAT_BINARY_ATTACHMENT_BYTES : MAX_CHAT_ATTACHMENT_BYTES;
-      return file.size === 0 || file.size > limit || (mimeType && file.type && file.type !== mimeType);
-    })) {
-      setAttachmentError('Pliki tekstowe mogą mieć do 40 KB, a PDF/JPG do 5 MB. Typ pliku musi być zgodny z rozszerzeniem.');
-      return;
-    }
     let incoming: ChatAttachment[];
     try {
-      incoming = await Promise.all(files.map(async (file) => {
-        const mimeType = getChatAttachmentMimeType(file.name);
-        if (!mimeType) return { name: file.name, content: await file.text() };
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = () => reject(reader.error || new Error('Nie udało się odczytać pliku.'));
-          reader.onload = () => typeof reader.result === 'string'
-            ? resolve(reader.result)
-            : reject(new Error('Nieprawidłowy wynik odczytu pliku.'));
-          reader.readAsDataURL(file);
-        });
-        return { name: file.name, content: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType };
-      }));
-    } catch {
-      setAttachmentError('Nie udało się odczytać wybranego pliku.');
+      incoming = await Promise.all(files.map(readChatAttachmentFile));
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'Nie udało się odczytać wybranego pliku.');
       return;
     }
     const validation = validateChatAttachments([...chatAttachments, ...incoming]);
@@ -505,7 +483,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               </button>
             )}
           </div>
-          <label className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-700 text-cyan-200 hover:border-cyan-400 ${isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, PDF lub JPG (maks. 3; PDF/JPG do 5 MB każdy)">
+          <label className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-700 text-cyan-200 hover:border-cyan-400 ${isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, DOCX, PDF lub JPG (maks. 5 plików; tekst do 1 MB, PDF/JPG do 10 MB każdy)">
             <Paperclip className="h-4 w-4" />
             <input
               type="file"
@@ -514,7 +492,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               disabled={isLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS}
               onChange={(event) => void handleAttachmentSelection(event)}
               className="sr-only"
-              aria-label="Dołącz pliki tekstowe"
+              aria-label="Dołącz pliki tekstowe, DOCX, PDF lub JPG"
             />
           </label>
           <button

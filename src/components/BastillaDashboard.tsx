@@ -29,11 +29,9 @@ import { FormattedMessage } from './FormattedMessage';
 import {
   CHAT_ATTACHMENT_ACCEPT,
   ChatAttachment,
-  MAX_CHAT_ATTACHMENT_BYTES,
-  MAX_CHAT_BINARY_ATTACHMENT_BYTES,
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_MESSAGE_LENGTH,
-  getChatAttachmentMimeType,
+  readChatAttachmentFile,
   validateChatAttachments,
 } from '../kernel/chatAttachments';
 
@@ -187,36 +185,16 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
       setAttachmentError(`Możesz dołączyć maksymalnie ${MAX_CHAT_ATTACHMENTS} pliki.`);
       return;
     }
-    if (files.some((file) => {
-      const mimeType = getChatAttachmentMimeType(file.name);
-      const limit = mimeType ? MAX_CHAT_BINARY_ATTACHMENT_BYTES : MAX_CHAT_ATTACHMENT_BYTES;
-      return file.size === 0 || file.size > limit || Boolean(mimeType && file.type && file.type !== mimeType);
-    })) {
-      setAttachmentError('Pliki tekstowe mogą mieć do 40 KB, a PDF/JPG do 5 MB. Typ pliku musi być zgodny z rozszerzeniem.');
-      return;
-    }
     try {
-      const incoming = await Promise.all(files.map(async (file) => {
-        const mimeType = getChatAttachmentMimeType(file.name);
-        if (!mimeType) return { name: file.name, content: await file.text() };
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = () => reject(reader.error || new Error('Nie udało się odczytać pliku.'));
-          reader.onload = () => typeof reader.result === 'string'
-            ? resolve(reader.result)
-            : reject(new Error('Nieprawidłowy wynik odczytu pliku.'));
-          reader.readAsDataURL(file);
-        });
-        return { name: file.name, content: dataUrl.slice(dataUrl.indexOf(',') + 1), mimeType };
-      }));
+      const incoming = await Promise.all(files.map(readChatAttachmentFile));
       const validation = validateChatAttachments([...chatAttachments, ...incoming]);
       if (!validation.valid) {
         setAttachmentError(validation.error);
         return;
       }
       setChatAttachments(validation.attachments);
-    } catch {
-      setAttachmentError('Nie udało się odczytać wybranego pliku.');
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'Nie udało się odczytać wybranego pliku.');
     }
   };
 
@@ -452,7 +430,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   disabled={isTerminalLoading}
                   className="min-w-0 flex-1 bg-transparent py-3 font-mono text-xs text-white outline-none placeholder:text-slate-700"
                 />
-                <label className={`grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 ${isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, PDF lub JPG (maks. 3; PDF/JPG do 5 MB każdy)">
+                <label className={`grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 ${isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'pointer-events-none opacity-40' : ''}`} title="Dołącz tekst, DOCX, PDF lub JPG (maks. 5 plików; tekst do 1 MB, PDF/JPG do 10 MB każdy)">
                   <Paperclip className="h-3.5 w-3.5" />
                   <input
                     type="file"
@@ -461,7 +439,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                     disabled={isTerminalLoading || chatAttachments.length >= MAX_CHAT_ATTACHMENTS}
                     onChange={(event) => void handleAttachmentSelection(event)}
                     className="sr-only"
-                    aria-label="Dołącz pliki tekstowe"
+                    aria-label="Dołącz pliki tekstowe, DOCX, PDF lub JPG"
                   />
                 </label>
                 <button type="submit" aria-label="Wyślij wiadomość" disabled={(!terminalInput.trim() && chatAttachments.length === 0) || isTerminalLoading} className="grid h-8 w-8 place-items-center rounded-md text-cyan-200 transition hover:bg-cyan-950 disabled:opacity-30">
