@@ -1353,7 +1353,9 @@ if __name__ == "__main__":
   }
 }
 
-initializeDefaultApps();
+// BastillaOS single-system mode: do not recreate removed demo applications on startup.
+// Studio Aplikacji remains available for user-created applications.
+// initializeDefaultApps();
 
 // 1. GET /api/apps/list - List all created applications with stats and manifests
 app.get('/api/apps/list', (_req, res) => {
