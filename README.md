@@ -130,6 +130,16 @@ permissions. The VM is a separate environment for manually approved work;
 dependency updates run on a schedule only to produce a reviewable pull request
 and are not merged automatically.
 
+### GitHub Copilot agents for issues
+
+Four repository-scoped Copilot custom-agent profiles are available in
+`.github/agents/`: Alex (architecture and backend), Aria (AI integrations),
+Astyria (UI and accessibility) and Aurelius (security and testing). Open an
+issue or Copilot coding session and select the profile suited to the task.
+These profiles guide Copilot when it works in a session; they do not assign
+issues, start background workers or make the app's local chat agents process
+GitHub issues. GitHub Copilot access and repository permissions are required.
+
 ### Chat proposals and approvals
 
 Agents can suggest one of these chat commands:
@@ -233,3 +243,35 @@ not deploy to a separate production host; configure and approve that target
 independently. Git push credentials must be configured for the `origin` remote
 (for example with `gh auth login` followed by `gh auth setup-git`); failed
 pushes keep the local commit and are retried automatically.
+
+## GitHub admin integration for AI
+
+The server exposes a full administrative GitHub API integration that the triad
+agents can use from chat. Authentication uses a PAT token from the
+`GITHUB_TOKEN`/`GH_TOKEN` environment variables or the `token` field of
+`.github_credentials.json` (saved from the GitHub panel; the file is
+git-ignored). The default `owner`/`repo` come from the saved credentials and
+can be overridden per action with `owner` and `repo` parameters.
+
+Endpoints:
+
+- `GET /api/github/admin/status` — token presence, authenticated login, scopes.
+- `GET /api/github/admin/actions` — catalog of available actions with
+  descriptions and a destructive flag.
+- `POST /api/github/admin/execute` — body `{ "action": "<name>", "params": { … } }`.
+
+Agents issue the same operations from chat with
+`/propose github <action>` followed by optional JSON parameters on the next
+line, for example:
+
+```
+/propose github create-issue
+{"title":"Bug report","body":"Details…","labels":["bug"]}
+```
+
+Proposals go through the standard chat approval flow (`/approve <id>`), unless
+the operator disabled approvals (`chat_approvals=DISABLED_AUTO_EXEC`). Actions
+cover repository settings, branches and protection, issues, pull requests
+(create/merge/close), GitHub Actions workflows (dispatch/cancel/rerun),
+releases, collaborators and webhooks. Irreversible operations such as
+`delete-repo` additionally require an explicit `confirm` parameter.

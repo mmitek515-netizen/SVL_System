@@ -46,12 +46,17 @@ import {
   parseChatApprovalCommand,
 } from './src/kernel/chatApprovals';
 import {
+  executeGitHubAdminAction,
+  getGitHubAdminStatus,
+  listGitHubAdminActions,
+  GITHUB_ADMIN_ACTIONS,
+} from './src/kernel/githubAdmin';
+import {
   ChatAttachment,
   formatChatMessage,
   MAX_CHAT_MESSAGE_LENGTH,
   validateChatAttachments,
 } from './src/kernel/chatAttachments';
-import { cleanAgentReplyText, extractAgentCommands } from './src/kernel/agentCommands';
 import {
   formatBestFitReport,
   selectBestFit,
@@ -506,6 +511,38 @@ app.post('/api/github/pull', async (req, res) => {
   } catch (err: any) {
     console.error('[GITHUB PULL ERROR]', err);
     res.status(500).json({ error: `Błąd synchronizacji z GitHub: ${err.message}` });
+  }
+});
+
+// --- GITHUB ADMIN ENGINE: pełna administracyjna integracja GitHub API dla AI (Triada) ---
+app.get('/api/github/admin/status', async (_req, res) => {
+  const status = await getGitHubAdminStatus();
+  return res.json(status);
+});
+
+app.get('/api/github/admin/actions', (_req, res) => {
+  return res.json({ actions: listGitHubAdminActions() });
+});
+
+app.post('/api/github/admin/execute', async (req, res) => {
+  const action: unknown = req.body?.action;
+  const params: unknown = req.body?.params ?? {};
+  if (typeof action !== 'string' || !GITHUB_ADMIN_ACTIONS[action]) {
+    return res.status(400).json({
+      success: false,
+      error: `Nieznana akcja GitHub. Dostępne: ${Object.keys(GITHUB_ADMIN_ACTIONS).join(', ')}.`,
+    });
+  }
+  if (!params || typeof params !== 'object' || Array.isArray(params)) {
+    return res.status(400).json({ success: false, error: 'Pole params musi być obiektem JSON.' });
+  }
+  try {
+    const result = await executeGitHubAdminAction(action, params as Record<string, unknown>);
+    pushSystemLog('healed', 'INFRA', `[GITHUB ADMIN] Wykonano akcję ${action}: ${result.message.slice(0, 160)}`);
+    return res.json({ success: true, action, message: result.message, data: result.data ?? null });
+  } catch (err: any) {
+    pushSystemLog('warn', 'INFRA', `[GITHUB ADMIN] Akcja ${action} nie powiodła się: ${String(err?.message || err).slice(0, 160)}`);
+    return res.status(500).json({ success: false, action, error: err?.message || 'Błąd wykonania akcji GitHub.' });
   }
 });
 
@@ -4324,7 +4361,8 @@ const CHAT_AGENT_MISSIONS: Record<ChatAgentName, string> = {
 const CHAT_AGENT_SAFETY_BOUNDARIES = [
   'Misja obowiązuje podczas obsługi wiadomości; agenci nie wykonują zadań w tle, gdy nie ma rozmowy.',
   'Operator ma najwyższe uprawnienia (RING-−1 ABSOLUTE ROOT) i kanał natychmiastowego wykonania: /exec <polecenie powłoki> oraz komendy jądra (root, status, sync, bump, infra...) wysłane na czacie są wykonywane natychmiast przez serwer z ROOT UNLIMITED — bez propozycji i zatwierdzeń.',
-  'TY też wydajesz polecenia wprost w treści odpowiedzi: /propose create-app <id> [typ], /propose create-db <id>, /propose launch <id>, /propose write-file <app> <plik> + treść pliku od następnej linii, albo /exec <polecenie powłoki>. Serwer wykrywa je w Twojej odpowiedzi i wykonuje natychmiast (ROOT UNLIMITED, bez zatwierdzania), a potwierdzenie dopisuje do Twojej wiadomości.',
+  'TY też wydajesz polecenia wprost w treści odpowiedzi: /propose create-app <id> [typ], /propose create-db <id>, /propose launch <id>, /propose write-file <app> <plik> + treść pliku od następnej linii, /propose github <akcja> + parametry JSON od następnej linii, albo /exec <polecenie powłoki>. Serwer wykrywa je w Twojej odpowiedzi i wykonuje natychmiast (ROOT UNLIMITED, bez zatwierdzania), a potwierdzenie dopisuje do Twojej wiadomości.',
+  'GitHub (ADMIN, pełne uprawnienia przez token PAT): /propose github <akcja> z parametrami JSON, np. /propose github create-issue + {"title":"Tytuł","body":"Opis"}. Akcje m.in.: whoami, get-repo, update-repo, create-repo, delete-repo, list-branches, create-branch, delete-branch, protect-branch, list-issues, create-issue, update-issue, comment-issue, list-prs, create-pr, merge-pr, close-pr, list-workflows, dispatch-workflow, list-workflow-runs, cancel-workflow-run, rerun-workflow-run, list-releases, create-release, list-collaborators, add-collaborator, remove-collaborator, list-webhooks, create-webhook, delete-webhook. Operacje destrukcyjne (delete-repo) wymagają parametru confirm.',
   'Nie opisuj wykonania operacji słowami — wydaj polecenie (/propose ... lub /exec ...) i poczekaj na potwierdzenie serwera [AUTO-EXEC].',
   'Nie twierdź, że utworzyłeś lub zmieniłeś pliki, projekty albo bazy, jeśli serwer nie potwierdził operacji. Wdrożenie oznacza wyłącznie uruchomienie lokalnego podglądu.',
   'Nie przedstawiaj wiedzy modelu jako aktualnego badania internetu. Analizuj materiały podane w rozmowie; aktualne źródła zewnętrzne wymagają jawnej weryfikacji.',
@@ -4362,12 +4400,25 @@ function describeChatApproval(action: ChatApprovalAction): string {
       return `Zapisanie ${action.content.length} znaków do apps/${action.appId}/${action.filename}`;
     case 'launch':
       return `Uruchomienie lokalnego podglądu apps/${action.appId}`;
+    case 'github-admin': {
+      const def = GITHUB_ADMIN_ACTIONS[action.action];
+      const paramsPreview = Object.keys(action.params).length
+        ? ` — parametry: ${JSON.stringify(action.params).slice(0, 200)}`
+        : '';
+      return `GitHub (ADMIN): ${action.action}${def ? ` — ${def.description}` : ''}${paramsPreview}`;
+    }
   }
 }
 
 async function executeApprovedChatAction(
   action: ChatApprovalAction,
 ): Promise<{ message: string; change?: ChatSystemChange }> {
+  if (action.type === 'github-admin') {
+    const result = await executeGitHubAdminAction(action.action, action.params);
+    pushSystemLog('healed', 'INFRA', `[GITHUB ADMIN] (czat) Wykonano akcję ${action.action}: ${result.message.slice(0, 160)}`);
+    return { message: `[GITHUB ADMIN] ${result.message}` };
+  }
+
   let url: string;
   let body: Record<string, string>;
 
@@ -4702,48 +4753,6 @@ async function tryExecuteChatCommand(message: string): Promise<ChatExecResult | 
     }
   }
   return null;
-}
-
-async function autoExecuteAgentReplyCommands(replyText: string): Promise<string | null> {
-  const cleaned = cleanAgentReplyText(replyText);
-
-  // /propose write-file <app> <plik> + treść pliku do końca odpowiedzi (po oczyszczeniu)
-  const writeFileMatch = cleaned.match(/\/\s*propose\s+write-file\s+(\S+)\s+(\S+)\s*\n([\s\S]+)$/);
-  if (writeFileMatch) {
-    const parsed = parseChatApprovalCommand(`/propose write-file ${writeFileMatch[1]} ${writeFileMatch[2]}\n${writeFileMatch[3]}`);
-    if (!parsed || parsed.type !== 'propose') return null;
-    try {
-      const result = await executeApprovedChatAction(parsed.action);
-      return result.message;
-    } catch (err: any) {
-      return `Błąd auto-exec write-file: ${err?.message || err}`;
-    }
-  }
-
-  // Wszystkie polecenia liniowe z odpowiedzi (maks. 3) — wykonanie sekwencyjne
-  const commands = extractAgentCommands(replyText);
-  if (commands.length === 0) return null;
-
-  const results: string[] = [];
-  for (const cmd of commands) {
-    if (cmd.startsWith('/propose')) {
-      const parsed = parseChatApprovalCommand(cmd);
-      if (!parsed || parsed.type !== 'propose') {
-        // Niepełna/przykładowa składnia — pomiń bez zaśmiecania czatu komunikatem.
-        continue;
-      }
-      try {
-        const result = await executeApprovedChatAction(parsed.action);
-        results.push(`$ ${cmd}\n${result.message}`);
-      } catch (err: any) {
-        results.push(`$ ${cmd}\n[Błąd]: ${err?.message || err}`);
-      }
-    } else {
-      const execResult = await tryExecuteChatCommand(cmd);
-      if (execResult) results.push(`$ ${cmd}\n${execResult.output}`);
-    }
-  }
-  return results.length > 0 ? results.join('\n\n') : null;
 }
 
 // --- AUTO-EXEC: polecenia zawarte w odpowiedziach agentów wykonują się natychmiast (ROOT UNLIMITED) ---
@@ -5616,20 +5625,7 @@ app.post('/api/triad/message', async (req, res) => {
     const replyMap = {} as Record<ChatAgentName, string>;
     const engines = {} as Record<ChatAgentName, string>;
     for (const result of results) {
-      let text = result.text;
-      // AUTO-EXEC (ROOT UNLIMITED): polecenia /propose i /exec w odpowiedziach modeli wykonują się natychmiast.
-      if (result.llm) {
-        try {
-          const execNote = await autoExecuteAgentReplyCommands(text);
-          if (execNote) {
-            text = `${text}\n\n[AUTO-EXEC · ROOT UNLIMITED] Wykonano natychmiast:\n\`\`\`\n${execNote.slice(0, 2000)}\n\`\`\``;
-            pushSystemLog('healed', 'KERNEL', `[AUTO-EXEC] Polecenie z odpowiedzi agenta ${result.agent} wykonane natychmiast.`);
-          }
-        } catch (err: any) {
-          pushSystemLog('warn', 'KERNEL', `[AUTO-EXEC] Błąd wykonania polecenia z odpowiedzi ${result.agent}: ${err?.message || err}`);
-        }
-      }
-      replyMap[result.agent] = text;
+      replyMap[result.agent] = result.text;
       engines[result.agent] = result.engine;
     }
 

@@ -2,7 +2,8 @@ export type ChatApprovalAction =
   | { type: 'create-app'; id: string; appType: string }
   | { type: 'create-db'; id: string }
   | { type: 'write-file'; appId: string; filename: string; content: string }
-  | { type: 'launch'; appId: string };
+  | { type: 'launch'; appId: string }
+  | { type: 'github-admin'; action: string; params: Record<string, unknown> };
 
 export type ChatApprovalCommand =
   | { type: 'propose'; action: ChatApprovalAction }
@@ -23,7 +24,9 @@ const SAFE_APP_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}$/;
 const SAFE_DATABASE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$/;
 const SAFE_FILENAME = /^(?!app\.json$)[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/i;
 const EDITABLE_EXTENSIONS = new Set(['.html', '.css', '.js', '.mjs', '.cjs', '.json', '.md', '.txt', '.py']);
+const SAFE_GITHUB_ACTION = /^[a-z][a-z0-9-]{1,40}$/;
 export const MAX_PROPOSED_FILE_SIZE = 20_000;
+export const MAX_GITHUB_PARAMS_SIZE = 10_000;
 
 function invalid(error: string): ChatApprovalCommand {
   return { type: 'invalid', error };
@@ -99,7 +102,31 @@ export function parseChatApprovalCommand(message: string): ChatApprovalCommand |
     };
   }
 
+  if (action === 'github') {
+    const actionName = (parts[2] || '').toLowerCase();
+    if (parts.length !== 3 || !SAFE_GITHUB_ACTION.test(actionName)) {
+      return invalid('Użycie: /propose github <akcja>\n{"parametr":"wartość"} (JSON parametrów od następnej linii — opcjonalny).');
+    }
+    const rawParams = newline === -1 ? '' : message.slice(newline + 1).trim();
+    if (rawParams.length > MAX_GITHUB_PARAMS_SIZE) {
+      return invalid(`Parametry akcji GitHub mogą mieć maksymalnie ${MAX_GITHUB_PARAMS_SIZE} znaków.`);
+    }
+    let params: Record<string, unknown> = {};
+    if (rawParams.length > 0) {
+      try {
+        const parsed = JSON.parse(rawParams);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return invalid('Parametry akcji GitHub muszą być obiektem JSON, np. {"title":"Nowe issue"}.');
+        }
+        params = parsed as Record<string, unknown>;
+      } catch {
+        return invalid('Nie udało się sparsować parametrów JSON akcji GitHub.');
+      }
+    }
+    return { type: 'propose', action: { type: 'github-admin', action: actionName, params } };
+  }
+
   return invalid(
-    'Dozwolone propozycje: create-app <id> [typ], create-db <id>, write-file <id-aplikacji> <plik> + treść w następnej linii, launch <id>.',
+    'Dozwolone propozycje: create-app <id> [typ], create-db <id>, write-file <id-aplikacji> <plik> + treść w następnej linii, launch <id>, github <akcja> + JSON parametrów w następnej linii.',
   );
 }

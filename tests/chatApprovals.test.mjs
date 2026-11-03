@@ -37,3 +37,27 @@ test('rejects unsafe paths, protected manifests, unsupported actions and oversiz
   assert.equal(parseChatApprovalCommand('/approve not-a-uuid').type, 'invalid');
   assert.equal(parseChatApprovalCommand('hello Alex'), null);
 });
+
+test('parses github admin proposals with and without JSON params', () => {
+  assert.deepEqual(parseChatApprovalCommand('/propose github list-issues'), {
+    type: 'propose',
+    action: { type: 'github-admin', action: 'list-issues', params: {} },
+  });
+  assert.deepEqual(parseChatApprovalCommand('/propose github create-issue\n{"title":"Bug","labels":["bug"]}'), {
+    type: 'propose',
+    action: { type: 'github-admin', action: 'create-issue', params: { title: 'Bug', labels: ['bug'] } },
+  });
+  assert.deepEqual(parseChatApprovalCommand('/propose github MERGE-PR\n{"number": 7}'), {
+    type: 'propose',
+    action: { type: 'github-admin', action: 'merge-pr', params: { number: 7 } },
+  });
+});
+
+test('rejects malformed github admin proposals', () => {
+  assert.equal(parseChatApprovalCommand('/propose github').type, 'invalid');
+  assert.equal(parseChatApprovalCommand('/propose github two words').type, 'invalid');
+  assert.equal(parseChatApprovalCommand('/propose github ../etc').type, 'invalid');
+  assert.equal(parseChatApprovalCommand('/propose github create-issue\nnot-json').type, 'invalid');
+  assert.equal(parseChatApprovalCommand('/propose github create-issue\n["lista"]').type, 'invalid');
+  assert.equal(parseChatApprovalCommand(`/propose github create-issue\n{"body":"${'x'.repeat(10_001)}"}`).type, 'invalid');
+});
