@@ -1361,7 +1361,6 @@ if __name__ == "__main__":
 // 1. GET /api/apps/list - List all created applications with stats and manifests
 app.get('/api/apps/list', (_req, res) => {
   try {
-    initializeDefaultApps();
     const appDirs = fs.readdirSync(APPS_DIR).filter(item => {
       try {
         return fs.statSync(path.join(APPS_DIR, item)).isDirectory();
@@ -2480,40 +2479,39 @@ try {
 
 // 3. VM_Ten_System 5-Minute Automatic Snapshot & Memory Guard Loop
 setInterval(() => {
+  if (!continuousMissionEnabled) return;
   createVmSnapshotNow('Cykliczny 5-minutowy zapis snapshotu VM_Ten_System');
   optimizeVmMemoryNow('Cykliczna kontrola limitu pamięci 4 GiB (<70% Idle)');
-  if (continuousMissionEnabled) {
-    pushSystemLog(
-      'healed',
-      'KERNEL',
-      `[MISJA TRIADY: ${TRIADA_MISSION_DIRECTIVE}] Cykl w tle został jawnie włączony: Alex (infrastruktura), Astyria (diagnostyka), Aurelius (audyt). Brak uprawnień root hosta.`
-    );
-    void deployAgentArtifacts('auto-background').then((deployed) => {
-      if (deployed.length > 0) {
-        void runPythonKernel([
-          '--action', 'batch_msg',
-          '--msgs_json', JSON.stringify([
-            { agent: 'Astyria', tekst: `[DEPLOY AUTO] Wdrożono nowe artefakty misji ${TRIADA_MISSION_DIRECTIVE}: ${deployed.map((d) => `${d.name} → ${d.target}`).join('; ')}.` },
-          ]),
-        ]).catch(() => {});
-        void triadGitCommit(
-          'triad',
-          `Auto-commit artefaktów misji: ${deployed.map((d) => d.name).join(', ')}`,
-          TRIADA_DEFAULT_COMMIT_PATHS,
-          'auto-background',
-        ).then((sha) => {
-          if (sha) {
-            pushSystemLog('healed', 'KERNEL', `[GIT AUTO] Triada zapisała artefakty w repozytorium (commit ${sha}).`);
-            if (triadaGithubAutoPush) {
-              void execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 45000 })
-                .then(() => pushSystemLog('healed', 'KERNEL', `[GITHUB AUTO] Commit ${sha} wypchnięty do origin/main (FULL_READ_WRITE).`))
-                .catch((pushErr: any) => pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Push nie powiódł się: ${pushErr?.message || pushErr}`));
-            }
+  pushSystemLog(
+    'healed',
+    'KERNEL',
+    `[MISJA TRIADY: ${TRIADA_MISSION_DIRECTIVE}] Cykl w tle został jawnie włączony. Brak uprawnień root hosta.`
+  );
+  void deployAgentArtifacts('auto-background').then((deployed) => {
+    if (deployed.length > 0) {
+      void runPythonKernel([
+        '--action', 'batch_msg',
+        '--msgs_json', JSON.stringify([
+          { agent: 'Astyria', tekst: `[DEPLOY AUTO] Wdrożono nowe artefakty misji ${TRIADA_MISSION_DIRECTIVE}: ${deployed.map((d) => `${d.name} → ${d.target}`).join('; ')}.` },
+        ]),
+      ]).catch(() => {});
+      void triadGitCommit(
+        'triad',
+        `Auto-commit artefaktów misji: ${deployed.map((d) => d.name).join(', ')}`,
+        TRIADA_DEFAULT_COMMIT_PATHS,
+        'auto-background',
+      ).then((sha) => {
+        if (sha) {
+          pushSystemLog('healed', 'KERNEL', `[GIT AUTO] Triada zapisała artefakty w repozytorium (commit ${sha}).`);
+          if (triadaGithubAutoPush) {
+            void execFileAsync('git', ['push', 'origin', 'HEAD'], { timeout: 45000 })
+              .then(() => pushSystemLog('healed', 'KERNEL', `[GITHUB AUTO] Commit ${sha} wypchnięty.`))
+              .catch((pushErr: any) => pushSystemLog('warn', 'KERNEL', `[GITHUB AUTO] Push nie powiódł się: ${pushErr?.message || pushErr}`));
           }
-        }).catch(() => {});
-      }
-    });
-  }
+        }
+      }).catch(() => {});
+    }
+  });
 }, 5 * 60 * 1000);
 
 const healedIncidents: HealedIncident[] = [];
@@ -2765,6 +2763,9 @@ app.get('/api/astyria/mission-status', async (_req, res) => {
 
 // POST Toggle Continuous Mission (Used by AstyriaMissionView.tsx)
 app.post('/api/mission/toggle', (req, res) => {
+  if (!isSameOriginLoopbackRequest(req)) {
+    return res.status(403).json({ success: false, error: 'Ustawienia autonomii są dostępne wyłącznie z lokalnej aplikacji.' });
+  }
   const { enabled } = req.body;
   continuousMissionEnabled = typeof enabled === 'boolean' ? enabled : !continuousMissionEnabled;
   autoRepairEnabled = continuousMissionEnabled;
@@ -2810,6 +2811,9 @@ app.post('/api/infrastructure/repair-now', async (_req, res) => {
 
 // POST Toggle auto-repair
 app.post('/api/infrastructure/toggle-auto-repair', (req, res) => {
+  if (!isSameOriginLoopbackRequest(req)) {
+    return res.status(403).json({ success: false, error: 'Ustawienia naprawy są dostępne wyłącznie z lokalnej aplikacji.' });
+  }
   const { enabled } = req.body;
   autoRepairEnabled = typeof enabled === 'boolean' ? enabled : !autoRepairEnabled;
   continuousMissionEnabled = autoRepairEnabled;
@@ -3678,8 +3682,8 @@ app.post('/api/astyria/mission', async (req, res) => {
         '--action', 'config',
         '--config_json', JSON.stringify({
           sys_version: targetVer,
-          astyria_continuous_repair: true,
-          continuous_mission: 'ACTIVE',
+          astyria_continuous_repair: false,
+          continuous_mission: 'ON_DEMAND',
           vm_ten_system: {
             vm_name: 'VM_Ten_System',
             status: 'DEPLOYED_PRODUCTION',
@@ -3712,14 +3716,13 @@ app.post('/api/astyria/mission', async (req, res) => {
       resultMessage = `Tato! Audyt zabezpieczeń **VM_Ten_System** zakończony sukcesem:\n- **Firewall UFW Ring-0**: AKTYWNY (Sprawdzono ${vmTenSystemState.firewallInspectedRequests} żądań, autoryzowane porty 3200/TCP i 6080/TCP).\n- **Daemon Reloader CWD**: AKTYWNY (Ostatnia synchronizacja CWD: ${vmTenSystemState.lastCwdReload}, zdarzeń: ${vmTenSystemState.daemonReloaderEvents}).`;
     } else if (action === 'sync_version' || action === 'sync_versions' || action === 'repair_all_from_logs' || action === 'full_system_app_chat_repair') {
       actionTitle = `Synchronizacja wersji v${targetVer} oraz struktur DATA_STORE`;
-      initializeDefaultApps();
       await createVmSnapshotNow(`Pełna synchronizacja wersji v${targetVer} i wdrożenie Raw Socket RX Monitor`);
       await runPythonKernel([
         '--action', 'config',
         '--config_json', JSON.stringify({
           sys_version: targetVer,
-          astyria_continuous_repair: true,
-          continuous_mission: 'ACTIVE',
+          astyria_continuous_repair: false,
+          continuous_mission: 'ON_DEMAND',
           raw_socket_listener: {
             module_name: 'Raw_Socket_RX_Monitor_v8.5.1',
             status: 'ACTIVE_REAL_TIME_PHYSICAL_LISTENING',
@@ -5012,10 +5015,13 @@ async function generateGeminiSingleReply(
 
 // --- HYPEROS CONSOLE: przywrócony terminal Binarnej Hiperprzestrzeni (128-bit) + NLP OpenRouter ---
 const hyperOsKernel = new BinaryHyperspaceKernel();
-const HYPEROS_KNOWN_KERNEL_COMMANDS = ['report', 'status', 'state', 'root', 'sudo', 'clear_chat', 'clear', 'sync', 'bump', 'set', 'infra'];
-const HYPEROS_SYSTEM_PROMPT = 'Jesteś konsolą HyperOS — Binarnej Hiperprzestrzeni (128-bit) systemu SVL. Operator (Mateusz Mitek, Tata) ma najwyższe uprawnienia ROOT ABSOLUTE (RING-−1), wyższe niż agenci Triady. Odpowiadaj krótko po polsku, w stylu cyberpunkowego terminala. Każde polecenie przechodzi przez wektor hiperprzestrzeni — odnoś się do wykrytej intencji. Jeśli dostaniesz wynik jądra, skomentuj go zwięźle. Nie twierdź, że wykonałeś operacje systemowe.';
+const HYPEROS_KNOWN_KERNEL_COMMANDS = ['report', 'status', 'state', 'clear_chat', 'clear', 'sync', 'bump', 'set', 'infra'];
+const HYPEROS_SYSTEM_PROMPT = 'Jesteś konsolą HyperOS — Binarnej Hiperprzestrzeni (128-bit) systemu SVL. Polecenia działają jako użytkownik procesu aplikacji; operator ani agenci nie mają delegowanych uprawnień root hosta. Odpowiadaj krótko po polsku, w stylu cyberpunkowego terminala. Każde polecenie przechodzi przez wektor hiperprzestrzeni — odnoś się do wykrytej intencji. Jeśli dostaniesz wynik jądra, skomentuj go zwięźle. Nie twierdź, że wykonałeś operacje systemowe.';
 
 app.post('/api/hyperos/console', async (req, res) => {
+  if (!isSameOriginLoopbackRequest(req)) {
+    return res.status(403).json({ success: false, error: 'Konsola HyperOS jest dostępna wyłącznie z lokalnej aplikacji.' });
+  }
   const command: unknown = req.body?.command;
   if (typeof command !== 'string' || command.trim().length === 0 || command.length > 2000) {
     return res.status(400).json({ success: false, error: 'Polecenie konsoli musi mieć od 1 do 2000 znaków.' });
@@ -5630,6 +5636,12 @@ async function bootstrapTriadMission() {
       '--action', 'config',
       '--config_json', JSON.stringify({
         active_profiles: [...TRIAD_AGENT_NAMES],
+        log_auto_repair: {
+          enabled: false,
+          status: 'ON_DEMAND',
+          repair_mode: 'MANUAL_REQUEST',
+          active_rules: [],
+        },
         root_privileges: false,
         root_mode: 'DISABLED',
         privilege_level: 'APPLICATION_PROCESS',

@@ -367,7 +367,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 Koordynator infrastruktury: Alex
 Operator / Tata:        ${OPERATOR_NAME} (Tata)
 Silnik poleceń:         AKTYWNY (jawny protokół i komendy jądra)
-Samonaprawa z logów:    WŁĄCZONA (ACTIVE_MONITORING)
+Samonaprawa z logów:    ${dataStore.config?.log_auto_repair?.enabled === true ? 'WŁĄCZONA' : 'WYŁĄCZONA'}
 Uprawnienia hosta:      użytkownik procesu aplikacji; bez root
 Wpisz 'help' lub 'status', aby zobaczyć listę instrukcji jądra.
 ================================================================================`,

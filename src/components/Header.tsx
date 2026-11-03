@@ -116,8 +116,8 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
           </div>
 
           <div className="hidden xl:flex items-center gap-1.5 bg-cyan-950/70 border border-cyan-500/40 px-2 py-1 rounded text-cyan-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-            <span>ASTYRIA AUTO-REPAIR: ON</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${dataStore.config?.log_auto_repair?.enabled === true ? 'bg-cyan-400 animate-ping' : 'bg-slate-500'}`} />
+            <span>ASTYRIA AUTO-REPAIR: {dataStore.config?.log_auto_repair?.enabled === true ? 'ON' : 'OFF'}</span>
           </div>
 
           <div className="hidden items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur md:flex">

@@ -113,24 +113,11 @@ export const INITIAL_DATA_STORE: DataStore = {
       export_path: "/exports/baza_danych_171026_rezonans_2.json"
     },
     log_auto_repair: {
-      enabled: true,
-      status: "ACTIVE_CONTINUOUS_HEALING",
-      repair_mode: "ASTYRIA_ALEX_VM_TEN_SYSTEM_AUTOPATCH",
-      healed_incidents_count: 15,
-      last_scan: "2026-10-17 23:35:00 CEST",
-      active_rules: [
-        "413_PAYLOAD_LIMIT_AUTO_EXPAND",
-        "MODEL_AUTO_ROUTING_HEALTH_CHECK",
-        "DATA_STORE_INVARIANT_HEALER",
-        "EXPRESS_ERROR_BOUNDARY_RECOVERY",
-        "CHAT_REPETITION_AND_LOG_HEALER",
-        "VERSION_SYNC_GUARD",
-        "VM_DAEMON_CWD_RELOADER",
-        "VM_MEMORY_IDLE_70_GUARD",
-        "VM_FIREWALL_UFW_RING0",
-        "VM_AUTO_SNAPSHOT_5MIN_SYNC",
-        "ANTI_REFUSAL_MULTIMODEL_GUARD"
-      ]
+      enabled: false,
+      status: "ON_DEMAND",
+      repair_mode: "MANUAL_REQUEST",
+      healed_incidents_count: 0,
+      active_rules: []
     },
     continuous_mission: "ON_DEMAND",
     root_privileges: false,
