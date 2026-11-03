@@ -275,3 +275,7 @@ cover repository settings, branches and protection, issues, pull requests
 (create/merge/close), GitHub Actions workflows (dispatch/cancel/rerun),
 releases, collaborators and webhooks. Irreversible operations such as
 `delete-repo` additionally require an explicit `confirm` parameter.
+
+## MCP for Codespaces (read-only)
+
+Run the isolated MCP bridge with `npm run mcp` on local port 3100 after setting a private `SVL_MCP_TOKEN` secret (minimum 32 characters). It provides read-only bridge status, known agent roles, and a restricted SVL AI status check. No commands, root execution, or GitHub write operations are exposed through MCP. See [MCP setup and security](docs/MCP_SETUP.md) for Codespaces, client configuration, and verification. Do not publish the main SVL application port 3000.
