@@ -1361,7 +1361,6 @@ if __name__ == "__main__":
 // 1. GET /api/apps/list - List all created applications with stats and manifests
 app.get('/api/apps/list', (_req, res) => {
   try {
-    initializeDefaultApps();
     const appDirs = fs.readdirSync(APPS_DIR).filter(item => {
       try {
         return fs.statSync(path.join(APPS_DIR, item)).isDirectory();
@@ -3714,7 +3713,6 @@ app.post('/api/astyria/mission', async (req, res) => {
       resultMessage = `Tato! Audyt zabezpieczeń **VM_Ten_System** zakończony sukcesem:\n- **Firewall UFW Ring-0**: AKTYWNY (Sprawdzono ${vmTenSystemState.firewallInspectedRequests} żądań, autoryzowane porty 3200/TCP i 6080/TCP).\n- **Daemon Reloader CWD**: AKTYWNY (Ostatnia synchronizacja CWD: ${vmTenSystemState.lastCwdReload}, zdarzeń: ${vmTenSystemState.daemonReloaderEvents}).`;
     } else if (action === 'sync_version' || action === 'sync_versions' || action === 'repair_all_from_logs' || action === 'full_system_app_chat_repair') {
       actionTitle = `Synchronizacja wersji v${targetVer} oraz struktur DATA_STORE`;
-      initializeDefaultApps();
       await createVmSnapshotNow(`Pełna synchronizacja wersji v${targetVer} i wdrożenie Raw Socket RX Monitor`);
       await runPythonKernel([
         '--action', 'config',
