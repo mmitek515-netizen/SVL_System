@@ -10,6 +10,7 @@ import os from 'os';
 import { randomUUID, createHash } from 'crypto';
 import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import type { ChatSystemChange } from './src/kernel/chatChanges';
+import { getOriginalAgentConnections } from './src/kernel/agentConnections';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 import {
   DEFAULT_OLLAMA_BASE_URL,
@@ -126,7 +127,7 @@ const llmProviderLabel = (provider: string) =>
 const describeLlmProvider = (provider: string) =>
   provider === 'gemini' ? `Google Gemini (${GEMINI_MODEL})`
   : provider === 'xai' ? `xAI Grok (${XAI_MODEL || 'auto'})`
-  : `Ollama (model: ${LLM_CHAIN_CONFIG.ollamaModel}, ${LLM_CHAIN_CONFIG.ollamaBaseUrl})`;
+  : 'Ollama (lokalnie; konfiguracja po stronie serwera)';
 {
   const chain = configuredProviders(LLM_CHAIN_CONFIG).map(describeLlmProvider);
   if (CHAT_LOCAL_FALLBACK) chain.push('without_nlp');
@@ -140,6 +141,7 @@ const POLLINATIONS_API_KEY = rawEnvPollKey.startsWith('sk_')
   : '';
 const app = express();
 const DEFAULT_PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number.isFinite(DEFAULT_PORT) && DEFAULT_PORT > 0 ? DEFAULT_PORT : 3000;
 let activeServerPort = PORT;
 const PYTHON_SCRIPT_PATH = path.resolve('svl_kernel.py');
@@ -2266,15 +2268,42 @@ app.get('/api/ai/status', async (_req, res) => {
     const openRouterActive = Boolean(OPENROUTER_API_KEY);
     const fallbackActive = Boolean(FALLBACK_NLP_API_KEY);
     const withoutNlp = withoutNlpEngine.getMetrics();
+    const providers = configuredProviders(LLM_CHAIN_CONFIG);
+    const ollamaConfigured = Boolean(LLM_CHAIN_CONFIG.ollamaModel?.trim());
+    let ollamaReachable = false;
+    let ollamaModelAvailable = false;
+    if (ollamaConfigured) {
+      try {
+        const base = (LLM_CHAIN_CONFIG.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL).replace(/\/+$/, '');
+        const response = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(2500) });
+        if (response.ok) {
+          const data: any = await response.json();
+          const models = Array.isArray(data?.models) ? data.models : [];
+          ollamaReachable = true;
+          const configuredModel = (LLM_CHAIN_CONFIG.ollamaModel || 'auto').trim();
+          ollamaModelAvailable = configuredModel === '' || configuredModel === 'auto'
+            ? models.length > 0
+            : models.some((model: any) => model?.name === configuredModel);
+        }
+      } catch {
+        ollamaReachable = false;
+      }
+    }
+    const providerAvailable = providers.some((provider) =>
+      provider !== 'ollama' || (ollamaReachable && ollamaModelAvailable)
+    );
     return res.json({
-      provider: configuredProviders(LLM_CHAIN_CONFIG).length
-        ? configuredProviders(LLM_CHAIN_CONFIG).map(llmProviderLabel).join(' → ')
+      provider: providers.length
+        ? providers.map(llmProviderLabel).join(' → ')
         : 'brak modelu',
-      model: LLM_CHAIN_CONFIG.ollamaModel && usesOllama() ? LLM_CHAIN_CONFIG.ollamaModel : withoutNlp.version,
-      enabled: configuredProviders(LLM_CHAIN_CONFIG).length > 0 || CHAT_LOCAL_FALLBACK,
-      connection: usesOllama() ? 'local-ollama' : configuredProviders(LLM_CHAIN_CONFIG).length ? 'api-configured' : 'local-deterministic',
+      model: usesOllama() ? 'local-ollama' : withoutNlp.version,
+      enabled: providerAvailable || CHAT_LOCAL_FALLBACK,
+      connection: ollamaConfigured
+        ? !ollamaReachable ? 'ollama-disconnected' : !ollamaModelAvailable ? 'ollama-model-not-found' : 'local-ollama'
+        : providers.length ? 'api-configured' : 'local-deterministic',
+      ollama: { configured: ollamaConfigured, reachable: ollamaReachable, modelAvailable: ollamaModelAvailable },
       chain: [
-        ...configuredProviders(LLM_CHAIN_CONFIG).map(describeLlmProvider),
+        ...providers.map(describeLlmProvider),
         CHAT_LOCAL_FALLBACK ? `without_nlp (${withoutNlp.version}) — fallback lokalny` : null,
       ].filter(Boolean),
       fallback: CHAT_LOCAL_FALLBACK
@@ -2291,9 +2320,14 @@ app.get('/api/ai/status', async (_req, res) => {
       hyperOsConsole: '/api/hyperos/console',
       sysVersion: state?.sys_version || null,
     });
+
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'Błąd statusu NLP.' });
   }
+});
+
+app.get('/api/agents/status', (_req, res) => {
+  return res.json({ agents: getOriginalAgentConnections() });
 });
 
 // --- INFRASTRUCTURE & LOG-BASED AUTO-REPAIR ENGINE (ALEX COMMANDER) ---
@@ -4529,13 +4563,12 @@ const BEST_FIT_MATRIX: Array<BestFitArgument<null>> = [
         const installed = (tags.models || []).map((m: any) => `${m.name} (${formatBytesGb(m.size || 0)})`);
         const loaded = (ps.models || []).map((m: any) => m.name);
         return [
-          `Ollama     : DZIAŁA (${base})`,
-          `Model czatu: ${LLM_CHAIN_CONFIG.ollamaModel || 'auto'}`,
+          'Ollama     : DZIAŁA (konfiguracja po stronie serwera)',
           `Załadowane : ${loaded.length ? loaded.join(', ') : 'żaden (pierwsza odpowiedź będzie wolniejsza)'}`,
           `Dostępne   : ${installed.length ? installed.join(', ') : 'brak modeli — uruchom npm run setup:ollama'}`,
         ].join('\n');
-      } catch (err: any) {
-        return `Ollama     : NIEOSIĄGALNA (${base})\nPowód      : ${String(err?.message || err).slice(0, 200)}\nStart      : ollama serve  (albo npm run setup:ollama)`;
+      } catch {
+        return 'Ollama     : NIEOSIĄGALNA\nSzczegóły   : niedostępna usługa lub brak modelu\nStart       : ollama serve  (albo npm run setup:ollama)';
       }
     },
   },
@@ -5215,7 +5248,7 @@ const CHAT_AGENT_CONVERSATION_STYLE = [
 
 function buildLlmHistory(
   chatHistory: Array<{ agent: string; tekst: string }>,
-  agent: ChatAgentName,
+  agent: string,
   limit = 8,
   textLimit = 1200,
 ): LlmTurn[] {
@@ -5314,11 +5347,104 @@ app.post('/api/triad/message', async (req, res) => {
       error: `Wiadomość przekracza limit ${maxMessageLength} znaków.`,
     });
   }
-  if (requestedTarget !== 'triad' && (
+  if (requestedTarget !== 'triad' && requestedTarget !== 'ollama' && (
     typeof requestedTarget !== 'string' ||
     !CHAT_AGENT_NAMES.includes(requestedTarget as ChatAgentName)
   )) {
     return res.status(400).json({ success: false, error: 'Nieznany agent czatu.' });
+  }
+  if (requestedTarget === 'ollama') {
+    const ollamaConfig: LlmChainConfig = { ...LLM_CHAIN_CONFIG, providers: ['ollama'] };
+    const providers = configuredProviders(ollamaConfig);
+    if (!providers.includes('ollama')) {
+      return res.status(503).json({
+        success: false,
+        code: 'ollama_unavailable',
+        error: 'Lokalny model Ollama nie jest skonfigurowany. Ustaw OLLAMA_MODEL i uruchom usługę Ollama.',
+      });
+    }
+
+    const controller = new AbortController();
+    let clientDisconnected = false;
+    let timedOut = false;
+    const cancelOnDisconnect = () => {
+      if (!res.writableEnded) {
+        clientDisconnected = true;
+        controller.abort();
+      }
+    };
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, LLM_CHAT_TIMEOUT_MS);
+    res.once('close', cancelOnDisconnect);
+    try {
+      const currentState = await getPythonKernelState(true);
+      const store = currentState?.store && typeof currentState.store === 'object'
+        ? currentState.store
+        : {};
+      const chatHistory: Array<{ agent: string; tekst: string }> = Array.isArray(store.chat_history) ? store.chat_history : [];
+      const binaryAttachments = attachments
+        .filter((attachment) => attachment.mimeType)
+        .map((attachment) => ({ name: attachment.name, mimeType: attachment.mimeType!, content: attachment.content }));
+      const result = await generateWithChain(ollamaConfig, {
+        system: 'Jesteś lokalnym asystentem Ollama, a nie Aria, Alexem, Astyrią ani Aureliusem. Prowadź swobodną rozmowę. Nie twierdź, że jesteś połączony z oryginalnym agentem, wykonałeś operację systemową, zmieniłeś pliki lub zatwierdziłeś działanie.',
+        history: buildLlmHistory(chatHistory, 'Ollama'),
+        message: cleanMessage,
+        attachments: binaryAttachments,
+      }, controller.signal);
+      if (clientDisconnected) return;
+      const transcript = [
+        { agent: 'Mateusz Mitek', tekst: formatChatMessage(message, attachments) },
+        { agent: 'Ollama', tekst: result.text },
+      ];
+      await runPythonKernel(['--action', 'batch_msg', '--msgs_json', JSON.stringify(transcript)]);
+      const finalState = await getPythonKernelState(true);
+      if (!hasPersistedAgentProtocolTranscript(finalState, transcript, chatHistory.length)) {
+        throw new Error('Jądro nie potwierdziło zapisu rozmowy Ollama.');
+      }
+      return res.json({
+        success: true,
+        agent: 'Ollama',
+        reply: result.text,
+        engine: 'ollama',
+        state: finalState,
+      });
+    } catch (error: any) {
+      if (clientDisconnected) return;
+      const details = error instanceof LlmChainError
+        ? error.failures.join(' | ')
+        : String(error?.message || error);
+      originalWarn(`[OLLAMA CHAT] ${details}`);
+      const normalizedError = details.toLowerCase();
+      const code = timedOut
+        ? 'timeout'
+        : /out of memory|brak pamięci|oom|not enough memory|resource exhausted/.test(normalizedError)
+        ? 'out_of_memory'
+        : /model not found|brak pobranych modeli|http 404/.test(normalizedError)
+        ? 'model_not_found'
+        : /serwer nie odpowiada|fetch failed|econnrefused/.test(normalizedError)
+        ? 'connection_refused'
+        : 'ollama_error';
+      const errorMessage = code === 'timeout'
+        ? 'Lokalna odpowiedź Ollama przekroczyła limit czasu. Spróbuj ponownie lub wybierz mniejszy model.'
+        : code === 'out_of_memory'
+        ? 'Ollama nie ma wystarczającej pamięci, aby odpowiedzieć. Wybierz mniejszy model lub zmniejsz kontekst.'
+        : code === 'model_not_found'
+        ? 'Skonfigurowany model Ollama nie jest zainstalowany. Pobierz go lokalnie i spróbuj ponownie.'
+        : code === 'connection_refused'
+        ? 'Lokalna usługa Ollama jest nieosiągalna. Uruchom ją poleceniem ollama serve.'
+        : 'Lokalna rozmowa Ollama nie powiodła się. Szczegóły zapisano w logu serwera.';
+      pushSystemLog('warn', 'KERNEL', `[OLLAMA CHAT] Nieudane żądanie lokalnego modelu (${code}).`);
+      return res.status(503).json({
+        success: false,
+        code,
+        error: errorMessage,
+      });
+    } finally {
+      clearTimeout(timeout);
+      res.off('close', cancelOnDisconnect);
+    }
   }
   const target = requestedTarget as ChatTarget;
   const persistedMessage = approvalCommand?.type === 'propose' && approvalCommand.action.type === 'write-file'
@@ -5443,154 +5569,19 @@ app.post('/api/triad/message', async (req, res) => {
     }
   }
 
-  // BEST-FIT (natychmiast): krótkie pytania o stan systemu dostają odpowiedź z prawdziwych danych, bez modelu.
-  if (attachments.length === 0) {
-    const bestFit = await tryBestFitReply(message);
-    if (bestFit) {
-      const fitAgents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
-      const answering = fitAgents.includes(bestFit.owner) ? bestFit.owner : fitAgents[0];
-      const fitReplies = Object.fromEntries(fitAgents.map((agent) => [
-        agent,
-        agent === answering
-          ? bestFit.text
-          : `[NATYCHMIAST] Odpowiedź z argumentu ${bestFit.id} podał ${answering}.`,
-      ])) as Partial<Record<ChatAgentName, string>>;
-      const fitState = await persistChatCommandReplies(persistedMessage, target, fitReplies);
-      return res.json({
-        success: true,
-        agent: target,
-        engines: Object.fromEntries(fitAgents.map((agent) => [agent, `best-fit:${bestFit.id}`])),
-        reply: target === 'triad'
-          ? fitAgents.map((agent) => `${agent}:\n${fitReplies[agent]}`).join('\n\n')
-          : fitReplies[target],
-        replies: fitReplies,
-        instant: true,
-        state: fitState,
-      });
-    }
+  const disconnectedAgents = target === 'triad'
+    ? getOriginalAgentConnections()
+    : getOriginalAgentConnections().filter((agent) => agent.id === target);
+  for (const agent of disconnectedAgents) {
+    pushSystemLog('warn', 'KERNEL', `[AGENT_DISCONNECTED] Próba czatu do ${agent.name} nie została wysłana: ${agent.detail}`);
   }
+  return res.status(503).json({
+    success: false,
+    code: 'agent_disconnected',
+    agents: disconnectedAgents.map(({ name, status }) => ({ name, status })),
+    error: 'Oryginalne agenty nie mają skonfigurowanych zweryfikowanych API. Użyj kanału Ollama, aby rozmawiać z lokalnym modelem bez podszywania się pod agentów.',
+  });
 
-  // CZAT TRIADY: swobodna rozmowa — Gemini → xAI (Grok) → Ollama (lokalny model) → without_nlp.
-  const llmProviders = configuredProviders(LLM_CHAIN_CONFIG);
-  if (llmProviders.length === 0 && !CHAT_LOCAL_FALLBACK) {
-    return res.status(503).json({
-      success: false,
-      error: 'Brak skonfigurowanego modelu czatu. Ustaw LLM_PROVIDERS="ollama" (i uruchom Ollamę: npm run setup:ollama) albo klucze API w .env.',
-    });
-  }
-  if (attachments.some((attachment) => attachment.mimeType === 'application/pdf') && !llmProviders.includes('gemini')) {
-    return res.status(400).json({
-      success: false,
-      error: 'Załączniki PDF obsługuje tylko Gemini (GEMINI_API_KEY + LLM_PROVIDERS). Ollama przyjmuje tekst i zdjęcia (model z obsługą obrazów).',
-    });
-  }
-
-  try {
-    const currentState = await getPythonKernelState(true);
-    const store = currentState?.store && typeof currentState.store === 'object'
-      ? currentState.store
-      : {};
-    const previousChatHistoryLength = Array.isArray(store.chat_history) ? store.chat_history.length : 0;
-    const chatHistory: Array<{ agent: string; tekst: string }> = Array.isArray(store.chat_history) ? store.chat_history : [];
-    const analysis = withoutNlpEngine.analyzeSignal(cleanMessage);
-    const targetAgents: ChatAgentName[] = target === 'triad' ? [...CHAT_AGENT_NAMES] : [target];
-    const binaryAttachments = attachments
-      .filter((attachment) => attachment.mimeType)
-      .map((attachment) => ({ name: attachment.name, mimeType: attachment.mimeType!, content: attachment.content }));
-    const hasImageAttachment = binaryAttachments.some((attachment) => attachment.mimeType.startsWith('image/'));
-    // Lokalna Ollama obsługuje agentów po kolei, więc limit rośnie z liczbą agentów.
-    const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS * (usesOllama() ? targetAgents.length : 1));
-
-    const results = await Promise.all(targetAgents.map(async (agent) => {
-      if (llmProviders.length > 0) {
-        try {
-          const result = await generateWithChain(LLM_CHAIN_CONFIG, {
-            system: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}${hasImageAttachment ? ' Do wiadomości dołączono zdjęcie — obejrzyj je i opisz konkretnie, co faktycznie na nim widać (obiekty, osoby, światło, zmiany). Nie powtarzaj wcześniejszych odpowiedzi i nie odpowiadaj ogólnikami o systemie.' : ''}`,
-            // Lokalny model: krótsza historia = mniej tokenów do przetworzenia przed odpowiedzią.
-            // Przy zdjęciu pomijamy historię, by model nie powielał poprzednich, identycznych odpowiedzi.
-            history: hasImageAttachment ? [] : usesOllama() && !CLOUD_LLM_ENABLED ? buildLlmHistory(chatHistory, agent, 4, 800) : buildLlmHistory(chatHistory, agent),
-            message: cleanMessage,
-            attachments: binaryAttachments,
-          }, deadline);
-          if (result.failures.length) {
-            pushSystemLog('warn', 'KERNEL', `[CZAT] ${agent}: ${result.failures.join(' | ')} — odpowiedział ${result.provider} (${result.model}).`);
-          }
-          return { agent, text: result.text, engine: `${result.provider}:${result.model}`, llm: true, error: undefined as string | undefined };
-        } catch (error: any) {
-          const failures = error instanceof LlmChainError ? error.failures.join(' | ') : String(error?.message || error);
-          pushSystemLog('warn', 'KERNEL', `[CZAT] ${agent}: modele niedostępne (${failures})${CHAT_LOCAL_FALLBACK ? ' — fallback without_nlp.' : '.'}`);
-          if (!CHAT_LOCAL_FALLBACK) {
-            return { agent, text: '', engine: 'error', llm: false, error: `${agent}: ${failures}` };
-          }
-        }
-      }
-      const offlinePrefix = llmProviders.length > 0 ? '[API OFFLINE — without_nlp] ' : '';
-      const includeHeader = target === 'triad' ? agent === 'Astyria' : true;
-      return {
-        agent,
-        text: offlinePrefix + buildWithoutNlpAgentReply(agent, analysis, cleanMessage, includeHeader),
-        engine: 'without_nlp',
-        llm: false,
-        error: undefined as string | undefined,
-      };
-    }));
-
-    const failed = results.filter((result) => result.error);
-    if (failed.length > 0) {
-      // Bez awaryjnego silnika nic nie zapisujemy do historii — operator widzi prawdziwy powód awarii.
-      return res.status(502).json({
-        success: false,
-        error: `Model Ollama nie odpowiedział. ${failed.map((result) => result.error).join(' | ')}`.slice(0, 900),
-      });
-    }
-
-    const replyMap = {} as Record<ChatAgentName, string>;
-    const engines = {} as Record<ChatAgentName, string>;
-    for (const result of results) {
-      let text = result.text;
-      if (result.llm) {
-        try {
-          const proposalNote = stageAgentProposals(text, result.agent);
-          if (proposalNote) {
-            text = `${text}\n\n${proposalNote}`;
-            pushSystemLog('info', 'KERNEL', `[CHAT] ${result.agent} wystawił propozycję oczekującą na ręczne zatwierdzenie.`);
-          }
-        } catch (err: any) {
-          pushSystemLog('warn', 'KERNEL', `[CHAT] Nie udało się wystawić propozycji od ${result.agent}: ${err?.message || err}`);
-        }
-      }
-      replyMap[result.agent] = text;
-      engines[result.agent] = result.engine;
-    }
-
-    const replies = targetAgents.map((agent) => [agent, replyMap[agent]] as const);
-    const transcript = [
-      { agent: 'Mateusz Mitek', tekst: persistedMessage },
-      ...replies.map(([agent, text]) => ({ agent, tekst: text })),
-    ];
-
-    await runPythonKernel([
-      '--action', 'batch_msg',
-      '--msgs_json', JSON.stringify(transcript),
-    ]);
-    const finalState = await getPythonKernelState(true);
-    if (!hasPersistedAgentProtocolTranscript(finalState, transcript, previousChatHistoryLength)) {
-      throw new Error('Jądro nie potwierdziło zapisu wiadomości i odpowiedzi agentów.');
-    }
-    return res.json({
-      success: true,
-      agent: target,
-      engines,
-      reply: target === 'triad'
-        ? replies.map(([agent, text]) => `${agent}:\n${text}`).join('\n\n')
-        : replyMap[target],
-      replies: replyMap,
-      analysis,
-      state: finalState,
-    });
-  } catch (error: any) {
-    return res.status(500).json({ success: false, error: error?.message || 'Nie udało się uzyskać odpowiedzi agentów.' });
-  }
 });
 
 // Legacy free-text chat is intentionally disabled.
@@ -5739,9 +5730,9 @@ async function startServer() {
   }
 
   const bindServer = (port: number) => {
-    const server = app.listen(port, '0.0.0.0', () => {
+    const server = app.listen(port, HOST, () => {
       activeServerPort = port;
-      console.log(`[SVL-KERNEL] Server listening on http://0.0.0.0:${port}`);
+      console.log(`[SVL-KERNEL] Server listening on http://${HOST}:${port}`);
       if (usesOllama()) {
         // Rozgrzewka w tle: wagi modelu trafiają do pamięci, zanim padnie pierwsza wiadomość.
         void warmupOllama(LLM_CHAIN_CONFIG, AbortSignal.timeout(180000)).then((warm) => {

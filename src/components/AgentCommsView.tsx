@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DataStore, OPERATOR_NAME } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS, AgentProfile } from '../kernel/agents';
+import { getOriginalAgentConnections, OriginalAgentConnection } from '../kernel/agentConnections';
 import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Paperclip, Send, X } from 'lucide-react';
 import { FormattedMessage } from './FormattedMessage';
 import {
@@ -26,9 +27,10 @@ interface AgentCommsViewProps {
   onSendProtocol: (request: AgentProtocolRequest) => Promise<AgentProtocolReply | undefined>;
   onSendMessage: (
     message: string,
-    agent: 'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1',
+    agent: 'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1' | 'ollama',
     attachments?: ChatAttachment[],
   ) => Promise<void>;
+  onCancelMessage: () => void;
   onRunAstyriaMission: (action: AstyriaMissionAction) => Promise<void>;
   isLoading: boolean;
   sendError?: string | null;
@@ -43,6 +45,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   dataStore,
   onSendProtocol,
   onSendMessage,
+  onCancelMessage,
   onRunAstyriaMission,
   isLoading,
   sendError,
@@ -52,7 +55,8 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   onUnclog,
   onRestoreBackup,
 }) => {
-  const [selectedTarget, setSelectedTarget] = useState<'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1'>('triad');
+  const [selectedTarget, setSelectedTarget] = useState<'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1' | 'ollama'>('ollama');
+  const [agentConnections, setAgentConnections] = useState<OriginalAgentConnection[]>(getOriginalAgentConnections);
   const [selectedCommand, setSelectedCommand] = useState<AgentProtocolCommand>('SYSTEM_STATUS');
   const [signal, setSignal] = useState('');
   const [omega, setOmega] = useState('');
@@ -62,6 +66,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [mobileSection, setMobileSection] = useState<'chat' | 'agents'>('chat');
+  const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'model-not-found' | 'disconnected' | 'unconfigured'>('checking');
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const followLatestMessagesRef = useRef(true);
   const transmissionStatus = sendError
@@ -77,6 +82,46 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
     }
   }, [dataStore.chat_history.length, isLoading]);
 
+  useEffect(() => {
+    let active = true;
+    void fetch('/api/agents/status')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Agent status unavailable');
+        const result = await response.json();
+        if (active && Array.isArray(result.agents)) setAgentConnections(result.agents);
+      })
+      .catch(() => {
+        if (active) setAgentConnections(getOriginalAgentConnections());
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const refreshStatus = async () => {
+      try {
+        const response = await fetch('/api/ai/status');
+        if (!response.ok) throw new Error('Ollama status unavailable');
+        const result = await response.json();
+        if (!active) return;
+        if (!result.ollama?.configured) setOllamaStatus('unconfigured');
+        else if (!result.ollama.reachable) setOllamaStatus('disconnected');
+        else if (!result.ollama.modelAvailable) setOllamaStatus('model-not-found');
+        else setOllamaStatus('connected');
+      } catch {
+        if (active) setOllamaStatus('disconnected');
+      }
+    };
+    void refreshStatus();
+    const interval = setInterval(() => void refreshStatus(), 15000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   const handleSendProtocol = async () => {
     if (isLoading) return;
     const payload = selectedCommand === 'SIGNAL_ANALYSIS'
@@ -90,7 +135,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
     try {
       await onSendProtocol({
         command: selectedCommand,
-        agent: selectedTarget,
+        agent: selectedTarget === 'ollama' ? 'triad' : selectedTarget,
         ...(payload && Object.keys(payload).length > 0 ? { payload } : {}),
       });
     } catch {
@@ -183,11 +228,12 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               disabled={isLoading}
               className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-semibold text-slate-200 outline-none transition focus:border-cyan-500 disabled:opacity-50"
             >
-              <option value="triad">Triada · Alex, Astyria, Aria, Aurelius</option>
-              <option value="Alex">Alex</option>
-              <option value="Astyria">Astyria</option>
-              <option value="Aurelius">Aurelius</option>
-              <option value="si_1">Aria</option>
+              <option value="ollama">Ollama · lokalny model (nie oryginalny agent)</option>
+              <option value="triad">Wszyscy oryginalni agenci · odłączeni</option>
+              <option value="Alex">Alex · odłączony</option>
+              <option value="Astyria">Astyria · odłączona</option>
+              <option value="Aurelius">Aurelius · odłączony</option>
+              <option value="si_1">Aria · odłączona</option>
             </select>
           </div>
 
@@ -195,6 +241,25 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[10px] text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-2.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.2)]">
               <Sigma className="w-3 h-3 text-emerald-400" />
               WITHOUT_NLP: OK
+            </span>
+            <span
+              role="status"
+              aria-live="polite"
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[9px] ${
+                ollamaStatus === 'connected'
+                  ? 'border-emerald-500/40 bg-emerald-950/70 text-emerald-300'
+                  : 'border-rose-500/40 bg-rose-950/60 text-rose-300'
+              }`}
+            >
+              OLLAMA: {ollamaStatus === 'connected'
+                ? 'POŁĄCZONA'
+                : ollamaStatus === 'checking'
+                ? 'SPRAWDZANIE'
+                : ollamaStatus === 'model-not-found'
+                ? 'BRAK MODELU'
+                : ollamaStatus === 'unconfigured'
+                ? 'NIESKONFIGUROWANA'
+                : 'NIEOSIĄGALNA'}
             </span>
             <span className="text-[10px] text-slate-500 font-mono">
               PAKIETY: <strong className="text-slate-300">{dataStore.chat_history.length}</strong>
@@ -424,8 +489,17 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 text-slate-300 p-3 bg-slate-900/70 rounded-lg border border-slate-800">
               <div className="flex items-center gap-2">
                 <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-                <span className="text-xs">Przetwarzanie transmisji przez węzły (Alex, Astyria, Aurelius, Aria)...</span>
+                <span className="text-xs">{selectedTarget === 'ollama' ? 'Oczekiwanie na lokalną odpowiedź Ollama…' : 'Weryfikacja połączenia z oryginalnym agentem…'}</span>
               </div>
+              <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onCancelMessage}
+                className="inline-flex items-center gap-1 rounded bg-rose-950/70 px-2.5 py-1 text-[11px] text-rose-200 border border-rose-500/40 transition hover:bg-rose-900"
+              >
+                <X className="h-3 w-3" />
+                Anuluj
+              </button>
               {onForceSync && (
                 <button
                   onClick={onForceSync}
@@ -434,6 +508,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                   Odśwież stan
                 </button>
               )}
+              </div>
             </div>
           )}
 
@@ -462,13 +537,13 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           <div className="relative flex min-w-0 flex-1 items-center">
             <textarea
               id="triad-chat-message"
-              aria-label="Wiadomość do czatu without_nlp"
+              aria-label="Wiadomość do wybranego kanału czatu"
               value={messageText}
               onChange={(event) => setMessageText(event.target.value)}
               maxLength={20_500}
               rows={2}
               disabled={isLoading}
-              placeholder="Wiadomość do agentów…"
+              placeholder={selectedTarget === 'ollama' ? 'Wiadomość do lokalnego modelu Ollama…' : 'Wiadomość do oryginalnego agenta…'}
               className="w-full resize-y rounded-lg border border-slate-700/70 bg-slate-900/90 px-3 py-2.5 pr-8 font-mono text-xs text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 disabled:opacity-50 sm:rounded-xl sm:px-4"
             />
             {messageText && !isLoading && (
@@ -497,7 +572,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           </label>
           <button
             type="submit"
-            aria-label="Wyślij wiadomość do Astyrii"
+            aria-label="Wyślij wiadomość na wybrany kanał"
             disabled={(!messageText.trim() && chatAttachments.length === 0) || isLoading}
             className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 px-2.5 py-2.5 font-mono text-xs font-bold text-slate-950 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition hover:from-emerald-400 hover:to-cyan-400 disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-xl sm:px-3"
           >
@@ -543,6 +618,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
 
         {(['Alex', 'Astyria', 'Aurelius', 'si_1'] as const).map((agentKey) => {
           const profile = SYSTEM_AGENTS[agentKey];
+          const connection = agentConnections.find((agent) => agent.id === agentKey);
           return (
             <div
               key={agentKey}
@@ -550,26 +626,17 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${profile.badgeBg.includes('emerald') ? 'bg-emerald-400' : profile.badgeBg.includes('cyan') ? 'bg-cyan-400' : profile.badgeBg.includes('rose') ? 'bg-rose-400' : 'bg-amber-400'} shadow-[0_0_8px_currentColor]`} />
+                  <span className="h-2 w-2 rounded-full bg-rose-400" />
                   <span className={`font-bold ${profile.textColor} text-sm tracking-wide`}>
                     {profile.name}
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 text-[9px] text-slate-500 font-mono">
-              <span>Stan wspólnego kanału</span>
-              <span className={`font-semibold ${
-                transmissionStatus.color === 'rose'
-                  ? 'text-rose-300'
-                  : transmissionStatus.color === 'cyan'
-                  ? 'text-cyan-300'
-                  : 'text-slate-300'
-              }`}>
-                {transmissionStatus.label}
-              </span>
+              <div className="space-y-1 text-[9px] font-mono">
+                <p className="font-semibold text-rose-300">AGENT_DISCONNECTED</p>
+                <p className="text-slate-500">{connection?.detail || 'Nie można zweryfikować połączenia z API agenta.'}</p>
               </div>
-
             </div>
           );
         })}

@@ -70,6 +70,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>(initialTabFromLocation);
   const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
+  const chatAbortController = useRef<AbortController | null>(null);
   const [chatSystemChange, setChatSystemChange] = useState<ChatSystemChange | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
 
@@ -320,10 +321,10 @@ export default function App() {
 
   const handleSendMessage = async (
     message: string,
-    chatAgent: AgentProtocolRequest['agent'] = 'triad',
+    chatAgent: AgentProtocolRequest['agent'] | 'ollama' = 'triad',
     attachments: ChatAttachment[] = [],
   ) => {
-    const protocolCommand = attachments.length === 0
+    const protocolCommand = attachments.length === 0 && chatAgent !== 'ollama'
       ? parseChatProtocolCommand(message, chatAgent)
       : null;
     if (protocolCommand) {
@@ -333,6 +334,8 @@ export default function App() {
 
     setIsAgentLoading(true);
     setAgentError(null);
+    const controller = new AbortController();
+    chatAbortController.current = controller;
     try {
       const normalizedCommand = message
         .trim()
@@ -345,10 +348,11 @@ export default function App() {
         'napraw czat',
         'pelna naprawa czatu',
         'odpowiedz pelna naprawa czatu',
-      ].includes(normalizedCommand);
+      ].includes(normalizedCommand) && chatAgent !== 'ollama';
       const response = await fetch(isFullChatRepair ? '/api/astyria/mission' : '/api/triad/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify(isFullChatRepair
           ? { action: 'full_system_app_chat_repair', userMessage: message.trim() }
           : { message, agent: chatAgent, attachments }),
@@ -358,7 +362,9 @@ export default function App() {
         throw new Error(result.error || `Nie udało się wysłać wiadomości (HTTP ${response.status}).`);
       }
       const normalized = normalizeDataStore(result.state?.store);
-      const expectedAgentReplies = isFullChatRepair
+      const expectedAgentReplies = chatAgent === 'ollama'
+        ? [{ agent: 'Ollama', tekst: result.reply }]
+        : isFullChatRepair
         ? [{ agent: 'Astyria', tekst: result.reply }]
         : chatAgent === 'triad'
         ? TRIAD_AGENT_NAMES.map((agent) => ({
@@ -394,12 +400,18 @@ export default function App() {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
       setChatSystemChange(isChatSystemChange(result.change) ? result.change : null);
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
       const messageText = error instanceof Error ? error.message : 'Nie udało się wysłać wiadomości.';
       setAgentError(messageText);
       throw error;
     } finally {
+      if (chatAbortController.current === controller) chatAbortController.current = null;
       setIsAgentLoading(false);
     }
+  };
+
+  const handleCancelChat = () => {
+    chatAbortController.current?.abort();
   };
 
   const handleProvisionGeminiVm = async (): Promise<{ status: string; sshCommand: string }> => {
@@ -492,6 +504,7 @@ export default function App() {
               dataStore={dataStore}
               onSendProtocol={handleSendProtocol}
               onSendMessage={handleSendMessage}
+              onCancelMessage={handleCancelChat}
               onRunAstyriaMission={handleRunAstyriaMission}
               isLoading={isAgentLoading}
               sendError={agentError}

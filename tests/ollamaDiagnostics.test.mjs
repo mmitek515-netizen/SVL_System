@@ -40,7 +40,7 @@ test('diagnostyka zbiera wersję, modele, prędkość i stan pamięci', async ()
   assert.equal(diag.loaded.length, 1);
   const chat = calls.find((c) => c.url.includes('/api/chat'));
   assert.equal(chat.body.keep_alive, '24h');
-  assert.match(describeOllamaDiagnostics(diag), /qwen3.5:4b/);
+  assert.doesNotMatch(describeOllamaDiagnostics(diag), /qwen3\.5:4b|127\.0\.0\.1:11434/);
 });
 
 test('brak serwera Ollamy → jedna rekomendacja z poleceniem instalacji', async () => {
@@ -81,6 +81,6 @@ test('brak modeli, nieużywane duże modele i adres spoza pętli zwrotnej', asyn
   assert.equal(crowded.resolvedModel, 'b:70b');
   const recs = buildOllamaRecommendations(crowded);
   assert.ok(recs.some((r) => r.agent === 'Aurelius' && /ollama rm/.test(r.text)));
-  assert.ok(recs.some((r) => r.agent === 'Aurelius' && /nie przez pętlę zwrotną/.test(r.text)));
+  assert.ok(recs.some((r) => r.agent === 'Aurelius' && /poza pętlą zwrotną/.test(r.text)));
   assert.ok(recs.every((r) => ['Alex', 'Astyria', 'Aurelius'].includes(r.agent)));
 });

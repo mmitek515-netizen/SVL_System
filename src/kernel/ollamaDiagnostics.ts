@@ -164,7 +164,7 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
   if (!diag.reachable) {
     out.push({
       agent: 'Alex',
-      text: `Serwer Ollamy nie odpowiada pod ${diag.baseUrl}. Bez niego czat nie ma modelu.`,
+      text: 'Lokalny serwer Ollama nie odpowiada. Bez niego czat nie ma modelu.',
       command: 'npm run setup:ollama',
     });
     return out;
@@ -186,12 +186,12 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
   if (diag.loaded.length === 0) {
     out.push({
       agent: 'Alex',
-      text: `Model ${diag.resolvedModel} nie jest w pamięci — pierwsza odpowiedź po przerwie będzie wolna. Rozgrzewka i keep_alive=${diag.keepAlive} utrzymują go w RAM.`,
+      text: `Model Ollama nie jest w pamięci — pierwsza odpowiedź po przerwie będzie wolna. Rozgrzewka i keep_alive=${diag.keepAlive} utrzymują go w RAM.`,
     });
   } else {
     out.push({
       agent: 'Alex',
-      text: `Model ${diag.loaded[0].name} jest załadowany (${formatGb(diag.loaded[0].size)}, ${gpu ? 'na GPU' : 'na CPU'}), keep_alive=${diag.keepAlive}.`,
+      text: `Model Ollama jest załadowany (${formatGb(diag.loaded[0].size)}, ${gpu ? 'na GPU' : 'na CPU'}), keep_alive=${diag.keepAlive}.`,
     });
   }
 
@@ -239,7 +239,7 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
   if (diag.baseUrl.includes('0.0.0.0') || !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/.test(diag.baseUrl)) {
     out.push({
       agent: 'Aurelius',
-      text: `Ollama jest dostępna pod ${diag.baseUrl}, nie przez pętlę zwrotną. API Ollamy nie ma uwierzytelniania — nie wystawiaj go do sieci.`,
+      text: 'Ollama jest skonfigurowana poza pętlą zwrotną. API Ollamy nie ma uwierzytelniania — nie wystawiaj go do sieci.',
     });
   } else {
     out.push({
@@ -252,12 +252,11 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
 }
 
 export function describeOllamaDiagnostics(diag: OllamaDiagnostics): string {
-  if (!diag.reachable) return `Ollama: BRAK POŁĄCZENIA (${diag.error ?? 'brak odpowiedzi'})`;
+  if (!diag.reachable) return 'Ollama: BRAK POŁĄCZENIA';
   return [
-    `Ollama ${diag.version ?? '?'} @ ${diag.baseUrl}`,
-    `modele: ${diag.models.length ? diag.models.map((m) => `${m.name} (${formatGb(m.size)})`).join(', ') : 'brak'}`,
-    `aktywny model: ${diag.resolvedModel ?? 'brak'}`,
-    `w pamięci: ${diag.loaded.length ? diag.loaded.map((m) => `${m.name} (${m.sizeVram > 0 ? 'GPU' : 'CPU'})`).join(', ') : 'nic'}`,
+    `Ollama ${diag.version ?? '?'} (serwer skonfigurowany po stronie aplikacji)`,
+    `liczba modeli: ${diag.models.length}`,
+    `liczba załadowanych modeli: ${diag.loaded.length}`,
     `prędkość: ${diag.tokensPerSecond ?? '?'} tok/s, pierwsza odpowiedź ${diag.firstTokenMs !== null ? `${(diag.firstTokenMs / 1000).toFixed(1)} s` : '?'}`,
     `sprzęt: ${diag.ramGb} GB RAM, ${diag.cpus} rdzeni; keep_alive ${diag.keepAlive}, num_ctx ${diag.numCtx}`,
   ].join('\n');

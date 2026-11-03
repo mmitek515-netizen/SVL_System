@@ -1,8 +1,10 @@
 # SVL System
 
-SVL System is a local web application for the SVL kernel. It combines the
-Alex, Astyria and Aurelius agent interfaces, deterministic structured commands,
-local Ollama-powered chat, local kernel state, diagnostics and application management.
+SVL System is a local web application for the SVL kernel. It combines
+deterministic structured commands, local Ollama-powered chat, local kernel
+state, diagnostics and application management. The Aria, Alex, Astyria and
+Aurelius panels are identity/status views; verified external APIs are not
+configured in this repository.
 
 ## Requirements
 
@@ -26,8 +28,18 @@ download) needs roughly 5 GB of free RAM and supports image (vision) input; in
 constrained environments pick a smaller model instead (e.g. `llama3.2`, faster
 on CPU but without image analysis). Set
 `OLLAMA_MODEL` to another model already installed in Ollama to change it.
-`GET /api/ai/status` checks the local Ollama service and selected model. Chat
-replies are capped at 2048 output tokens; set `OLLAMA_NUM_PREDICT` (e.g. 512)
+`GET /api/ai/status` reports the local provider status without returning
+`OLLAMA_BASE_URL` or `OLLAMA_MODEL` to the browser. The
+dashboard's **Ollama · lokalny model** channel sends ordinary conversation only
+to Ollama, regardless of optional cloud-provider settings. `GET /api/agents/status`
+reports the original Aria, Alex, Astyria and Aurelius services as
+`agent_disconnected` until verified API adapters are implemented and credentials
+are configured.
+Messages sent to those original-agent channels are logged and rejected rather
+than answered by an Ollama persona.
+Responses are currently request/response rather than token-streamed; **Anuluj**
+aborts an in-progress Ollama request.
+Chat replies are capped at 2048 output tokens; set `OLLAMA_NUM_PREDICT` (e.g. 512)
 to shorten replies and speed up CPU-only generation. Text attachments are
 included in the prompt; image attachments (JPEG/PNG) work with vision models
 such as `gemma3:4b` (models without vision reject them with a clear error),
@@ -75,27 +87,6 @@ npm run check:gemini
 The diagnostic never prints the API key and does not send chat history or
 application data. It sends a short test prompt to each configured Gemini model.
 
-## Instant best-fit replies
-
-Short chat messages (up to 8 words) are matched against a matrix of
-"arguments" before any model is called — the same best-fit idea as the
-ABARKUS prototype. The best match answers immediately from live system
-data; no match falls through to the model (Ollama) as before.
-
-| Argument | Agent | Example | Data |
-|---|---|---|---|
-| `SYSTEM_STATUS` | Alex | `status` | kernel version, mode, mission, model chain |
-| `RESOURCES` | Alex | `ile ramu` | RAM, CPU load, disk, uptime |
-| `OLLAMA_STATUS` | Astyria | `ollama` | reachability, installed/loaded models |
-| `SYSTEM_LOGS` | Astyria | `pokaż błędy` | last 10 system log entries |
-| `GIT_STATUS` | Aurelius | `git` | branch, last commit, uncommitted files |
-| `HELP` | Aurelius | `pomoc` | this list |
-
-Prefix a message with `@model` to force a model reply. Set
-`BEST_FIT_ROUTER="off"` to disable the router. Matching lives in
-`src/kernel/bestFitRouter.ts`; the arguments are `BEST_FIT_MATRIX` in
-`server.ts`.
-
 ## Agent commands
 
 The typed agent-command API is `POST /api/triad/command`. It validates a
@@ -111,11 +102,14 @@ curl -X POST http://localhost:3000/api/triad/command \
 ```
 
 Set `agent` to `triad`, `Alex`, `Astyria` or `Aurelius`. The API returns
-structured agent replies and the updated local kernel state. Natural-language
-chat is provided separately at `POST /api/triad/message` and uses local Ollama.
-In the Triad tab, the default shared channel sends one message to Alex, Astyria,
-Aria (internal id `si_1`) and Aurelius; each reply is saved as a separate author
-entry in the same chat history.
+structured kernel-protocol output and the updated local kernel state; this is
+not a connection to an original AI service. Natural-language conversation is
+available in the separately labeled local Ollama channel at
+`POST /api/triad/message` with `agent: "ollama"`. That request is pinned to the
+Ollama provider and saves its history under the author `Ollama`. Requests to
+`triad`, `Alex`, `Astyria`, `Aria` (`si_1`) or `Aurelius` natural-language
+channels return `503 agent_disconnected` while no verified external API adapter
+is configured.
 Alex receives project-development guidance and can direct you to the supported
 Studio commands. Alex, Astyria and Aurelius each receive a mission focused on
 project development, application reliability, database workflows and validating
@@ -124,9 +118,11 @@ background worker. Chat replies do not directly edit repository files, execute
 arbitrary system commands, browse the web continuously or deploy changes.
 Agents must distinguish supplied or model-known information from verified
 current internet research.
-These names are chat roles, not separately installed autonomous services. They
-are not connected to the VM and cannot log into it or change system
-permissions. The VM is a separate environment for manually approved work;
+The original agents are not connected to this application until their API
+contracts and adapters are implemented and credentials are configured; local
+Ollama replies are never presented as their responses. They are not connected
+to the VM and cannot log into it or change system permissions. The VM is a
+separate environment for manually approved work;
 dependency updates run on a schedule only to produce a reviewable pull request
 and are not merged automatically.
 Chat does not execute shell commands, and agent-suggested app changes remain
@@ -211,7 +207,7 @@ explicit review.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set `OLLAMA_HOST` and `OLLAMA_MODEL` to your
+Copy `.env.example` to `.env` and set `OLLAMA_BASE_URL` and `OLLAMA_MODEL` to your
 local Ollama service and an installed model. If `.env` already exists, add or
 update those lines without replacing the file. Keep `.env` private; it is
 excluded from version control. `GEMINI_API_KEY`, `GEMINI_MODEL` and
