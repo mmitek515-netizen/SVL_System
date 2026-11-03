@@ -64,6 +64,7 @@ import {
   describeOllamaDiagnostics,
   type OllamaRecommendation,
 } from './src/kernel/ollamaDiagnostics';
+import { fetchOriginalAgentsStatus } from './src/kernel/originalAgentsStatus.mjs';
 
 dotenv.config();
 // .env.local nadpisuje .env, ale puste wartości nie kasują kluczy z sekretów Codespaces / .env.
@@ -2291,6 +2292,11 @@ app.get('/api/ai/status', async (_req, res) => {
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'Błąd statusu NLP.' });
   }
+});
+
+app.get('/api/original-agents/status', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(await fetchOriginalAgentsStatus());
 });
 
 // --- INFRASTRUCTURE & LOG-BASED AUTO-REPAIR ENGINE (ALEX COMMANDER) ---

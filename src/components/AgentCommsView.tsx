@@ -39,6 +39,13 @@ interface AgentCommsViewProps {
   onRestoreBackup?: () => void;
 }
 
+interface OriginalAgentsStatus {
+  connection: 'connected' | 'not_connected' | 'blocked';
+  targetRepository?: string;
+  mode?: string;
+  agents: Array<{ name: string; state: string; sourceState?: string }>;
+}
+
 export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   dataStore,
   onSendProtocol,
@@ -53,6 +60,10 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   onRestoreBackup,
 }) => {
   const [selectedTarget, setSelectedTarget] = useState<'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1'>('triad');
+  const [originalAgentsStatus, setOriginalAgentsStatus] = useState<OriginalAgentsStatus>({
+    connection: 'not_connected',
+    agents: ['Alex', 'Aria', 'Astyria', 'Aurelius'].map((name) => ({ name, state: 'not_connected' })),
+  });
   const [selectedCommand, setSelectedCommand] = useState<AgentProtocolCommand>('SYSTEM_STATUS');
   const [signal, setSignal] = useState('');
   const [omega, setOmega] = useState('');
@@ -69,6 +80,34 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
     : isLoading
     ? { label: 'PRZETWARZANIE', color: 'cyan' }
     : { label: 'OCZEKUJE', color: 'slate' };
+
+  useEffect(() => {
+    let active = true;
+    const refreshOriginalAgentStatus = async () => {
+      try {
+        const response = await fetch('/api/original-agents/status', { cache: 'no-store' });
+        if (!response.ok) throw new Error('status_unavailable');
+        const status = await response.json();
+        if (active && ['connected', 'not_connected', 'blocked'].includes(status?.connection)
+          && Array.isArray(status.agents)) {
+          setOriginalAgentsStatus(status);
+        }
+      } catch {
+        if (active) {
+          setOriginalAgentsStatus({
+            connection: 'not_connected',
+            agents: ['Alex', 'Aria', 'Astyria', 'Aurelius'].map((name) => ({ name, state: 'not_connected' })),
+          });
+        }
+      }
+    };
+    void refreshOriginalAgentStatus();
+    const interval = window.setInterval(refreshOriginalAgentStatus, 30000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const chatScroll = chatScrollRef.current;
@@ -237,6 +276,34 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               <span className="hidden xs:inline">Reset</span>
             </button>
           </div>
+        </div>
+
+        <div
+          className="flex min-w-0 flex-col gap-1.5 border-b border-slate-800 bg-slate-950/90 px-3 py-2 text-[10px] text-slate-300 sm:flex-row sm:items-center sm:justify-between"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <strong className={originalAgentsStatus.connection === 'connected' ? 'text-amber-300' : 'text-rose-300'}>
+              ORYGINALNI WORKERZY: {originalAgentsStatus.connection}
+            </strong>
+            <span>
+              {originalAgentsStatus.connection === 'connected'
+                ? `${originalAgentsStatus.mode} · cel ${originalAgentsStatus.targetRepository} · zadania kodowe SVL: blocked`
+                : 'Brak potwierdzonego połączenia do oryginalnego źródła.'}
+            </span>
+          </div>
+          <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1" aria-label="Statusy oryginalnych agentów">
+            {originalAgentsStatus.agents.map((agent) => (
+              <span key={agent.name} className={agent.state === 'blocked' ? 'text-amber-300' : 'text-slate-400'}>
+                {agent.name}: {agent.state}
+                {agent.sourceState === 'running' ? ' (źródło działa poza SVL)' : ''}
+              </span>
+            ))}
+          </div>
+          <span className="text-slate-500">
+            Kanały czatu są lokalnymi rolami; nie potwierdzają uruchomienia workerów.
+          </span>
         </div>
 
         <div className="flex flex-wrap items-end gap-2 border-b border-slate-800 bg-slate-900/60 px-3 py-2">

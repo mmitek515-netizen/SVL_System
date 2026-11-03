@@ -130,6 +130,17 @@ permissions. The VM is a separate environment for manually approved work;
 dependency updates run on a schedule only to produce a reviewable pull request
 and are not merged automatically.
 
+The optional `GET /api/original-agents/status` check uses
+`SVL_ORIGINAL_AGENTS_URL` and `DEBIAN13_ORIGINAL_AGENTS_TOKEN` on the server
+only. It authenticates to the original AI Studio API and verifies its reported
+agent identities and worker heartbeat; it never exposes the token to the
+browser. The available source worker is `model_review_only` and targets
+`u6930438163-code/Debian_13_Trixie`, not this repository. Therefore the
+dashboard reports all four project tasks as `blocked`, even if that separate
+source reports a live worker. No task submission, code changes, commits, or PRs
+are supported by this status integration. If the source is unconfigured or
+unavailable, it reports `not_connected`.
+
 ### Chat proposals and approvals
 
 Agents can suggest one of these chat commands:
