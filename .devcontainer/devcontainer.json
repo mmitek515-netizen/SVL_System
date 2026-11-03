@@ -1,6 +1,17 @@
 {
   "name": "SVL System",
   "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "forwardPorts": [3000, 3001],
-  "postStartCommand": "setsid nohup bash scripts/keep-alive.sh > /dev/null 2>&1 &"
+  "forwardPorts": [
+    3000,
+    3001,
+    3100
+  ],
+  "postStartCommand": "setsid nohup bash scripts/keep-alive.sh > /dev/null 2>&1 &",
+  "portsAttributes": {
+    "3100": {
+      "label": "SVL MCP read-only (authenticated)",
+      "onAutoForward": "notify",
+      "visibility": "private"
+    }
+  }
 }
