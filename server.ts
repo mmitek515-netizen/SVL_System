@@ -50,6 +50,7 @@ import {
   getGitHubAdminStatus,
   listGitHubAdminActions,
   GITHUB_ADMIN_ACTIONS,
+  ensureGitHubTokenFromCodespaces,
 } from './src/kernel/githubAdmin';
 import {
   ChatAttachment,
@@ -76,6 +77,11 @@ if (fs.existsSync('.env.local')) {
   for (const [name, value] of Object.entries(dotenv.parse(fs.readFileSync('.env.local')))) {
     if (value.trim()) process.env[name] = value;
   }
+}
+// W Codespaces token repo jest w shared/.env — bez niego auto-push Triady i GitHub admin API
+// zgłaszają brak uwierzytelnienia, gdy serwer startuje poza terminalem VS Code.
+if (ensureGitHubTokenFromCodespaces()) {
+  console.log('[GITHUB AUTH] Załadowano GITHUB_TOKEN ze współdzielonego środowiska Codespaces.');
 }
 
 const execFileAsync = promisify(execFile);
