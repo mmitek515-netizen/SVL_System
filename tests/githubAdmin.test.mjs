@@ -115,3 +115,55 @@ test('update-repo wymaga co najmniej jednego pola i filtruje typy', async () => 
   await executeGitHubAdminAction('update-repo', { description: 'Nowy opis', has_wiki: 'false' }, { ...CTX, request });
   assert.deepEqual(calls[0].body, { description: 'Nowy opis', has_wiki: false });
 });
+
+test('readCodespacesSharedGitHubToken parsuje token z pliku shared/.env (z cudzysłowami i bez)', async () => {
+  const { readCodespacesSharedGitHubToken, ensureGitHubTokenFromCodespaces } = await import('../src/kernel/githubAdmin.ts');
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'svl-cs-env-'));
+  try {
+    const plain = join(dir, 'plain.env');
+    writeFileSync(plain, 'CODESPACE_NAME=abc\nGITHUB_TOKEN=ghu_testtoken123\nGITHUB_USER=x\n');
+    assert.equal(readCodespacesSharedGitHubToken(plain), 'ghu_testtoken123');
+    const quoted = join(dir, 'quoted.env');
+    writeFileSync(quoted, 'GITHUB_TOKEN="ghu_quoted456"\n');
+    assert.equal(readCodespacesSharedGitHubToken(quoted), 'ghu_quoted456');
+    const empty = join(dir, 'empty.env');
+    writeFileSync(empty, 'GITHUB_TOKEN=\nINNE=1\n');
+    assert.equal(readCodespacesSharedGitHubToken(empty), undefined);
+    assert.equal(readCodespacesSharedGitHubToken(join(dir, 'nie-istnieje.env')), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ensureGitHubTokenFromCodespaces nie nadpisuje istniejącego tokenu i ładuje brakujący', async () => {
+  const { ensureGitHubTokenFromCodespaces } = await import('../src/kernel/githubAdmin.ts');
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'svl-cs-env-'));
+  const envFile = join(dir, 'shared.env');
+  writeFileSync(envFile, 'GITHUB_TOKEN=ghu_fromfile789\n');
+  const savedGithub = process.env.GITHUB_TOKEN;
+  const savedGh = process.env.GH_TOKEN;
+  try {
+    process.env.GITHUB_TOKEN = 'ghu_istniejacy';
+    delete process.env.GH_TOKEN;
+    assert.equal(ensureGitHubTokenFromCodespaces(envFile), false);
+    assert.equal(process.env.GITHUB_TOKEN, 'ghu_istniejacy');
+
+    delete process.env.GITHUB_TOKEN;
+    assert.equal(ensureGitHubTokenFromCodespaces(envFile), true);
+    assert.equal(process.env.GITHUB_TOKEN, 'ghu_fromfile789');
+
+    delete process.env.GITHUB_TOKEN;
+    assert.equal(ensureGitHubTokenFromCodespaces(join(dir, 'brak.env')), false);
+    assert.equal(process.env.GITHUB_TOKEN, undefined);
+  } finally {
+    if (savedGithub === undefined) delete process.env.GITHUB_TOKEN; else process.env.GITHUB_TOKEN = savedGithub;
+    if (savedGh === undefined) delete process.env.GH_TOKEN; else process.env.GH_TOKEN = savedGh;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

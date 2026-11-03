@@ -528,6 +528,40 @@ export function resolveGitHubAdminAuth(): { token?: string; owner?: string; repo
   };
 }
 
+const CODESPACES_SHARED_ENV = '/workspaces/.codespaces/shared/.env';
+
+/**
+ * Odczytuje GITHUB_TOKEN ze współdzielonego środowiska GitHub Codespaces.
+ * Codespaces zapisuje repo-skopowany token w pliku shared/.env; procesy
+ * uruchamiane poza terminalem VS Code nie mają go w env, przez co git push
+ * (credential helper) i GitHub admin API zgłaszają brak uwierzytelnienia.
+ */
+export function readCodespacesSharedGitHubToken(filePath: string = CODESPACES_SHARED_ENV): string | undefined {
+  try {
+    if (!fs.existsSync(filePath)) return undefined;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const match = content.match(/^GITHUB_TOKEN=("?)(.*)\1$/m);
+    const token = match?.[2]?.trim();
+    return token && token.length > 0 ? token : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Uzupełnia process.env.GITHUB_TOKEN tokenem Codespaces, jeśli żaden token
+ * nie jest skonfigurowany. Dzięki temu procesy potomne (git push przez
+ * credential helper) i GitHub admin API działają bez ręcznego eksportu.
+ * Zwraca true, gdy token został załadowany z pliku Codespaces.
+ */
+export function ensureGitHubTokenFromCodespaces(filePath?: string): boolean {
+  if (process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()) return false;
+  const token = readCodespacesSharedGitHubToken(filePath);
+  if (!token) return false;
+  process.env.GITHUB_TOKEN = token;
+  return true;
+}
+
 export function createGitHubApiRequest(token: string): GitHubAdminContext['request'] {
   return async (method, apiPath, body) => {
     const response = await fetch(`${GITHUB_API}${apiPath}`, {
