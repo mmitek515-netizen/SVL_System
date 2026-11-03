@@ -43,6 +43,12 @@ test('wykrywa intencje swobodnej rozmowy po polsku', () => {
   assert.equal(detectIntent(normalizeMessage('blabla xyzzy')).intent, 'unknown');
 });
 
+test('nie deklaruje uprawnień root hosta nawet przy starszym stanie DATA_STORE', () => {
+  const { reply } = generateLocalReply('Alex', 'dajcie uprawnienia root ring-0', context);
+  assert.match(reply, /brak uprawnień root hosta/i);
+  assert.doesNotMatch(reply, /RING-0 ROOT AKTYWNY|EXEC_SHELL|FULL_APPLICATION_MUTATION/);
+});
+
 test('analizuje sentyment wiadomości', () => {
   assert.equal(analyzeMessage('świetna robota, dzięki!').sentiment, 'positive');
   assert.equal(analyzeMessage('mam błąd, coś nie działa').sentiment, 'negative');

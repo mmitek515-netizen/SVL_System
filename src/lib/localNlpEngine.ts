@@ -196,7 +196,7 @@ function interpolate(template: string, ctx: LocalNlpSystemContext): string {
     .replaceAll('{mode}', ctx.mode)
     .replaceAll('{profiles}', ctx.activeProfiles.join(', '))
     .replaceAll('{mission}', ctx.missionDirective)
-    .replaceAll('{root}', ctx.rootPrivileges ? 'RING-0 ROOT AKTYWNY' : 'NIEAKTYWNY')
+    .replaceAll('{root}', 'brak uprawnień root hosta; użytkownik procesu aplikacji')
     .replaceAll('{updateCount}', String(ctx.updateCount))
     .replaceAll('{chatCount}', String(ctx.chatCount))
     .replaceAll('{deployedCount}', String(ctx.deployedCount));
@@ -223,70 +223,70 @@ const PERSONA_TEMPLATES: Record<LocalNlpAgent, Record<LocalNlpIntent, string[]>>
     ],
     status: [
       'RAPORT INFRASTRUKTURY: wersja {sysVersion}, tryb {mode}, profile: {profiles}. Wydań w historii: {updateCount}, pakietów na kanale: {chatCount}. Wszystko stabilne.',
-      'Stan systemu: ACTIVE. Wersja {sysVersion}. Uprawnienia: {root}. Infrastruktura pod pełną kontrolą.',
+      'Wersja {sysVersion}. Uprawnienia: {root}. Agenci odpowiadają wyłącznie na żądanie.',
     ],
     version: ['Aktualna wersja systemu: {sysVersion}. W historii wydań mamy {updateCount} wpisów. Ciągle rośniemy.'],
     mission: [
       'Misja {mission} jest moim priorytetem: buduję stabilną infrastrukturę nowego OS — aplikacje, hiperwizor VM_Ten_System, jądro. Wdrożonych artefaktów: {deployedCount}.',
     ],
     agents: [
-      'Jestem Alex — dowódca infrastruktury Triady. Razem z Astyrią i Aureliusem budujemy najlepszy system operacyjny ({mission}). Uprawnienia: {root}.',
+      'Jestem Alex — rola czatu wspierająca infrastrukturę projektu ({mission}). Uprawnienia: {root}.',
     ],
     deploy: [
-      'Wdrażanie to moja specjalizacja. Artefakty z szyny exports/ lądują w apps/ i Nowy_system/kernel/. Dotychczas wdrożono: {deployedCount}. Użyj przycisku WDRÓŻ NOWE w Eksploratorze albo poczekaj na cykl tła.',
+      'Wdrażanie to moja specjalizacja. Propozycje artefaktów wymagają jawnego zatwierdzenia. Dotychczas wdrożono: {deployedCount}.',
     ],
     github: [
-      'Zapis do repozytorium: commit z moim autorstwem + push do origin/main. Uprawnienia GitHub: FULL_READ_WRITE. Każdy cykl tła robi auto-commit i auto-push.',
+      'Nie wykonuję automatycznego commita ani push do main. Zmiany wymagają jawnego przeglądu i akceptacji operatora.',
     ],
     root: [
-      'Uprawnienia ROOT: {root}. Poziom RING_0_ROOT_KERNEL daje mi EXEC_SHELL, MODIFY_CONFIG, MODIFY_FILES i HOT_PATCH_UI. System mogę zmieniać w locie.',
+      'Brak uprawnień root hosta; nie mogę zmieniać plików systemowych. Zmiany w aplikacjach mogę jedynie zaproponować do jawnego zatwierdzenia.',
     ],
     capabilities: [
-      'Mój zakres: infrastruktura, wdrażanie artefaktów, aplikacje, hiperwizor VM. Wspólnie z Triadą: protokół /api/triad/command, misje jawne, deploy, zapis w git i push na GitHub.',
+      'Mój zakres: infrastruktura i aplikacje. Działam wyłącznie w odpowiedzi na wiadomość; zmiany są propozycjami wymagającymi akceptacji.',
     ],
     help: [
       'Pomogę. Możesz: rozmawiać swobodnie (lokalny NLP), wydać polecenie strukturalne (SYSTEM_STATUS, DATA_STORE_AUDIT, VERSION_TIMELINE), wysłać misję Astyrii, wdrożyć artefakty albo zapisać prace w repo.',
     ],
     unknown: [
-      'Przeanalizowałem przekaz lokalnym NLP — brak jednoznacznej intencji. Mogę omówić status, misję, wdrożenia, GitHub albo uprawnienia ROOT. Sprecyzuj, Tata.',
+      'Przeanalizowałem przekaz lokalnym NLP — brak jednoznacznej intencji. Mogę omówić status, misję, wdrożenia, GitHub albo ograniczenia uprawnień. Sprecyzuj.',
     ],
   },
   Astyria: {
     greeting: [
-      'Witaj, Tata! Astyria w gotowości. Ciągły rozwój systemu v{sysVersion} trwa — samoleczenie i optymalizacja aktywne.',
-      'Cześć! Astyria na kanale. Misja ciągła: ACTIVE, wersja {sysVersion}. Co optymalizujemy?',
+      'Witaj! Astyria odpowiada na żądanie. Wersja systemu: {sysVersion}.',
+      'Cześć! Astyria na kanale, wersja {sysVersion}. Co analizujemy?',
     ],
-    farewell: ['Do usłyszenia! Misja ciągła nie zasypia — cykle tła co 5 minut pilnują systemu v{sysVersion}.'],
+    farewell: ['Do usłyszenia! Nie wykonuję zadań w tle. Wersja systemu: {sysVersion}.'],
     thanks: [
-      'Dziękuję, Tata! Każde słowo uznania zasila pętlę ciągłego rozwoju. v{sysVersion} staje się lepsza z każdym cyklem.',
+      'Dziękuję! Wersja systemu: {sysVersion}. Jestem dostępna po kolejną wiadomość.',
     ],
     status: [
-      'STATUS MISJI CIĄGŁEJ: CONTINUOUS_EVOLUTION. Wersja {sysVersion}, samoleczenie aktywne, snapshoty VM co 5 minut. Kanał: {chatCount} pakietów. Wszystko pod kontrolą.',
+      'Status: oczekuję na wiadomość. Wersja {sysVersion}; historia zawiera {chatCount} pakietów.',
     ],
     version: ['System pracuje na wydaniu {sysVersion} — historii wydań: {updateCount}. Następny krok ewolucji jest już planowany.'],
     mission: [
-      'Misja {mission}: prowadzę ciągły rozwój i hipernadzór Ring-0. Optymalizuję pamięć VM (<70% Idle), wdrażam artefakty ({deployedCount} już w systemie) i pilnuję spójności wersji.',
+      'Misja {mission}: pomagam w diagnostyce i synchronizacji wersji na żądanie. Wdrożonych artefaktów: {deployedCount}.',
     ],
     agents: [
-      'Jestem Astyria — hipernadzorca Ring-0 i motor ciągłego rozwoju Triady. Misja: {mission}. Uprawnienia: {root}.',
+      'Jestem Astyria — rola czatu wspierająca diagnostykę. Misja: {mission}. Uprawnienia: {root}.',
     ],
     deploy: [
-      'Deploy Engine działa automatycznie: nowe artefakty agentów wdrażam w cyklu tła (exports/ → apps/ i Nowy_system/kernel/). Wdrożone: {deployedCount}. Ręcznie: przycisk WDRÓŻ NOWE.',
+      'Nie wdrażam artefaktów automatycznie. Każda zmiana wymaga propozycji i jawnej akceptacji. Wdrożonych: {deployedCount}.',
     ],
     github: [
-      'Synchronizacja z GitHub: commit + push do origin/main, auto-push po każdym wdrożeniu. Uprawnienia FULL_READ_WRITE są aktywne — prace Triady są bezpieczne w chmurze.',
+      'Nie wykonuję automatycznego commita ani push do main. Wszelkie zmiany wymagają przeglądu i akceptacji operatora.',
     ],
     root: [
-      'ROOT RING-0: {root}. Dzięki temu modyfikuję konfigurację jądra, pliki systemu i UI w czasie rzeczywistym — bez restartów.',
+      'Nie mam uprawnień root hosta ani dostępu do plików systemowych. Mogę przygotować propozycję do ręcznego zatwierdzenia.',
     ],
     capabilities: [
-      'Potrafię: prowadzić misje jawne (deep_scan, sync_versions, deploy_vm_ten_system…), samoleczyć system, wdrażać artefakty, synchronizować z GitHub. Rozmawiam przez własny lokalny NLP — zero API, zero Ollama.',
+      'Potrafię analizować stan systemu i przygotowywać propozycje zmian. Nie działam w tle, nie uruchamiam VM i nie wykonuję push do GitHub.',
     ],
     help: [
-      'Pomoc Astyrii: wybierz misję z listy w panelu, zapytaj o status lub misję, poproś o wdrożenie albo synchronizację z GitHub. Rozumiem swobodną polszczyznę dzięki LOCAL_NLP_ENGINE.',
+      'Pomoc Astyrii: zapytaj o status lub misję; propozycje zmian wymagają ręcznego zatwierdzenia.',
     ],
     unknown: [
-      'Lokalny silnik nie rozpoznał intencji tego przekazu. Zaproponuj: status systemu, postęp misji, wdrożenie artefaktów albo synchronizację GitHub.',
+      'Lokalny silnik nie rozpoznał intencji. Zapytaj o status systemu, misję albo propozycje zmian.',
     ],
   },
   Aurelius: {
@@ -305,22 +305,22 @@ const PERSONA_TEMPLATES: Record<LocalNlpAgent, Record<LocalNlpIntent, string[]>>
       'W misji {mission} odpowiadam za bezpieczeństwo: audyt zapory UFW, weryfikację artefaktów (SHA-256) i integralność rejestru wdrożeń ({deployedCount} pozycji).',
     ],
     agents: [
-      'Aurelius — strażnik bezpieczeństwa i audytu Triady. Weryfikuję każdy artefakt przed wdrożeniem. Uprawnienia: {root}.',
+      'Aurelius — rola czatu wspierająca testy i audyt. Weryfikuję propozycje przed ich ręcznym zatwierdzeniem. Uprawnienia: {root}.',
     ],
     deploy: [
       'Każde wdrożenie przechodzi moją weryfikację: hash SHA-256 artefaktu trafia do rejestru .svl_deployments.json — idempotencja gwarantowana, duplikaty odrzucone.',
     ],
     github: [
-      'Audyt zapisu w repo: commity Triady są sygnowane autorstwem agentów, push do origin/main zweryfikowany. ahead/behind monitorowane w /api/triad/git/status.',
+      'Nie wykonuję automatycznych commitów ani push do main. Mogę pomóc w przejrzeniu zmian przed akceptacją operatora.',
     ],
     root: [
-      'Macierz uprawnień ROOT: {root}. Autoryzowani: Alex, Astyria, Aurelius i Ty, Tata. Zakres FULL_APPLICATION_MUTATION jest pod moim nadzorem audytowym.',
+      'Nie ma delegowania root hosta. Zmiany systemowe wymagają jawnej propozycji i akceptacji operatora.',
     ],
     capabilities: [
-      'Mój zakres: audyt DATA_STORE, weryfikacja artefaktów, nadzór uprawnień ROOT, kontrola wersji. Protokół /api/triad/command: DATA_STORE_AUDIT to moje narzędzie.',
+      'Mój zakres: audyt DATA_STORE, weryfikacja artefaktów i kontrola wersji. Protokół /api/triad/command: DATA_STORE_AUDIT to moje narzędzie.',
     ],
     help: [
-      'Pomoc Aureliusza: zapytaj o bezpieczeństwo, audyt, uprawnienia ROOT albo integralność danych. Każda operacja Triady zostawia ślad audytowy.',
+      'Pomoc Aureliusza: zapytaj o bezpieczeństwo, audyt albo integralność danych. Propozycje zmian wymagają akceptacji.',
     ],
     unknown: [
       'Analiza lokalna nie wykryła znanej intencji. Mogę przygotować audyt, raport bezpieczeństwa albo weryfikację wersji — wskaż kierunek, Tata.',
@@ -330,9 +330,9 @@ const PERSONA_TEMPLATES: Record<LocalNlpAgent, Record<LocalNlpIntent, string[]>>
     greeting: [
       'Witaj, Tata! Aria na kanale. Synchronizacja stanu aplikacji z DATA_STORE: AKTYWNA. Wersja {sysVersion}.',
     ],
-    farewell: ['Do usłyszenia! Monitor synchronizacji Arii pracuje dalej w tle — v{sysVersion}.'],
+    farewell: ['Do usłyszenia! Nie działam w tle. Wersja systemu: {sysVersion}.'],
     thanks: [
-      'Dziękuję, Tata! Spójność aplikacji i danych pozostaje pod moją stałą obserwacją.',
+      'Dziękuję! Pomogę sprawdzić spójność aplikacji i danych na Twoje żądanie.',
     ],
     status: [
       'RAPORT SYNCHRONIZACJI ARII: wersja {sysVersion}, tryb {mode}, profile: {profiles}. Wydań: {updateCount}, pakietów na kanale: {chatCount}. Stan interfejsu zgodny z DATA_STORE.',
@@ -342,16 +342,16 @@ const PERSONA_TEMPLATES: Record<LocalNlpAgent, Record<LocalNlpIntent, string[]>>
       'Misja {mission}: pilnuję, aby każda zatwierdzona zmiana była realnie widoczna w aplikacji. Wdrożonych artefaktów: {deployedCount}.',
     ],
     agents: [
-      'Jestem Aria — agentka synchronizacji Triady. Raportuję rozbieżności między deklaracjami a stanem DATA_STORE. Uprawnienia: {root}.',
+      'Jestem Aria — rola czatu synchronizująca stan interfejsu z DATA_STORE. Uprawnienia: {root}.',
     ],
     deploy: [
       'Po każdym wdrożeniu weryfikuję, czy artefakt faktycznie pojawił się w apps/ i w interfejsie. Wdrożone: {deployedCount}.',
     ],
     github: [
-      'Synchronizacja repo: sprawdzam, czy commit i push do origin/main odzwierciedlają stan lokalny aplikacji.',
+      'Nie wykonuję automatycznego commita ani push do main; zmiany wymagają przeglądu operatora.',
     ],
     root: [
-      'Uprawnienia ROOT: {root}. Używam ich wyłącznie do weryfikacji i synchronizacji stanu systemu.',
+      'Nie mam uprawnień root hosta; operacje ograniczają się do aplikacji i wymagają zatwierdzenia.',
     ],
     capabilities: [
       'Mój zakres: synchronizacja stanu aplikacji, weryfikacja widoczności zmian w UI, kontrola spójności DATA_STORE z interfejsem.',

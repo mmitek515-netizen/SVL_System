@@ -129,6 +129,10 @@ are not connected to the VM and cannot log into it or change system
 permissions. The VM is a separate environment for manually approved work;
 dependency updates run on a schedule only to produce a reviewable pull request
 and are not merged automatically.
+Chat does not execute shell commands, and agent-suggested app changes remain
+proposals until explicitly approved. The local terminal runs shell commands as
+the application process user (never as host root) and accepts them only from
+the same-origin loopback browser session.
 
 ### Chat proposals and approvals
 

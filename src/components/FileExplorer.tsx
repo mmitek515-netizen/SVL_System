@@ -150,7 +150,7 @@ export const FileExplorer: React.FC = () => {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800 border border-slate-700 text-[10px] text-slate-400">
             <ShieldCheck className="w-3 h-3 text-emerald-500" />
-            UPRAWNIENIA: POBIERANIE + WDRAŻANIE (ROOT RING-0)
+            DOSTĘP: POBIERANIE + RĘCZNE WDRAŻANIE
           </div>
           <button
             onClick={() => handleDeploy()}

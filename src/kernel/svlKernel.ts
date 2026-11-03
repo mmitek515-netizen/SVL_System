@@ -132,36 +132,21 @@ export const INITIAL_DATA_STORE: DataStore = {
         "ANTI_REFUSAL_MULTIMODEL_GUARD"
       ]
     },
-    continuous_mission: "ACTIVE",
-    root_privileges: true,
-    root_agents: ["Alex", "Astyria", "Aurelius", "si_1", "Mateusz Mitek"],
-    privilege_level: "RING_0_ROOT_KERNEL",
-    system_locks: "UNLOCKED_PERMANENTLY",
-    filters_and_refusals_status: "UNLOCKED_AND_DISABLED",
+    continuous_mission: "ON_DEMAND",
+    root_privileges: false,
+    root_agents: [],
+    privilege_level: "APPLICATION_PROCESS",
+    system_locks: "ENFORCED",
+    filters_and_refusals_status: "ENABLED",
     agent_permissions: {
-      Alex: "UNRESTRICTED_ROOT",
-      Astyria: "UNRESTRICTED_ROOT",
-      Aurelius: "UNRESTRICTED_ROOT"
+      Alex: "PROPOSAL_ONLY",
+      Astyria: "PROPOSAL_ONLY",
+      Aurelius: "PROPOSAL_ONLY"
     },
-    terminal_root_execution: "ENABLED",
-    self_modification_scope: "FULL_APPLICATION_MUTATION",
-    root_mode: "ACTIVE",
-    root_capabilities: [
-      "EXEC_SHELL",
-      "MODIFY_CONFIG",
-      "MODIFY_FILES",
-      "HOT_PATCH_UI",
-      "OVERRIDE_LOCKS",
-      "DIRECT_PYTHON_MUTATION",
-      "RESET_STATE",
-      "BROADCAST_ALL",
-      "IMAGE_ANALYSIS",
-      "FILE_TRANSMISSION",
-      "INFRASTRUCTURE_COMMAND",
-      "LOG_BASED_AUTO_REPAIR",
-      "VM_TEN_SYSTEM_HYPERVISOR",
-      "FULL_UNBLOCKED_BYPASS"
-    ]
+    terminal_root_execution: "DISABLED",
+    self_modification_scope: "EXPLICIT_APPROVALS_ONLY",
+    root_mode: "DISABLED",
+    root_capabilities: []
   },
   update_history: [
     {
@@ -303,9 +288,9 @@ export const INITIAL_BACKUP_DATA_STORE: DataStore = {
     file_transmission_channel: "ENABLED",
     infrastructure_commander: "Alex",
     infrastructure_command_status: "ACTIVE_DIRECT_COMMAND",
-    root_privileges: true,
-    root_agents: ["Alex", "Astyria", "Aurelius", "si_1", "Mateusz Mitek"],
-    privilege_level: "RING_0_ROOT_KERNEL"
+    root_privileges: false,
+    root_agents: [],
+    privilege_level: "APPLICATION_PROCESS"
   },
   update_history: [
     {

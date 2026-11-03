@@ -2,27 +2,27 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { cleanAgentReplyText, extractAgentCommands } from '../src/kernel/agentCommands.ts';
 
-test('wyodrębnia polecenie z ogrodzonego bloku kodu (```text)', () => {
-  const reply = '```text\n/exec ls -la\n```\nGotowe.';
-  assert.deepEqual(extractAgentCommands(reply), ['/exec ls -la']);
+test('wyodrębnia propozycję z ogrodzonego bloku i ignoruje polecenie powłoki', () => {
+  const reply = '```text\n/propose create-db dane\n/exec ls -la\n```\nGotowe.';
+  assert.deepEqual(extractAgentCommands(reply), ['/propose create-db dane']);
 });
 
 test('toleruje spację po ukośniku (/ exec) i tokeny specjalne modeli', () => {
-  const reply = ']<]minimax[>[<tool_call>mmu>\n/ exec pwd && ls\n<|im_end|>';
-  assert.deepEqual(extractAgentCommands(reply), ['/exec pwd && ls']);
+  const reply = ']<]minimax[>[<tool_call>mmu>\n/ propose create-db dane\n<|im_end|>';
+  assert.deepEqual(extractAgentCommands(reply), ['/propose create-db dane']);
 });
 
-test('zbiera wiele poleceń w kolejności (maks. 3) i deduplikuje', () => {
-  const reply = 'Plan:\n/exec pwd\n/propose create-app moja-app cli-utility\n/exec pwd\n/exec ls\n/exec whoami\n/exec uptime';
+test('zbiera do trzech propozycji w kolejności i deduplikuje', () => {
+  const reply = 'Plan:\n/exec pwd\n/propose create-app moja-app cli-utility\n/propose create-db dane\n/propose create-db dane\n/propose launch moja-app';
   assert.deepEqual(extractAgentCommands(reply), [
-    '/exec pwd',
     '/propose create-app moja-app cli-utility',
-    '/exec ls',
+    '/propose create-db dane',
+    '/propose launch moja-app',
   ]);
 });
 
-test('obsługuje składnię wykrzyknikową !polecenie, ale ignoruje obrazki markdown', () => {
-  assert.deepEqual(extractAgentCommands('!uptime'), ['!uptime']);
+test('ignoruje wykrzyknikowe polecenia i obrazki markdown', () => {
+  assert.deepEqual(extractAgentCommands('!uptime'), []);
   assert.deepEqual(extractAgentCommands('![alt text](obraz.png)'), []);
 });
 
@@ -38,8 +38,8 @@ test('pomija przykłady składni z placeholderami — nie wykonuje dokumentacji'
   assert.deepEqual(extractAgentCommands(reply), ['/propose create-app realna-app cli-utility']);
 });
 
-test('nawiasy kwadratowe w /exec pozostają legalne (składnia powłoki)', () => {
-  assert.deepEqual(extractAgentCommands('/exec ls [a-z]*.txt'), ['/exec ls [a-z]*.txt']);
+test('nie wyodrębnia poleceń powłoki niezależnie od składni', () => {
+  assert.deepEqual(extractAgentCommands('/exec ls [a-z]*.txt\n!uptime'), []);
 });
 
 test('czysty tekst bez poleceń zwraca pustą listę', () => {

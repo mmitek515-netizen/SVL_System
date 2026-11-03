@@ -1,10 +1,9 @@
 /**
- * AGENT COMMANDS — ekstrakcja poleceń wykonawczych z odpowiedzi NLP agentów.
- * Autorzy: Triada (AUTO-EXEC, ROOT UNLIMITED)
+ * CHAT PROPOSALS — ekstrakcja propozycji zmian z odpowiedzi agentów.
  *
  * Odpowiedzi modeli bywają „brudne": ogrodzenia bloków kodu (```text), tokeny
  * specjalne (]<]minimax[>, [tool_call], <|im_start|>) oraz spacje po ukośniku
- * (`/ exec`). Ten moduł czyści tekst i wyodrębnia realne polecenia.
+ * (`/ exec`). Ten moduł wyodrębnia wyłącznie propozycje, nigdy polecenia powłoki.
  */
 
 /** Oczyszcza odpowiedź agenta z artefaktów modeli i ogrodzeń bloków kodu. */
@@ -17,10 +16,8 @@ export function cleanAgentReplyText(replyText: string): string {
 }
 
 /**
- * Wyodrębnia polecenia wykonawcze z odpowiedzi agenta.
- * Obsługuje: /propose …, /exec … (także ze spacją: `/ exec`), oraz !polecenie.
- * Pomija przykłady z dokumentacji zawierające placeholdery (<nazwa>, a dla /propose też [typ]) —
- * takie polecenia nigdy nie są prawidłowe i nie powinny być wykonywane.
+ * Wyodrębnia tylko jawne propozycje /propose z odpowiedzi agenta.
+ * Pomija polecenia powłoki i przykłady składni zawierające placeholdery.
  * Maksymalnie 3 unikalne polecenia, w kolejności wystąpienia.
  */
 export function extractAgentCommands(replyText: string): string[] {
@@ -32,15 +29,12 @@ export function extractAgentCommands(replyText: string): string[] {
   for (const line of cleaned.split('\n')) {
     const trimmedLine = line.trim();
     if (!trimmedLine) continue;
-    const slashCmd = trimmedLine.match(/^\/\s*(propose|exec)\s+(.+)$/);
+    const slashCmd = trimmedLine.match(/^\/\s*propose\s+(.+)$/i);
     let cmd: string | null = null;
     if (slashCmd) {
-      const body = slashCmd[2].trim();
-      // Placeholder = przykład składni, nie realne polecenie (w /exec nawiasy [] bywają legalne w powłoce).
-      if (anglePlaceholder.test(body) || (slashCmd[1] === 'propose' && bracketPlaceholder.test(body))) continue;
-      cmd = `/${slashCmd[1]} ${body}`;
-    } else if (trimmedLine.startsWith('!') && trimmedLine.length > 1 && !trimmedLine.startsWith('![')) {
-      cmd = trimmedLine;
+      const body = slashCmd[1].trim();
+      if (anglePlaceholder.test(body) || bracketPlaceholder.test(body)) continue;
+      cmd = `/propose ${body}`;
     }
     if (cmd && !seen.has(cmd)) {
       seen.add(cmd);

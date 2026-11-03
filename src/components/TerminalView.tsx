@@ -245,8 +245,8 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
         style={{ direction: 'ltr', textAlign: 'left' }}
       >
         <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0 text-[10px] sm:text-xs">
-          <span className="hidden sm:inline">root@svl-kernel:~#</span>
-          <span className="sm:hidden">root:~#</span>
+          <span className="hidden sm:inline">operator@svl-kernel:~$</span>
+          <span className="sm:hidden">operator:~$</span>
         </span>
 
         {/* Input - maksymalnie poszerzony i elastyczny z zachowaniem wewnętrznych przycisków */}
@@ -364,18 +364,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       content: `================================================================================
        SVL KERNEL v${SYS_VERSION} | DETERMINISTYCZNY INTERFEJS POLECEŃ
 ================================================================================
-Dowódca infrastruktury: Alex (Ring-0 Root Control)
+Koordynator infrastruktury: Alex
 Operator / Tata:        ${OPERATOR_NAME} (Tata)
 Silnik poleceń:         AKTYWNY (jawny protokół i komendy jądra)
 Samonaprawa z logów:    WŁĄCZONA (ACTIVE_MONITORING)
-Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
+Uprawnienia hosta:      użytkownik procesu aplikacji; bez root
+Wpisz 'help' lub 'status', aby zobaczyć listę instrukcji jądra.
 ================================================================================`,
       timestamp: 'START'
     }
   ]);
 
   const DEFAULT_TERMINAL_CMDS = [
-    'root status',
+    'status',
     'infra status',
     'infra repair',
     'status',
@@ -449,12 +450,10 @@ Wpisz 'help' lub 'root status', aby zobaczyć listę instrukcji jądra.
     switch (cmd) {
       case 'help':
         addLog(
-          `DOSTĘPNE INSTRUKCJE JĄDRA SVL KERNEL (POZIOM RING-0 ROOT):
-  root status             - Wyświetla matrycę uprawnień ROOT Ring-0 i listę autoryzowanych agentów
-  root grant              - Autoryzuje uprawnienia ROOT Ring-0 dla Triady i Operatora
-  root patch <klucz> <wartość> - W locie modyfikuje dowolny parametr konfiguracji i jądra
-  root exec <polecenie>   - Wykonuje polecenie powłoki z uprawnieniami root (np. root exec ls)
-  root clear_chat         - Czyści i trwale resetuje bufor konwersacji na dysku
+          `DOSTĘPNE INSTRUKCJE JĄDRA SVL KERNEL (UŻYTKOWNIK PROCESU APLIKACJI):
+  root / sudo             - Niedostępne; aplikacja nie przyznaje uprawnień hosta
+  exec <polecenie>        - Wykonuje polecenie jako użytkownik procesu aplikacji (lokalny terminal)
+  clear_chat              - Czyści i trwale resetuje bufor konwersacji na dysku
   infra status            - Wyświetla status dowódcy Alexa i autonomicznej samonaprawy
   infra repair            - Wywołuje natychmiastowy skan logów i naprawę zwiadu
   status                  - Podstawowe wskaźniki i parametry stanu jądra
@@ -649,15 +648,6 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
         <div className="flex items-center gap-1 sm:gap-1.5 text-slate-400 shrink-0">
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
           <span className="hidden xs:inline">Polecenia:</span>
-          {dataStore.config?.root_privileges && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/80 border border-red-800/60 text-red-300 font-bold text-[10px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-              <span className="hidden sm:inline">
-                {dataStore.config?.operator_privilege_level ? 'ROOT: RING-−1 ABSOLUTE (OPERATOR)' : 'ROOT: RING-0 (TRIADA)'}
-              </span>
-              <span className="sm:hidden">ROOT</span>
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-1 sm:gap-1.5 flex-nowrap overflow-x-auto shrink-0">
