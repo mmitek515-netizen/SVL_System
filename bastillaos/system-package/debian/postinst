@@ -3,6 +3,10 @@ set -eu
 
 case "${1:-}" in
   configure)
+    # Create isolated Linux identities; full sudo requires a separate opt-in.
+    if [ -x /usr/bin/bastilla-agent-accounts ]; then
+      /usr/bin/bastilla-agent-accounts provision
+    fi
     if command -v deb-systemd-helper >/dev/null 2>&1; then
       deb-systemd-helper enable bastillaos-system.service >/dev/null || true
     fi

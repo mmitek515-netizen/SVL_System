@@ -39,12 +39,12 @@ const QUICK: Entry[] = [
   { id: 'comms', label: 'Czat', icon: MessageSquare },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'ai_tools', label: 'AI', icon: Brain },
-  { id: 'diagnostics', label: 'Diagnostyka', icon: Activity },
 ];
 
 const SECTIONS: { id: string; label: string; icon: React.ComponentType<{ className?: string }>; items: Entry[] }[] = [
   { id: 'system', label: 'System i jądro', icon: Cpu, items: [
     { id: 'home', label: 'Pulpit BastillaOS', icon: Home },
+    { id: 'diagnostics', label: 'Diagnostyka', icon: Activity },
     { id: 'datastore', label: 'DATA_STORE', icon: Database },
     { id: 'monolith', label: 'Monolit Python', icon: FileCode2 },
     { id: 'without_nlp', label: 'Rdzeń matematyczny', icon: Sigma },
@@ -70,6 +70,8 @@ const SECTIONS: { id: string; label: string; icon: React.ComponentType<{ classNa
 
 export const Navigation: React.FC<NavigationProps> = ({ activeTab, onSelectTab, messageCount }) => {
   const [showMore, setShowMore] = useState(false);
+  // Mobile gesture on the bottom navigation only; never intercept chat scrolling.
+  const touchStartX = React.useRef<number | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const isExtraActive = !QUICK.some(item => item.id === activeTab);
   const navigate = (tab: TabId) => {
@@ -83,7 +85,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onSelectTab, 
   };
 
   return (
-    <nav aria-label="Nawigacja Bastilla OS" className="relative z-30 order-last flex h-[60px] w-full shrink-0 border-t border-violet-400/15 bg-[#080e1b] lg:order-first lg:h-auto lg:w-[205px] lg:flex-col lg:border-r lg:border-t-0">
+    <nav aria-label="Nawigacja Bastilla OS" onTouchStart={(event) => { touchStartX.current = event.touches[0]?.clientX ?? null; }} onTouchEnd={(event) => { if (touchStartX.current === null) return; const dx = (event.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current; touchStartX.current = null; if (Math.abs(dx) < 75 || showMore) return; const idx = QUICK.findIndex(item => item.id === activeTab); if (dx < 0 && idx >= 0 && idx < QUICK.length - 1) navigate(QUICK[idx + 1].id); if (dx > 0 && idx > 0) navigate(QUICK[idx - 1].id); }} className="relative z-30 order-last flex h-[60px] w-full shrink-0 border-t border-violet-400/15 bg-[#080e1b] lg:order-first lg:h-auto lg:w-[205px] lg:flex-col lg:border-r lg:border-t-0">
       <div className="flex min-w-0 flex-1 items-center justify-around gap-1 px-1.5 lg:flex-col lg:items-stretch lg:justify-start lg:px-2 lg:py-3">
         {QUICK.map(({ id, label, icon: Icon }) => (
           <button key={id} type="button" title={label} aria-current={activeTab === id ? 'page' : undefined}

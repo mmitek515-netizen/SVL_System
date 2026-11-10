@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: BastillaOS
 Version: 1.1.0
 Architecture: amd64
-Depends: coreutils (>= 9.3), git, nodejs (>= 20), python3, systemd, tar
+Depends: coreutils (>= 9.3), git, nodejs (>= 20), passwd, python3, sudo, systemd, tar
 Description: Local SVL System panel and applications
  SVL System local web panel, packaged with its production server bundle,
  generated frontend, default applications, and persistent writable state.

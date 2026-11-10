@@ -60,7 +60,9 @@ cp "$REPO_ROOT/apps/without_nlp/engine.py" "$ROOT/usr/lib/bastillaos/without_nlp
 cp "$PACKAGE_DIR/bin/without-nlp" "$ROOT/usr/bin/without-nlp"
 # Unified Linux CLI: real local API for Vision, rendering and AI memory.
 cp "$PACKAGE_DIR/bin/svl-ai" "$ROOT/usr/bin/svl-ai"
-chmod 0755 "$ROOT/usr/lib/bastillaos/without_nlp/engine.py" "$ROOT/usr/bin/without-nlp" "$ROOT/usr/bin/svl-ai"
+# Dedicated AI agent Linux accounts are created by the package postinst.
+cp "$PACKAGE_DIR/bin/bastilla-agent-accounts" "$ROOT/usr/bin/bastilla-agent-accounts"
+chmod 0755 "$ROOT/usr/lib/bastillaos/without_nlp/engine.py" "$ROOT/usr/bin/without-nlp" "$ROOT/usr/bin/svl-ai" "$ROOT/usr/bin/bastilla-agent-accounts"
 
 cp -a "$REPO_ROOT/dist" "$RUNTIME/dist"
 cp "$SERVER_BUNDLE" "$RUNTIME/server.mjs"
@@ -100,6 +102,7 @@ for required_file in \
   usr/lib/bastillaos/without_nlp/engine.py \
   usr/bin/without-nlp \
   usr/bin/svl-ai \
+  usr/bin/bastilla-agent-accounts \
   usr/share/bastillaos/system-defaults/apps/without_nlp/engine.py \
   usr/share/bastillaos/system-defaults/.gitignore \
   usr/share/bastillaos/system-defaults/src/App.tsx \

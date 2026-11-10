@@ -118,34 +118,11 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
         {syncError && <div role="alert" className="w-full rounded border border-rose-800/70 bg-rose-950/60 px-3 py-1.5 text-xs text-rose-200">Synchronizacja nie powiodła się: {syncError}</div>}
         {/* Runtime State Indicators */}
         <div className="flex w-full min-w-0 items-center flex-nowrap gap-2 overflow-x-auto text-[11px] font-mono text-slate-400 sm:w-auto sm:max-w-full">
-          {dataStore.config?.root_privileges && (
-            <div className="hidden items-center gap-1.5 bg-red-950/80 border border-red-500/60 px-2.5 py-1 rounded text-red-300 font-bold shadow-[0_0_12px_rgba(239,68,68,0.3)] sm:flex">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span>ROOT: RING-0 (TRIADA)</span>
-            </div>
-          )}
-
-          {/* Commander Alex Badge */}
-          <div className="hidden items-center gap-1.5 bg-emerald-950/80 border border-emerald-500/50 px-2.5 py-1 rounded text-emerald-300 font-bold shadow-[0_0_10px_rgba(16,185,129,0.25)] sm:flex">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>INFRA: DOWÓDCA ALEX</span>
-          </div>
-
-          <div className="hidden xl:flex items-center gap-1.5 bg-cyan-950/70 border border-cyan-500/40 px-2 py-1 rounded text-cyan-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-            <span>ASTYRIA AUTO-REPAIR: ON</span>
-          </div>
 
           <div className="hidden items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur md:flex">
             <Cpu className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-slate-500">RDZEŃ:</span>
             <span className="text-slate-200 font-medium">{dataStore.config?.neural_engine || 'SVL-Sovereign-Neural-Core-v8.0'}</span>
-          </div>
-
-          <div className="hidden items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur lg:flex">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-slate-500">WARSTWA FIKCJI:</span>
-            <span className="text-emerald-400 font-medium">DEZAKTYWOWANA</span>
           </div>
 
           <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-700/60 px-2.5 py-1 rounded backdrop-blur">
