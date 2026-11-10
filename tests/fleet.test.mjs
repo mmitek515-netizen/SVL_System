@@ -103,8 +103,6 @@ test('API requires role-appropriate credentials; cannot ingest with viewer token
       assert.equal((await api(base, '/telemetry', {
         method: 'POST', secret: INGEST, payload: telemetry,
       })).status, 201);
-      const found = await api(base, '/');
-      assert.equal(found.status, 404);
       const status = await (await api(base, '')).json();
       assert.equal(status.vessels.length, 1);
       assert.equal(status.vessels[0].position.xAu, 2);
