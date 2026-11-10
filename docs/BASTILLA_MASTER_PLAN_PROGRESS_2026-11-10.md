@@ -28,7 +28,7 @@ Szacunki procentowe odzwierciedlają **stopień realizacji wymagań w aktualnym 
 
 ## Audyt kolejnych wdrożeń AI — aktualizacja 2026-11-10
 
-- Podstawa: `142b4038` (poprzednia ocena **45,05% ≈ 45%**) → `768b966f` (`main`), **31 commitów** i **23 zmienione lub dodane pliki**.
+- Podstawa: `142b4038` (poprzednia ocena **45,05% ≈ 45%**) → `768b966f` (`main`), **33 commity** i **23 zmienione lub dodane pliki**.
 - **Biblioteka UI:** 80 unikalnych typów w 5 kategoriach, wyszukiwalny katalog, walidacja JSON oraz testy (`SvlChatUi.tsx`, `SvlUiExtras.tsx`, `SvlUiCatalog.tsx`, `tests/svlUiLibrary.test.mjs`).
 - **Globalne odświeżanie:** `src/lib/globalLiveSync.ts`, zdarzenia SSE `GET /api/sync/events`, subskrypcja w `src/App.tsx`. Procesowa szyna zdarzeń nie jest trwała i nie przenosi automatycznie zmian hosta do AI Studio.
 - **Synchronizacja GitHub:** `src/lib/githubWriteAuth.ts`, kontrola uprawnień osobnym tokenem operatora, testy, usunięty legacy force push, poprawiona obsługa ścieżek Express i dodatkowe zabezpieczenie zapisów. Nie dowodzi to aktywnego automatycznego push na hostcie.
