@@ -2,6 +2,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { timingSafeEqual } from 'node:crypto';
 import { SharedSystemMemory, isMemoryScope, type MemoryScope } from '../kernel/systemMemory';
+import { resolveVisionModel } from '../kernel/visionModel';
 
 const imageSizes = ['1024x1024', '1536x1024', '1024x1536'];
 const imageMimeTypes = ['image/png', 'image/jpeg', 'image/webp'];
@@ -55,22 +56,9 @@ function scopesFor(value: unknown): MemoryScope[] {
   if (!isMemoryScope(value)) throw new Error('Nieprawidłowy zakres pamięci.');
   return [value];
 }
-async function checkOllama(ollamaUrl: string, visionModel: string): Promise<{ reachable: boolean; modelInstalled: boolean; error?: string }> {
-  try {
-    const response = await fetch(ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(3500) });
-    if (!response.ok) return { reachable: false, modelInstalled: false, error: 'HTTP ' + response.status };
-    const body: any = await response.json();
-    const models = Array.isArray(body?.models) ? body.models : [];
-    const modelInstalled = models.some((item: any) => item?.name === visionModel || item?.model === visionModel);
-    return { reachable: true, modelInstalled };
-  } catch (error) {
-    return { reachable: false, modelInstalled: false, error: error instanceof Error ? error.message : 'Nieznany błąd' };
-  }
-}
-
 export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
   // Instantiate after server.ts loads .env and .env.local.
-  const visionModel = (process.env.OLLAMA_VISION_MODEL || 'llama3.2-vision:11b').trim();
+  const visionModel = (process.env.OLLAMA_VISION_MODEL || 'auto').trim();
   const imageModel = (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.6-sunburst').trim();
   const ollamaUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');
   const router = Router();
@@ -84,11 +72,11 @@ export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
 
   router.get('/status', async (_req, res) => {
     try {
-      const ollama = await checkOllama(ollamaUrl, visionModel);
+      const ollama = await resolveVisionModel({ baseUrl: ollamaUrl, requested: visionModel });
       const entries = await memory.count();
       res.json({
         success: true,
-        vision: { provider: 'ollama', model: visionModel, ...ollama },
+        vision: { provider: 'ollama', ...ollama, model: ollama.model || (visionModel === 'auto' ? 'Nie wykryto' : visionModel) },
         rendering: { provider: 'openai', model: imageModel, configured: Boolean(process.env.OPENAI_API_KEY?.trim()), verified: false },
         memory: { persistent: true, file: memory.filePath, entries, embeddingConfigured: memory.semanticEnabled },
       });
@@ -107,11 +95,19 @@ export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
     const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
     if (prompt.length > 2000) return res.status(400).json({ success: false, error: 'Pytanie może mieć do 2000 znaków.' });
     try {
+      const selection = await resolveVisionModel({ baseUrl: ollamaUrl, requested: visionModel });
+      if (!selection.model || !selection.visionSupported) {
+        return res.status(503).json({
+          success: false, provider: 'ollama',
+          error: selection.error || 'Nie znaleziono zainstalowanego modelu Vision.',
+        });
+      }
+      const resolvedVisionModel = selection.model;
       const response = await fetch(ollamaUrl + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: visionModel,
+          model: resolvedVisionModel,
           stream: false,
           keep_alive: process.env.OLLAMA_KEEP_ALIVE || '24h',
           messages: [
@@ -127,7 +123,7 @@ export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
       }
       const result: any = await response.json();
       if (typeof result?.message?.content !== 'string' || !result.message.content.trim()) throw new Error('Model nie zwrócił analizy obrazu.');
-      return res.json({ success: true, provider: 'ollama', model: result.model || visionModel, analysis: result.message.content.trim() });
+      return res.json({ success: true, provider: 'ollama', model: result.model || resolvedVisionModel, analysis: result.message.content.trim() });
     } catch (error) {
       return handleError(res, error, 'vision');
     }
