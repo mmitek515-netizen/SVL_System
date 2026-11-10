@@ -17,8 +17,15 @@ function allowLocalOrToken(req: Request): boolean {
     const b = Buffer.from(expected);
     return a.length === b.length && a.length !== 0 && timingSafeEqual(a, b);
   }
-  // An unconfigured deployment is NOT a public memory/AI proxy.
-  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress || '');
+  // Refuse anonymous access in production. A reverse proxy can connect over loopback
+  // even when the end-user is remote: TCP remoteAddress alone must NEVER authorize them.
+  if (process.env.NODE_ENV === 'production') return false;
+  const host = (req.get('host') || '').toLowerCase();
+  const hostIsLocal = /^(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d+)?$/.test(host);
+  const directConnection = !req.header('forwarded') && !req.header('x-forwarded-for')
+    && !req.header('x-real-ip');
+  return hostIsLocal && directConnection
+    && ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress || '');
 }
 function handleError(res: Response, error: unknown, provider: string) {
   const reason = error instanceof Error ? error.message : String(error);
