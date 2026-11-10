@@ -172,6 +172,47 @@ app.use('/api/fleet', createFleetRouter());
 // Real, authenticated-by-token-or-localhost multimodal and durable memory services.
 app.use('/api/ai/runtime', createAiRuntimeRouter(sharedSystemMemory));
 
+// Account status uses host-owned /etc/passwd, not model-generated values.
+// The sudo flag means a matching rule exists, not that the agent is executing.
+app.get('/api/agents/linux-accounts', (_req, res) => {
+  try {
+    const linux = process.platform === 'linux';
+    const passwd = linux ? fs.readFileSync('/etc/passwd', 'utf8') : '';
+    let sudoers = '';
+    try {
+      if (linux) sudoers = fs.readFileSync('/etc/sudoers.d/90-bastilla-ai-agents', 'utf8');
+    } catch { /* optional sudo rule not present */ }
+    const entries = new Map(passwd.split(/\r?\n/).map((line) => {
+      const parts = line.split(':');
+      return [parts[0], parts] as const;
+    }));
+    const agents = ['Alex', 'Aria', 'Astyria', 'Aurelius'].map((name) => {
+      const login = 'bastilla-' + name.toLowerCase();
+      const entry = entries.get(login);
+      return {
+        name, login, provisioned: Boolean(entry && entry.length >= 7),
+        uid: entry && /^\d+$/.test(entry[2]) ? Number(entry[2]) : null,
+        sudoRuleConfigured: Boolean(entry && sudoers.split(/\r?\n/).includes(login + ' ALL=(ALL:ALL) NOPASSWD: ALL')),
+      };
+    });
+    const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+    const tools = ['bash', 'python3', 'git', 'gh', 'sudo', 'systemctl',
+      'journalctl', 'curl', 'jq', 'rg', 'docker', 'podman', 'ollama', 'ffmpeg', 'node']
+      .map((name) => ({
+        name,
+        present: dirs.some((dir) => {
+          try { fs.accessSync(path.join(dir, name), fs.constants.X_OK); return true; }
+          catch { return false; }
+        }),
+      }));
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, platform: process.platform, agents, tools });
+  } catch {
+    res.status(503).json({ success: false, error: 'Nie można odczytać kont systemowych' });
+  }
+});
+
+
 // Catch payload too large or invalid body before routing
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (err?.type === 'entity.too.large' || err?.status === 413) {
