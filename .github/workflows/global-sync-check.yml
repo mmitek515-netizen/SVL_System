@@ -1,0 +1,33 @@
+name: Global sync checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/App.tsx'
+      - 'src/components/Header.tsx'
+      - 'src/components/GitHubExportView.tsx'
+      - 'src/kernel/globalSync.ts'
+      - 'server.ts'
+      - 'tests/globalSync.test.mjs'
+      - '.github/workflows/global-sync-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run build:server
