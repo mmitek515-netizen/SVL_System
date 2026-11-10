@@ -6,15 +6,17 @@ interface HeaderProps {
   dataStore: DataStore;
   onReset: () => void;
   onShowReport: () => void;
-  onSyncSystem?: () => void;
+  onSyncSystem?: () => Promise<void>;
+  kernelSyncStatus?: 'connecting' | 'online' | 'offline';
   onUnclog?: () => void;
   onRestoreBackup?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport, onSyncSystem, onUnclog, onRestoreBackup }) => {
+export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport, onSyncSystem, kernelSyncStatus = 'connecting', onUnclog, onRestoreBackup }) => {
   const [copied, setCopied] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<string>('');
 
   const rawVersion =
@@ -55,10 +57,13 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
     if (!onSyncSystem || syncing) return;
     setSyncing(true);
     setSyncSuccess(false);
+    setSyncError(null);
     try {
       await onSyncSystem();
       setSyncSuccess(true);
       setTimeout(() => setSyncSuccess(false), 3200);
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : 'Błąd synchronizacji z jądrem.');
     } finally {
       setSyncing(false);
     }
@@ -100,6 +105,7 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
           </div>
         </div>
 
+        {syncError && <div role="alert" className="w-full rounded border border-rose-800/70 bg-rose-950/60 px-3 py-1.5 text-xs text-rose-200">Synchronizacja nie powiodła się: {syncError}</div>}
         {/* Runtime State Indicators */}
         <div className="flex w-full min-w-0 items-center flex-nowrap gap-2 overflow-x-auto text-[11px] font-mono text-slate-400 sm:w-auto sm:max-w-full">
           {dataStore.config?.root_privileges && (
@@ -141,13 +147,14 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
           <div className="flex shrink-0 items-center gap-1 ml-1">
             {onSyncSystem && (
               <button
-                onClick={handleTriggerSync}
+                disabled={syncing}
+                 onClick={handleTriggerSync}
                 className={`flex items-center gap-1 px-3 py-1 rounded-lg transition cursor-pointer font-bold ${
                   syncSuccess
                     ? 'bg-emerald-950/90 text-emerald-200 border border-emerald-500/70 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
                     : 'bg-cyan-950/90 hover:bg-cyan-900 text-cyan-200 border border-cyan-500/60 shadow-[0_0_10px_rgba(6,182,212,0.35)]'
                 }`}
-                title="Zsynchronizuj wersję systemu, zmiany z czatu, DATA_STORE i plik monolitu na dysku"
+                title="Pobierz aktualny DATA_STORE z jądra systemu; nie zapisuje do GitHub"
               >
                 {syncSuccess ? (
                   <Check className="w-3 h-3 text-emerald-400" />
@@ -163,6 +170,9 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
                 </span>
               </button>
             )}
+            <span role="status" className={`rounded px-2 py-1 text-[10px] font-semibold ${kernelSyncStatus === 'online' ? 'text-emerald-300' : kernelSyncStatus === 'offline' ? 'text-rose-300' : 'text-amber-300'}`}>
+              {kernelSyncStatus === 'online' ? 'DATA_STORE: ONLINE' : kernelSyncStatus === 'offline' ? 'DATA_STORE: OFFLINE' : 'DATA_STORE: SPRAWDZAM'}
+            </span>
 
             {onUnclog && (
               <button
