@@ -13,6 +13,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport, onSyncSystem, kernelSyncStatus = 'connecting', onUnclog, onRestoreBackup }) => {
+  const [bladeOn, setBladeOn] = useState(true);
   const [copied, setCopied] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
@@ -76,10 +77,19 @@ export const Header: React.FC<HeaderProps> = ({ dataStore, onReset, onShowReport
         {/* Brand & Kernel identity */}
         <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 shadow-[0_0_10px_#10b981]" />
-            </span>
+            <button type="button" onClick={() => setBladeOn((enabled) => !enabled)} aria-label="Włącz lub wyłącz fioletowy miecz świetlny" aria-pressed={bladeOn} title="Miecz Bastilla OS — kliknij, aby włączyć lub wyłączyć" className="rounded-md border border-violet-400/20 bg-[#0c1222] p-1 hover:border-violet-300 focus-visible:outline-2 focus-visible:outline-violet-300">
+              <svg width="91" height="23" viewBox="0 0 132 30" aria-hidden="true">
+                <rect x="2" y="11" width="35" height="9" rx="2.5" fill="#96a3b8"/>
+                <rect x="7" y="13" width="22" height="5" rx="1" fill="#232b3e"/>
+                <rect x="13" y="13" width="3" height="5" fill="#cbd5e1"/>
+                <rect x="30" y="9" width="8" height="13" rx="2" fill="#d4dbea"/>
+                {bladeOn && <>
+                  <line x1="38" y1="15.5" x2="127" y2="15.5" stroke="#a78bfa" strokeWidth="15" strokeLinecap="round" opacity=".22" />
+                  <line x1="38" y1="15.5" x2="127" y2="15.5" stroke="#b896ff" strokeWidth="7" strokeLinecap="round" opacity=".65" />
+                  <line x1="38" y1="15.5" x2="127" y2="15.5" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" />
+                </>}
+              </svg>
+            </button>
             <span             className="bg-gradient-to-r from-blue-100 via-cyan-200 to-blue-300 bg-clip-text font-mono text-sm font-extrabold tracking-[0.16em] text-transparent">
             BASTILLA OS
             </span>
