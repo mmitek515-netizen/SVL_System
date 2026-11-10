@@ -26,6 +26,7 @@ import { FileExplorer } from './components/FileExplorer';
 import { AppsStudioView } from './components/AppsStudioView';
 import { WithoutNlpView } from './components/WithoutNlpView';
 import { GitHubExportView } from './components/GitHubExportView';
+import { FleetView } from './components/FleetView';
 import { BastillaDashboard } from './components/BastillaDashboard';
 import {
   AstyriaMissionAction,
@@ -634,6 +635,8 @@ export default function App() {
               onChatChangeApplied={() => setChatSystemChange(null)}
             />
           )}
+
+          {activeTab === 'fleet' && <FleetView />}
 
           {activeTab === 'hyper_com' && (
             <section className="flex min-h-0 flex-1 flex-col bg-slate-950">
