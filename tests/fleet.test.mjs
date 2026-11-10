@@ -19,7 +19,7 @@ function fixture() {
 }
 async function serve(file, fn) {
   const app = express(); app.use(express.json());
-  app.use('/api/fleet', createFleetRouter({ file, adminToken: ADMIN, ingestToken: INGEST }));
+  app.use('/api/fleet', createFleetRouter({ file, adminToken: ADMIN, ingestToken: INGEST, allowedSources: ['device-01'] }));
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   try { await fn('http://127.0.0.1:' + server.address().port); }
@@ -95,11 +95,14 @@ test('API requires role-appropriate credentials; cannot ingest with viewer token
       let create = await api(base, '/ships', { method: 'POST', payload: { name: 'Project B', kind: 'station' } });
       assert.equal(create.status, 201);
       const shipId = (await create.json()).id;
-      const telemetry = { shipId, coordinateFrame: FLEET_FRAME, sourceRef: 'real-feed-report-1',
+      const telemetry = { shipId, coordinateFrame: FLEET_FRAME, sourceId: 'device-01', sourceRef: 'real-feed-report-1',
         observedAt: new Date().toISOString(), xAu: 2, yAu: 1, zAu: -0.5 };
       assert.equal((await api(base, '/telemetry', { method: 'POST', payload: telemetry })).status, 401);
       assert.equal((await api(base, '/ships', { method: 'POST', secret: INGEST,
         payload: { name: 'Unauthorized', kind: 'ship' } })).status, 401);
+      assert.equal((await api(base, '/telemetry', {
+        method: 'POST', secret: INGEST, payload: { ...telemetry, sourceId: 'unauthorized-source' },
+      })).status, 403);
       assert.equal((await api(base, '/telemetry', {
         method: 'POST', secret: INGEST, payload: telemetry,
       })).status, 201);
