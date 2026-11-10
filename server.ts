@@ -129,8 +129,9 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   ollamaNumCtx: Number(process.env.OLLAMA_NUM_CTX) || 4096,
   ollamaNumPredict: Number(process.env.OLLAMA_NUM_PREDICT) || 0,
   ollamaNumThread: Number(process.env.OLLAMA_NUM_THREAD) || 0,
-  // Domyślnie TYLKO Ollama. Inna kolejność: LLM_PROVIDERS="gemini,xai,ollama".
-  providers: (process.env.LLM_PROVIDERS || 'ollama')
+  // Preferuj lokalną Ollamę; użyj Gemini wyłącznie z rzeczywistym GEMINI_API_KEY.
+  // Jawne LLM_PROVIDERS="ollama" nadal wyłącza fallback, jeśli operator tego chce.
+  providers: (process.env.LLM_PROVIDERS || 'ollama,gemini')
     .split(',')
     .map((name) => name.trim().toLowerCase())
     .filter((name): name is 'gemini' | 'xai' | 'ollama' => name === 'gemini' || name === 'xai' || name === 'ollama'),
@@ -5095,9 +5096,10 @@ app.post('/api/triad/chat/new-session', async (_req, res) => {
 app.get('/api/triad/model-status', async (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const providers = configuredProviders(LLM_CHAIN_CONFIG);
+  const fallbackProviders = providers.filter((provider) => provider !== 'ollama');
   if (!providers.includes('ollama')) {
     return res.json({ success: true, provider: 'ollama', configured: false, reachable: false,
-      modelAvailable: false, error: 'Ollama jest wyłączona w LLM_PROVIDERS.' });
+      modelAvailable: false, fallbackProviders, error: 'Ollama jest wyłączona w LLM_PROVIDERS.' });
   }
   const base = (LLM_CHAIN_CONFIG.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL).trim().replace(/\/+$/, '');
   try {
@@ -5114,11 +5116,11 @@ app.get('/api/triad/model-status', async (_req, res) => {
     const modelAvailable = Boolean(model && models.some((entry) =>
       entry.name === model || entry.name === model + ':latest'));
     return res.json({ success: true, provider: 'ollama', configured: true, reachable: true,
-      modelAvailable, model, installedModels: models.length, source: 'local-ollama-api-tags',
+      modelAvailable, model, installedModels: models.length, fallbackProviders, source: 'local-ollama-api-tags',
       error: modelAvailable ? null : 'Ollama odpowiada, ale wybrany model czatu nie jest zainstalowany.' });
   } catch (error: any) {
     return res.json({ success: true, provider: 'ollama', configured: true, reachable: false,
-      modelAvailable: false, source: 'local-ollama-api-tags',
+      modelAvailable: false, fallbackProviders, source: 'local-ollama-api-tags',
       error: 'Backend nie może połączyć się z Ollamą: ' + String(error?.message || error).slice(0, 220) });
   }
 });
@@ -5427,7 +5429,7 @@ app.post('/api/triad/message', async (req, res) => {
       // Bez awaryjnego silnika nic nie zapisujemy do historii — operator widzi prawdziwy powód awarii.
       return res.status(502).json({
         success: false,
-        error: `Model Ollama nie odpowiedział. ${failed.map((result) => result.error).join(' | ')}`.slice(0, 900),
+        error: `Żaden dostępny model czatu nie odpowiedział. ${failed.map((result) => result.error).join(' | ')}`.slice(0, 900),
       });
     }
 
