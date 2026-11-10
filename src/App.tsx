@@ -9,6 +9,7 @@ import { Header } from './components/Header';
 import { Navigation, TabId, initialTabFromLocation } from './components/Navigation';
 import { TerminalView } from './components/TerminalView';
 import { AgentCommsView } from './components/AgentCommsView';
+import { AiCapabilitiesView } from './components/AiCapabilitiesView';
 import { ChatApprovalsView } from './components/ChatApprovalsView';
 import { MonolithView } from './components/MonolithView';
 import { DataStoreView } from './components/DataStoreView';
@@ -548,6 +549,8 @@ export default function App() {
               onProvisionGeminiVm={handleProvisionGeminiVm}
             />
           )}
+
+          {activeTab === 'ai_tools' && <AiCapabilitiesView />}
 
           {activeTab === 'comms' && (
             <AgentCommsView
