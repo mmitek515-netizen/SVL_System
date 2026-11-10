@@ -24,10 +24,10 @@ const SCOPES: MemoryScope[] = ['global', 'agent:Aria', 'agent:Alex', 'agent:Asty
 const KINDS: MemoryKind[] = ['fact', 'decision', 'task', 'episode'];
 const MAX_ENTRIES = 10000;
 
-export const DEFAULT_MEMORY_FILE = path.join(
-  process.env.SVL_MEMORY_DIR || path.join(os.homedir(), '.local', 'share', 'bastillaos'),
-  'ai-memory.json',
-);
+export const DEFAULT_MEMORY_FILE = path.join(os.homedir(), '.local', 'share', 'bastillaos', 'ai-memory.json');
+export function memoryFilePathFromEnv(): string {
+  return path.join(process.env.SVL_MEMORY_DIR || path.dirname(DEFAULT_MEMORY_FILE), 'ai-memory.json');
+}
 export function isMemoryScope(value: unknown): value is MemoryScope {
   return typeof value === 'string' && SCOPES.includes(value as MemoryScope);
 }
@@ -59,7 +59,7 @@ function cosSimilarity(a: number[], b: number[]): number {
 export class SharedSystemMemory {
   private writeQueue: Promise<unknown> = Promise.resolve();
   constructor(
-    public readonly filePath: string = DEFAULT_MEMORY_FILE,
+    public readonly filePath: string = memoryFilePathFromEnv(),
     private readonly embedModel: string = (process.env.SVL_MEMORY_EMBED_MODEL || '').trim(),
     private readonly ollamaUrl: string = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/+$/, ''),
     private readonly fetchImpl: typeof fetch = fetch,
