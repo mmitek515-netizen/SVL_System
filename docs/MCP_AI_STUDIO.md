@@ -9,6 +9,43 @@ Wtyczka ChatGPT `bastilla-os-mcp` może przechowywać tymczasowy URL podglądu,
 który nie potwierdza uruchomienia usługi. Wtyczka nie instaluje Bastilla OS,
 Debiana 13 ani Ollamy.
 
+## Gotowy odizolowany gateway dla AI Studio / Cloud Run
+
+Od 10.11.2026 w `main` jest osobny punkt wejściowy:
+`scripts/ai-studio-mcp.mjs`; komenda startowa:
+
+```bash
+npm run mcp:ai-studio
+```
+
+Gateway używa `process.env.PORT` (domyślnie 8080), nasłuchuje
+na `0.0.0.0`, ma tylko `POST /mcp` i `GET /healthz`, a nie
+uruchamia głównego `server.ts` z uprzywilejowanymi trasami.
+
+**Nie nadpisuj tym poleceniem głównej aplikacji GUI Bastilla OS.**
+W AI Studio utwórz osobną aplikację/usługę o nazwie `Bastilla MCP Gateway`,
+zaimportuj pliki z `main` i skonfiguruj jej komendę startową jako
+`npm run mcp:ai-studio`. Główny projekt GUI pozostaw oddzielnie.
+
+W panelu Secrets aplikacji Gateway dodaj `SVL_MCP_TOKEN` —
+losowy sekret o długości co najmniej 32 znaków. W odróżnieniu od lokalnego
+Codespaces, Cloud Run wymaga jawnie ustawionego sekretu:
+gateway **odmówi startu** bez poprawnego `SVL_MCP_TOKEN`.
+Token pozostaje serwerowy; nie wpisuj go do promptów, publicznego repozytorium
+ani do `mcp.json` w pluginie. Uwierzytelnianie z ChatGPT wymaga
+skonfigurowanego zgodnego klienta lub bramy OAuth; samo wskazanie URL
+z pluginu nie przesyła Bearer tokenu.
+
+Taki gateway potwierdzi własne działanie, ale gdy nie ma rzeczywistej lokalnej
+usługi SVL na porcie 3000, `svl_system_status` uczciwie pokaże
+`svlReachable=false`. Bez dostępnej w tym samym kontenerze Ollamy,
+`svl_ollama_status` pokaże `reachable=false`. Profile agentów będą
+`unverified`, a nie fikcyjnie `online`.
+
+Testy lokalne i CI:
+`node --test tests/mcp-bridge.test.mjs tests/ai-studio-mcp.test.mjs`.
+Testy mock nie dowodzą dostępności opublikowanej usługi.
+
 ## Zasada architektoniczna
 
 1. Zaimportuj `mmitek515-netizen/SVL_System` z GitHub do aplikacji w Build.
