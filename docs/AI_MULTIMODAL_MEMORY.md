@@ -8,18 +8,21 @@ Instalacja zależności i modeli na prawdziwym hoście:
 
     npm ci
     test -f .env || cp .env.example .env
-    ollama pull llama3.2-vision:11b
+    ollama list
+    ollama show "<dokładna-nazwa-twojego-modelu-14b>"
+    # opcjonalnie do wyszukiwania semantycznego:
     ollama pull nomic-embed-text
     npm run dev
 
-Model Ollama 11B potrzebuje odpowiednich zasobów RAM/VRAM. Sam podgląd w Google AI Studio nie instaluje Linux ani modeli; usługę Ollama należy uruchomić na Linux i podłączyć backend po prywatnym połączeniu.
+Nie pobieraj osobnego modelu 11B, jeśli już masz działający 14B obsługujący obrazy. Dokładna nazwa modelu nie musi zawierać słowa Vision. Sprawdź, czy Ollama zgłasza zdolność vision w polu capabilities — jest to właściwość interfejsu, nie nazwa modelu. Model 14B potrzebuje odpowiednich zasobów RAM/VRAM. Sam podgląd w Google AI Studio nie instaluje Linux ani modeli; usługę Ollama należy uruchomić na Linux i podłączyć backend po prywatnym połączeniu.
 
 ## Konfiguracja środowiska
 
 Uzupełnij własny lokalny plik .env, nigdy nie publikuj go w Git:
 
     OLLAMA_BASE_URL="http://127.0.0.1:11434"
-    OLLAMA_VISION_MODEL="llama3.2-vision:11b"
+    OLLAMA_MODEL="auto"
+    OLLAMA_VISION_MODEL="auto"
     OPENAI_API_KEY=""
     OPENAI_IMAGE_MODEL="gpt-image-2.6-sunburst"
     SVL_MEMORY_DIR=""
@@ -28,7 +31,7 @@ Uzupełnij własny lokalny plik .env, nigdy nie publikuj go w Git:
     SVL_AI_ACCESS_TOKEN=""
 
 - DALL-E 3 został wycofany 12 maja 2026 r.; zamiast niego wdrożony renderer wykorzystuje aktualny OpenAI Images API oraz gpt-image-2.6-sunburst (model szczegółowego renderowania, z opcją wyboru innego modelu przez .env). Konieczny jest dostęp do modelu, ważny klucz OpenAI API i rozliczanie API.
-- Real Vision wysyła obraz base64 w faktycznym żądaniu POST /api/chat do Ollamy; model powinien widnieć w wyniku ollama list.
+- Analiza obrazów wysyła obraz base64 w faktycznym żądaniu POST /api/chat do Ollamy. Automatyczna selekcja preferuje pobrany model 14B uncensored, nawet jeśli jego nazwa nie zawiera Vision. Wymaga potwierdzenia obsługi obrazów przez /api/show; gdy tego nie ma, serwer zwróci rzeczywisty błąd zamiast udawać analizę. Model powinien widnieć w wyniku ollama list.
 - Pamięć jest plikiem JSON zapisywanym atomowo z uprawnieniami 0600. Domyślny katalog to ~/.local/share/bastillaos/ dla użytkownika backendu. SVL_MEMORY_DIR może wskazywać inny katalog. Kopie zapasowe przygotowuje administrator hosta.
 - Jeśli SVL_MEMORY_EMBED_MODEL jest ustawiony i model embeddings działa w Ollama, wyszukiwanie ma ranking semantyczny. Jeśli embeddings nie odpowie, pozostaje rzeczywiste wyszukiwanie tekstowe. Nie jest to trenowanie wag LLM.
 - SVL_MEMORY_AUTOSAVE=on zapisuje udane epizody czatu (wiadomość operatora i fragment rzeczywistej odpowiedzi); pomija załączniki i komendy z prefiksem /. Można go wyłączyć przez off. Nie wklejaj sekretów do czatu. Filtr redaguje część formatów tokenów, ale nie zastępuje ochrony informacji poufnych.
