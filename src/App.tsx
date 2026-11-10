@@ -416,6 +416,28 @@ export default function App() {
     }
   };
 
+  // A new chat is a session boundary, not a destructive clear operation.
+  // The kernel retains previous transcripts, and the backend excludes them
+  // from model context after the SVL_SESSION marker.
+  const handleNewChat = async (): Promise<void> => {
+    if (isAgentLoadingRef.current) throw new Error('Zakończ bieżącą odpowiedź przed utworzeniem nowego czatu.');
+    setAgentError(null);
+    const response = await fetch('/api/triad/chat/new-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const result = await response.json();
+    if (!response.ok || result.success !== true || !result.state?.store) {
+      throw new Error(result.error || 'Nie udało się utworzyć nowego czatu.');
+    }
+    const normalized = normalizeDataStore(result.state.store);
+    if (!normalized.chat_history.some((entry) => entry.agent === 'SVL_SESSION' && entry.id === result.sessionId)) {
+      throw new Error('Serwer nie potwierdził zapisu granicy nowego czatu.');
+    }
+    setDataStore(normalized);
+  };
+
   const handleProvisionGeminiVm = async (): Promise<{ status: string; sshCommand: string }> => {
     const response = await fetch('/api/vm-gemini-4/provision', {
       method: 'POST',
@@ -561,6 +583,7 @@ export default function App() {
               isLoading={isAgentLoading}
               sendError={agentError}
               onClearHistory={handleClearHistory}
+              onNewChat={handleNewChat}
               onForceSync={handleForceSync}
             />
           )}
