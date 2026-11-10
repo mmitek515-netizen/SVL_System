@@ -5,8 +5,10 @@ on:
     branches: [main]
     paths:
       - 'scripts/mcp-bridge.mjs'
+      - 'scripts/ai-studio-mcp.mjs'
       - 'scripts/keep-mcp-alive.sh'
       - 'tests/mcp-bridge.test.mjs'
+      - 'tests/ai-studio-mcp.test.mjs'
       - '.devcontainer/devcontainer.json'
       - '.github/workflows/mcp-check.yml'
   workflow_dispatch:
@@ -26,5 +28,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node --check scripts/mcp-bridge.mjs
+      - run: node --check scripts/ai-studio-mcp.mjs
       - run: bash -n scripts/keep-mcp-alive.sh
-      - run: node --test tests/mcp-bridge.test.mjs
+      - run: node --test tests/mcp-bridge.test.mjs tests/ai-studio-mcp.test.mjs
