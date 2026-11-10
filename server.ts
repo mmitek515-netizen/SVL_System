@@ -10,6 +10,8 @@ import os from 'os';
 import { randomUUID, createHash } from 'crypto';
 import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import { createFleetRouter } from './src/lib/fleetRoutes';
+import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
+import { SharedSystemMemory, memoryContext, type MemoryScope } from './src/kernel/systemMemory';
 import type { ChatSystemChange } from './src/kernel/chatChanges';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 import {
@@ -155,6 +157,9 @@ const PORT = Number.isFinite(DEFAULT_PORT) && DEFAULT_PORT > 0 ? DEFAULT_PORT : 
 let activeServerPort = PORT;
 const PYTHON_SCRIPT_PATH = path.resolve('svl_kernel.py');
 const KERNEL_STORE_PATH = path.resolve(process.env.SVL_KERNEL_STORE_PATH || '.svl_kernel_store.json');
+const sharedSystemMemory = new SharedSystemMemory();
+const OLLAMA_VISION_MODEL = (process.env.OLLAMA_VISION_MODEL || 'llama3.2-vision:11b').trim();
+const SVL_MEMORY_AUTOSAVE = /^(on|1|true|yes)$/i.test((process.env.SVL_MEMORY_AUTOSAVE || 'on').trim());
 
 // Configure high body limit (50MB) for file uploads, images, logs, and kernel snapshots
 app.use(express.json({ limit: '96mb' }));
@@ -162,6 +167,8 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Dedicated, authenticated registry; no mock assets or invented telemetry.
 app.use('/api/fleet', createFleetRouter());
+// Real, authenticated-by-token-or-localhost multimodal and durable memory services.
+app.use('/api/ai/runtime', createAiRuntimeRouter(sharedSystemMemory));
 
 // Catch payload too large or invalid body before routing
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -5382,8 +5389,20 @@ app.post('/api/triad/message', async (req, res) => {
     const results = await Promise.all(targetAgents.map(async (agent) => {
       if (llmProviders.length > 0) {
         try {
-          const result = await generateWithChain(LLM_CHAIN_CONFIG, {
-            system: `${CHAT_AGENT_MISSIONS[agent]} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}${hasImageAttachment ? ' Do wiadomości dołączono zdjęcie — obejrzyj je i opisz konkretnie, co faktycznie na nim widać (obiekty, osoby, światło, zmiany). Nie powtarzaj wcześniejszych odpowiedzi i nie odpowiadaj ogólnikami o systemie.' : ''}`,
+          const relevantMemory = await sharedSystemMemory.search(
+            cleanMessage,
+            ['global', ('agent:' + (agent === 'si_1' ? 'Aria' : agent)) as MemoryScope],
+            5,
+          ).catch((error) => {
+            pushSystemLog('warn', 'KERNEL', '[AI MEMORY] Odczyt niedostępny: ' + String(error).slice(0, 120));
+            return [];
+          });
+          // A vision-capable model is required for attached images. Never send them to a text-only model.
+          const requestConfig: LlmChainConfig = hasImageAttachment
+            ? { ...LLM_CHAIN_CONFIG, providers: ['ollama'], ollamaModel: OLLAMA_VISION_MODEL }
+            : LLM_CHAIN_CONFIG;
+          const result = await generateWithChain(requestConfig, {
+            system: `${CHAT_AGENT_MISSIONS[agent]}${memoryContext(relevantMemory)} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}${hasImageAttachment ? ' Do wiadomości dołączono zdjęcie — obejrzyj je i opisz konkretnie, co faktycznie na nim widać (obiekty, osoby, światło, zmiany). Nie powtarzaj wcześniejszych odpowiedzi i nie odpowiadaj ogólnikami o systemie.' : ''}`,
             // Lokalny model: krótsza historia = mniej tokenów do przetworzenia przed odpowiedzią.
             // Przy zdjęciu pomijamy historię, by model nie powielał poprzednich, identycznych odpowiedzi.
             history: hasImageAttachment ? [] : usesOllama() && !CLOUD_LLM_ENABLED ? buildLlmHistory(chatHistory, agent, 4, 800) : buildLlmHistory(chatHistory, agent),
@@ -5442,6 +5461,15 @@ app.post('/api/triad/message', async (req, res) => {
     const finalState = await getPythonKernelState(true);
     if (!hasPersistedAgentProtocolTranscript(finalState, transcript, previousChatHistoryLength)) {
       throw new Error('Jądro nie potwierdziło zapisu wiadomości i odpowiedzi agentów.');
+    }
+    // Persist real successful turns as shared episodes, never binary attachments or slash commands.
+    // Failure to index memory must not masquerade as a failed chat response.
+    if (SVL_MEMORY_AUTOSAVE && attachments.length === 0 && typeof message === 'string'
+        && message.trim().length >= 12 && message.length <= 1500 && !message.trim().startsWith('/')) {
+      const lead = targetAgents[0];
+      const episode = 'Operator: ' + message.trim() + '\n' + lead + ': ' + replyMap[lead].slice(0, 900);
+      await sharedSystemMemory.add({ text: episode, scope: 'global', kind: 'episode', source: 'chat' })
+        .catch((error) => pushSystemLog('warn', 'KERNEL', '[AI MEMORY] Zapis niedostępny: ' + String(error).slice(0, 120)));
     }
     return res.json({
       success: true,
