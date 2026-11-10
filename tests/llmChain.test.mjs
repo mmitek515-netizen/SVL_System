@@ -232,10 +232,10 @@ test('Ollama: keep_alive, num_ctx i num_thread trafiają do żądania', async ()
   const { impl, calls } = mockFetch([[/api\/chat/, { respond: () => ollamaOk('ok') }]]);
   await generateWithChain({ providers: ['ollama'], ollamaModel: 'm', ollamaNumThread: 4, fetchImpl: impl }, request);
   const body = calls[0].body;
-  assert.equal(body.keep_alive, '24h');
+  assert.equal(body.keep_alive, '5m');
   assert.equal(body.options.num_ctx, 4096);
   assert.equal(body.options.num_thread, 4);
-  assert.equal(body.options.num_predict, 3072);
+  assert.equal(body.options.num_predict, 768);
   const custom = mockFetch([[/api\/chat/, { respond: () => ollamaOk('ok') }]]);
   await generateWithChain({ providers: ['ollama'], ollamaModel: 'm', ollamaKeepAlive: '-1', ollamaNumCtx: 2048, ollamaNumPredict: 512, fetchImpl: custom.impl }, request);
   assert.equal(custom.calls[0].body.keep_alive, -1);
@@ -248,7 +248,7 @@ test('Ollama: keep_alive, num_ctx i num_thread trafiają do żądania', async ()
   assert.equal(lowContext.calls[0].body.options.num_ctx, 512);
 
   assert.equal(parseKeepAlive('30m'), '30m');
-  assert.equal(parseKeepAlive(''), '24h');
+  assert.equal(parseKeepAlive(''), '5m');
 });
 
 test('Ollama: zdjęcie przy modelu bez vision → czytelny błąd; z vision → obrazy w żądaniu', async () => {
@@ -279,7 +279,7 @@ test('rozgrzewka Ollamy wczytuje model i nie rzuca przy awarii', async () => {
   const warm = await warmupOllama({ ollamaModel: 'qwen3.5:4b', fetchImpl: ok.impl });
   assert.equal(warm.ok, true);
   assert.deepEqual(ok.calls[0].body.messages, []);
-  assert.equal(ok.calls[0].body.keep_alive, '24h');
+  assert.equal(ok.calls[0].body.keep_alive, '5m');
   const down = mockFetch([[/api\/chat/, { respond: () => { throw new TypeError('fetch failed'); } }]]);
   const failed = await warmupOllama({ ollamaModel: 'qwen3.5:4b', fetchImpl: down.impl });
   assert.equal(failed.ok, false);
