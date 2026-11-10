@@ -2382,7 +2382,7 @@ function isSystemVersionNewer(candidate: string, current: string): boolean {
 // --- VM_TEN_SYSTEM HYPERVISOR & PRODUCTION IMPROVEMENTS (DEPLOYED BY ASTYRIA) ---
 export interface VmTenSystemState {
   vmName: string;
-  status: 'DEPLOYED_PRODUCTION';
+  status: 'DEPLOYED_PRODUCTION' | 'UNVERIFIED';
   kernelVersion: string;
   appVersion: string;
   filesystem: string;
@@ -2407,7 +2407,7 @@ export interface VmTenSystemState {
 
 const vmTenSystemState: VmTenSystemState = {
   vmName: 'VM_Ten_System',
-  status: 'DEPLOYED_PRODUCTION',
+  status: 'UNVERIFIED',
   kernelVersion: '9.0.0-Triada-BestOS-Mission',
   appVersion: '1.2.3-NodeReact-VM',
   filesystem: 'ext4',
@@ -2440,14 +2440,20 @@ function getVmMemoryTelemetry() {
   const rssMB = Math.round((mem.rss / (1024 * 1024)) * 10) / 10;
   const heapUsedMB = Math.round((mem.heapUsed / (1024 * 1024)) * 10) / 10;
   const heapTotalMB = Math.round((mem.heapTotal / (1024 * 1024)) * 10) / 10;
-  const utilizationPercent = Math.min(68.5, Math.round(((rssMB / vmTenSystemState.ramAllocatedMB) * 100) * 10) / 10);
+  // Process RSS relative to actual host total RAM; never clip the measurement.
+  const hostTotalMB = Math.round(os.totalmem() / (1024 * 1024));
+  const utilizationPercent = hostTotalMB > 0
+    ? Math.round((rssMB / hostTotalMB) * 1000) / 10 : null;
   return {
     rssMB,
     heapUsedMB,
     heapTotalMB,
-    allocatedMB: vmTenSystemState.ramAllocatedMB,
+    allocatedMB: null,
+    hostTotalMB,
+    source: 'node:process.memoryUsage',
+    scope: 'process-rss-vs-host-total-not-vm',
     utilizationPercent,
-    under70PercentIdle: utilizationPercent < 70
+    under70PercentIdle: null
   };
 }
 
@@ -2460,9 +2466,9 @@ function optimizeVmMemoryNow(reason = 'Optymalizacja pamięci VM_Ten_System'): R
   }
   const telemetry = getVmMemoryTelemetry();
   pushSystemLog(
-    'healed',
+    'info',
     'KERNEL',
-    `[VM_Ten_System: MEMORY_GUARD] ${reason} — Zużycie RAM: ${telemetry.rssMB} MB / ${telemetry.allocatedMB} MB (${telemetry.utilizationPercent}% < 70% Idle).`
+    `[BACKEND MEMORY] Odczyt RSS procesu: ${telemetry.rssMB} MB; ${reason}. Optymalizacja VM nie została wykonana.`
   );
   return telemetry;
 }
@@ -2471,8 +2477,7 @@ async function createVmSnapshotNow(reason = 'Automatyczny snapshot 5-min VM_Ten_
   try {
     const state = await getPythonKernelState(true);
     const mem = getVmMemoryTelemetry();
-    vmTenSystemState.snapshotsCount += 1;
-    vmTenSystemState.lastSnapshotTime = new Date().toLocaleTimeString('pl-PL');
+    // Record successful writes only after fs.writeFileSync below.
 
     const snapshotPayload = {
       vm_name: vmTenSystemState.vmName,
@@ -2492,6 +2497,8 @@ async function createVmSnapshotNow(reason = 'Automatyczny snapshot 5-min VM_Ten_
 
     const snapshotPath = path.join(EXPORTS_DIR, 'vm_ten_system_snapshot.json');
     fs.writeFileSync(snapshotPath, JSON.stringify(snapshotPayload, null, 2), 'utf-8');
+    vmTenSystemState.snapshotsCount += 1;
+    vmTenSystemState.lastSnapshotTime = new Date().toLocaleTimeString('pl-PL');
 
     const scriptPath = path.join(EXPORTS_DIR, 'vm_ten_sys.sh');
     if (!fs.existsSync(scriptPath)) {
@@ -2500,7 +2507,7 @@ async function createVmSnapshotNow(reason = 'Automatyczny snapshot 5-min VM_Ten_
     }
 
     pushSystemLog(
-      'healed',
+      'info',
       'KERNEL',
       `[VM_Ten_System: BACKUP_API] Zapisano migawkę vm_ten_system_snapshot.json (#${vmTenSystemState.snapshotsCount}) i zsynchronizowano z DATA_STORE.`
     );
@@ -2515,7 +2522,7 @@ async function createVmSnapshotNow(reason = 'Automatyczny snapshot 5-min VM_Ten_
 app.use((req, res, next) => {
   vmTenSystemState.firewallInspectedRequests += 1;
   res.setHeader('X-VM-Ten-System', 'v8.1.0-VM_Ten_System');
-  res.setHeader('X-VM-Firewall', 'UFW-RING0-ACTIVE');
+  // No false firewall confirmation: this middleware is not a UFW audit.
   next();
 });
 
@@ -2537,7 +2544,7 @@ try {
 // 3. VM_Ten_System 5-Minute Automatic Snapshot & Memory Guard Loop
 setInterval(() => {
   createVmSnapshotNow('Cykliczny 5-minutowy zapis snapshotu VM_Ten_System');
-  optimizeVmMemoryNow('Cykliczna kontrola limitu pamięci 4 GiB (<70% Idle)');
+  // Merely reading process RSS is not memory optimization.
   if (continuousMissionEnabled) {
     pushSystemLog(
       'healed',
@@ -2761,6 +2768,27 @@ app.post('/api/kernel/report', async (_req, res) => {
 
 // --- INFRASTRUCTURE & VM_TEN_SYSTEM API ENDPOINTS (COMMANDER: ALEX & ASTYRIA) ---
 
+// Report only the currently running process. No fictional agent or VM PIDs.
+app.get('/api/infrastructure/processes', (_req, res) => {
+  const usage = process.cpuUsage();
+  const elapsed = Math.floor(process.uptime());
+  return res.json({
+    source: 'node:process',
+    scope: 'current-backend-only',
+    verifiedAt: new Date().toISOString(),
+    processes: [{
+      pid: process.pid,
+      name: 'bastilla-node-backend',
+      owner: 'runtime',
+      cpu: null,
+      cpuTimeMs: Math.round((usage.user + usage.system) / 1000),
+      memory: (process.memoryUsage().rss / (1024 * 1024)).toFixed(1) + ' MB',
+      status: 'RUNNING',
+      runtime: Math.floor(elapsed / 3600) + 'h ' + Math.floor(elapsed % 3600 / 60) + 'm ' + elapsed % 60 + 's',
+    }],
+  });
+});
+
 // GET Infrastructure status & self-healing metrics
 app.get('/api/infrastructure/status', async (_req, res) => {
   try {
@@ -2782,7 +2810,20 @@ app.get('/api/infrastructure/status', async (_req, res) => {
       healedIncidents: [...healedIncidents].reverse(),
       memoryUsage: process.memoryUsage(),
       vmTenSystem: {
-        ...vmTenSystemState,
+        vmName: 'VM_Ten_System',
+        status: 'UNVERIFIED',
+        runtimeVerified: false,
+        filesystem: null,
+        storageGiB: null,
+        ramAllocatedMB: null,
+        vcpu: null,
+        firewallStatus: 'UNVERIFIED',
+        daemonReloaderStatus: vmTenSystemState.daemonReloaderEvents > 0
+          ? 'FILE_EVENTS_OBSERVED' : 'UNVERIFIED',
+        daemonReloaderEvents: vmTenSystemState.daemonReloaderEvents,
+        lastCwdReload: vmTenSystemState.daemonReloaderEvents > 0 ? vmTenSystemState.lastCwdReload : null,
+        snapshotsCount: vmTenSystemState.snapshotsCount,
+        lastSnapshotTime: vmTenSystemState.snapshotsCount > 0 ? vmTenSystemState.lastSnapshotTime : null,
         memoryTelemetry: mem
       },
       uptimeSeconds: Math.round(process.uptime()),
@@ -2813,7 +2854,20 @@ app.get('/api/astyria/mission-status', async (_req, res) => {
       totalLogsCount: systemLogs.length,
       recentHealed,
       vmTenSystem: {
-        ...vmTenSystemState,
+        vmName: 'VM_Ten_System',
+        status: 'UNVERIFIED',
+        runtimeVerified: false,
+        filesystem: null,
+        storageGiB: null,
+        ramAllocatedMB: null,
+        vcpu: null,
+        firewallStatus: 'UNVERIFIED',
+        daemonReloaderStatus: vmTenSystemState.daemonReloaderEvents > 0
+          ? 'FILE_EVENTS_OBSERVED' : 'UNVERIFIED',
+        daemonReloaderEvents: vmTenSystemState.daemonReloaderEvents,
+        lastCwdReload: vmTenSystemState.daemonReloaderEvents > 0 ? vmTenSystemState.lastCwdReload : null,
+        snapshotsCount: vmTenSystemState.snapshotsCount,
+        lastSnapshotTime: vmTenSystemState.snapshotsCount > 0 ? vmTenSystemState.lastSnapshotTime : null,
         memoryTelemetry: mem
       }
     });
