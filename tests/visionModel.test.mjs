@@ -19,8 +19,8 @@ function mockedOllama(models, capabilities = {}) {
   return { fetchImpl, requests };
 }
 
-test('auto chooses installed 14B uncensored Vision over 11B or larger unrelated models', async () => {
-  const preferred = 'my-uncensored-vision:14b';
+test('auto chooses installed image-capable 14B uncensored without vision in its name', async () => {
+  const preferred = 'my-uncensored:14b';
   const alt = 'llama3.2-vision:11b';
   const { fetchImpl, requests } = mockedOllama(
     ['some-text:32b', alt, preferred],
@@ -32,6 +32,7 @@ test('auto chooses installed 14B uncensored Vision over 11B or larger unrelated 
   assert.equal(result.visionSupported, true);
   assert.equal(result.modelInstalled, true);
   assert.ok(requests.some(({ uri }) => uri.endsWith('/api/show')));
+  assert.ok(!preferred.toLowerCase().includes('vision'), 'model name must not imply image capability');
 });
 
 test('auto refuses text-only model even when filename contains 14b uncensored', async () => {
