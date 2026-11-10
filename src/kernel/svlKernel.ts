@@ -319,7 +319,7 @@ export function normalizeDataStore(raw: any): DataStore {
       cleanText.includes('powiązałam ten temat z naszym rejestrem');
 
     // Skip consecutive exact duplicates from the same agent
-    if (cleanChat.length > 0 && cleanChat[cleanChat.length - 1].agent === m.agent && cleanChat[cleanChat.length - 1].tekst === m.tekst) {
+    if (m.agent !== 'SVL_SESSION' && cleanChat.length > 0 && cleanChat[cleanChat.length - 1].agent === m.agent && cleanChat[cleanChat.length - 1].tekst === m.tekst) {
       continue;
     }
 
