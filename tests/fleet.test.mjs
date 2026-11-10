@@ -66,7 +66,7 @@ test('rejects synthetic feed IDs, invalid coordinate frame, future and stale tim
   const ship = registerFleetVessel(db, { name: 'Project A', kind: 'ship' }, now);
   const base = {
     shipId: ship.id, observedAt: '2026-11-10T12:00:00Z',
-    coordinateFrame: FLEET_FRAME, xAu: 0.1, yAu: -0.2, zAu: 0.3, sourceRef: 'telemetry-device-1',
+    coordinateFrame: FLEET_FRAME, xAu: 0.1, yAu: -0.2, zAu: 0.3, sourceRef: 'telemetry-device-1', sourceId: 'device-01',
   };
   assert.throws(() => reportFleetPosition(db, { ...base, sourceRef: 'demo://project-A' }, now), /Synthetic/);
   assert.throws(() => reportFleetPosition(db, { ...base, coordinateFrame: 'unknown' }, now), /Unsupported/);
@@ -77,7 +77,7 @@ test('rejects synthetic feed IDs, invalid coordinate frame, future and stale tim
 test('verified report expires after TTL; historical source stays identifiable', () => {
   const db = readFleet('/this/path/does/not/exist.json');
   const ship = registerFleetVessel(db, { name: 'Project A', kind: 'ship' }, now);
-  reportFleetPosition(db, { shipId: ship.id, sourceRef: 'telemetry-device-1',
+  reportFleetPosition(db, { shipId: ship.id, sourceRef: 'telemetry-device-1', sourceId: 'device-01',
     observedAt: '2026-11-10T12:00:00Z', coordinateFrame: FLEET_FRAME, xAu: 0.1, yAu: -0.2, zAu: 0.3 }, now);
   assert.deepEqual(fleetView(db, new Date(now.getTime() + 30_000)).vessels[0].position,
     { coordinateFrame: FLEET_FRAME, xAu: 0.1, yAu: -0.2, zAu: 0.3 });
