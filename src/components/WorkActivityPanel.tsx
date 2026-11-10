@@ -119,7 +119,7 @@ export const WorkActivityPanel: React.FC<{ chatBusy?: boolean; onClose?: () => v
             <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-slate-200">{event.source}</span>
             <span className="text-[10px] text-slate-500">{event.timestamp}</span>
           </div>
-          <div className={\`mt-2 break-words text-xs leading-relaxed \${open ? 'whitespace-pre-wrap text-slate-200' : 'line-clamp-2 text-slate-400'}\`}>{event.message}</div>
+          <div className={`mt-2 break-words text-xs leading-relaxed ${open ? 'whitespace-pre-wrap text-slate-200' : 'line-clamp-2 text-slate-400'}`}>{event.message}</div>
           {open && event.healingDetails && <p className="mt-2 break-words whitespace-pre-wrap border-t border-slate-700 pt-2 text-xs text-emerald-200">{event.healingDetails}</p>}
         </button>;
       })}
