@@ -5104,7 +5104,7 @@ app.get('/api/triad/model-status', async (_req, res) => {
     const response = await fetch(base + '/api/tags', { signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error('Ollama API /api/tags: HTTP ' + response.status);
     const data: any = await response.json();
-    const models = (Array.isArray(data?.models) ? data.models : [])
+    const models: Array<{ name: string; size: number }> = (Array.isArray(data?.models) ? data.models : [])
       .filter((model: any) => typeof model?.name === 'string')
       .map((model: any) => ({ name: model.name as string, size: Number(model.size) || 0 }));
     const configured = (LLM_CHAIN_CONFIG.ollamaModel || 'auto').trim();
