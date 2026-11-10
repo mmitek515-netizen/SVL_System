@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   DataStore,
   INITIAL_DATA_STORE,
@@ -59,7 +59,7 @@ export default function App() {
     return INITIAL_DATA_STORE;
   });
 
-  const dataStore = normalizeDataStore(rawDataStore);
+  const dataStore = useMemo(() => normalizeDataStore(rawDataStore), [rawDataStore]);
   const syncGenerationRef = useRef(0);
   const [kernelSyncStatus, setKernelSyncStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
 
@@ -69,6 +69,8 @@ export default function App() {
     setRawDataStore((prev) => {
       const safePrev = normalizeDataStore(prev);
       const next = typeof updater === 'function' ? (updater as (p: DataStore) => DataStore)(safePrev) : updater;
+      // Avoid unnecessary writes to localStorage and cross-tab re-fetch loops.
+      if (JSON.stringify(safePrev) === JSON.stringify(next)) return prev;
       return normalizeDataStore(next);
     });
   }, []);
@@ -186,7 +188,12 @@ export default function App() {
   };
 
   const handleForceSync = async () => {
-    await handleSyncSystem();
+    try {
+      await handleSyncSystem();
+      setAgentError(null);
+    } catch (error) {
+      setAgentError(error instanceof Error ? error.message : 'Synchronizacja jądra nie powiodła się.');
+    }
   };
 
   const handleSendProtocol = async (request: AgentProtocolRequest): Promise<AgentProtocolReply | undefined> => {
