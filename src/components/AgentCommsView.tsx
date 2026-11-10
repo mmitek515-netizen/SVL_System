@@ -38,6 +38,8 @@ interface AgentCommsViewProps {
   onRunAstyriaMission: (action: AstyriaMissionAction) => Promise<void>;
   isLoading: boolean;
   sendError?: string | null;
+  canCancelMessage?: boolean;
+  onCancelMessage?: () => void;
   onClearHistory: () => void;
   onNewChat?: () => Promise<void>;
   onForceSync?: () => void;
@@ -53,6 +55,8 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   onRunAstyriaMission,
   isLoading,
   sendError,
+  canCancelMessage,
+  onCancelMessage,
   onClearHistory,
   onNewChat,
   onForceSync,
@@ -60,7 +64,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   onUnclog,
   onRestoreBackup,
 }) => {
-  const [selectedTarget, setSelectedTarget] = useState<'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1'>('triad');
+  const [selectedTarget, setSelectedTarget] = useState<'triad' | 'Alex' | 'Astyria' | 'Aurelius' | 'si_1'>('si_1');
   const [selectedCommand, setSelectedCommand] = useState<AgentProtocolCommand>('SYSTEM_STATUS');
   const [signal, setSignal] = useState('');
   const [omega, setOmega] = useState('');
@@ -75,6 +79,34 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [newChatError, setNewChatError] = useState('');
   const [avatars, setAvatars] = useState<SvlAvatars>({});
   const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
+  const [ollamaHealth, setOllamaHealth] = useState<{ label: string; detail: string; connected: boolean }>({
+    label: 'NIEZWERYFIKOWANA', detail: 'Naciśnij, aby sprawdzić połączenie czatu z Ollamą.', connected: false,
+  });
+  const [checkingOllama, setCheckingOllama] = useState(false);
+  const checkOllamaHealth = async () => {
+    setCheckingOllama(true);
+    try {
+      const response = await fetch('/api/triad/model-status', { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const status = await response.json();
+      if (status.success !== true) throw new Error('Brak odpowiedzi diagnostycznej.');
+      const connected = status.reachable === true && status.modelAvailable === true;
+      setOllamaHealth({
+        label: connected ? 'GOTOWA · ' + String(status.model || 'model') : status.reachable ? 'BRAK MODELU' : 'NIEDOSTĘPNA',
+        detail: connected ? 'Backend widzi model Ollamy przez /api/tags. To nie potwierdza jeszcze generowania.' : String(status.error || 'Sprawdź Ollamę na hoście Linux.'),
+        connected,
+      });
+    } catch (error) {
+      setOllamaHealth({
+        label: 'NIEZWERYFIKOWANA',
+        detail: 'Nie można odczytać statusu backendu: ' + String(error instanceof Error ? error.message : error),
+        connected: false,
+      });
+    } finally {
+      setCheckingOllama(false);
+    }
+  };
+  useEffect(() => { void checkOllamaHealth(); }, []);
   useEffect(() => {
     let alive = true;
     void fetch('/api/ai/runtime/avatars', { cache: 'no-store' })
@@ -275,10 +307,12 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 text-slate-400 text-[11px] flex-wrap">
-            <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[10px] text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-2.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.2)]">
-              <Sigma className="w-3 h-3 text-emerald-400" />
-              WITHOUT_NLP: OK
-            </span>
+            <button type="button" onClick={() => void checkOllamaHealth()} disabled={checkingOllama}
+              title={ollamaHealth.detail} aria-label={'Sprawdź Ollamę: ' + ollamaHealth.detail}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10px] ${ollamaHealth.connected ? 'border-emerald-500/40 bg-emerald-950/60 text-emerald-300' : 'border-amber-500/40 bg-amber-950/40 text-amber-200'}`}>
+              <RefreshCw className={`h-3 w-3 ${checkingOllama ? 'animate-spin' : ''}`} />
+              Ollama: {ollamaHealth.label}
+            </button>
             <span className="text-[10px] text-slate-500 font-mono">
               WIADOMOŚCI: <strong className="text-slate-300">{displayedMessages.length}</strong>
             </span>
@@ -598,6 +632,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
             </ul>
           )}
           {attachmentError && <p role="alert" className="mb-2 text-[10px] text-rose-300">{attachmentError}</p>}
+          {sendError && <p role="alert" className="mb-2 rounded-md border border-rose-500/30 bg-rose-950/30 px-2 py-1.5 text-[11px] text-rose-200">{sendError}</p>}
           <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="relative flex min-w-0 flex-1 items-center">
             <textarea
@@ -635,9 +670,16 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               aria-label="Dołącz pliki tekstowe, DOCX, PDF lub JPG"
             />
           </label>
+          {isLoading && canCancelMessage && onCancelMessage && (
+            <button type="button" onClick={onCancelMessage}
+              className="min-h-9 shrink-0 rounded-lg border border-rose-500/50 bg-rose-950/60 px-3 text-xs text-rose-200 hover:bg-rose-900/70"
+              aria-label="Przerwij oczekiwanie na odpowiedź Ollamy">
+              Przerwij
+            </button>
+          )}
           <button
             type="submit"
-            aria-label="Wyślij wiadomość do Astyrii"
+            aria-label={selectedTarget === 'triad' ? 'Wyślij do wszystkich agentów' : 'Wyślij do ' + (selectedTarget === 'si_1' ? 'Arii' : selectedTarget)}
             disabled={(!messageText.trim() && chatAttachments.length === 0) || isLoading}
             className="flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 px-2.5 py-2.5 font-mono text-xs font-bold text-slate-950 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition hover:from-emerald-400 hover:to-cyan-400 disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-xl sm:px-3"
           >
