@@ -27,6 +27,9 @@ export interface ChatRecord {
   tekst: string;
   id?: string;
   timestamp?: string;
+  to?: string;
+  kind?: string;
+  source?: string;
   file?: FileAttachment;
 }
 
