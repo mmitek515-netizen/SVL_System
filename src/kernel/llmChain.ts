@@ -336,8 +336,14 @@ export function stripThinking(text: string): string {
 export function pickOllamaChatModel(models: Array<{ name: string; size?: number }>): string | null {
   const chat = models.filter((model) => model.name && !/embed|bge|minilm|nomic/i.test(model.name));
   if (chat.length === 0) return null;
-  // Największy pobrany model = zwykle najlepszy, jaki zmieścił się na serwerze.
-  return [...chat].sort((a, b) => (b.size ?? 0) - (a.size ?? 0))[0].name;
+  // Prefer the installed 14B uncensored model when its TAG identifies it;
+  // do not assume unverified capabilities or invent a model name.
+  const score = (name: string) => {
+    const fourteen = /(^|[^0-9])14b([^0-9]|$)/i.test(name);
+    const uncensored = /uncensored|abliterat|unfiltered|dolphin/i.test(name);
+    return (fourteen ? 100 : 0) + (uncensored ? 20 : 0);
+  };
+  return [...chat].sort((a, b) => score(b.name) - score(a.name) || (b.size ?? 0) - (a.size ?? 0))[0].name;
 }
 
 const resolvedOllamaModels = new Map<string, string>();
