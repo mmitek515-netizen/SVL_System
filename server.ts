@@ -11,6 +11,7 @@ import { randomUUID, createHash, timingSafeEqual } from 'crypto';
 import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import { createFleetRouter } from './src/lib/fleetRoutes';
 import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
+import { createAiSecurityToolkitRouter } from './src/lib/aiSecurityToolkit';
 import { SharedSystemMemory, memoryContext, type MemoryScope } from './src/kernel/systemMemory';
 import { resolveVisionModel } from './src/kernel/visionModel';
 import { fetchOriginalAgentsStatus } from './src/kernel/originalAgentsStatus.mjs';
@@ -171,6 +172,8 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/api/fleet', createFleetRouter());
 // Real, authenticated-by-token-or-localhost multimodal and durable memory services.
 app.use('/api/ai/runtime', createAiRuntimeRouter(sharedSystemMemory));
+// Tools are discovered from real executables; runs require an explicit secret.
+app.use('/api/ai/security', createAiSecurityToolkitRouter());
 
 // Account status uses host-owned /etc/passwd, not model-generated values.
 // The sudo flag means a matching rule exists, not that the agent is executing.
