@@ -21,13 +21,13 @@ Uzupełnij własny lokalny plik .env, nigdy nie publikuj go w Git:
     OLLAMA_BASE_URL="http://127.0.0.1:11434"
     OLLAMA_VISION_MODEL="llama3.2-vision:11b"
     OPENAI_API_KEY=""
-    OPENAI_IMAGE_MODEL="gpt-image-2.5-flare"
+    OPENAI_IMAGE_MODEL="gpt-image-2.6-sunburst"
     SVL_MEMORY_DIR=""
     SVL_MEMORY_AUTOSAVE="on"
     SVL_MEMORY_EMBED_MODEL="nomic-embed-text"
     SVL_AI_ACCESS_TOKEN=""
 
-- DALL-E 3 został wycofany 12 maja 2026 r.; zamiast niego wdrożony renderer wykorzystuje aktualny OpenAI Images API oraz gpt-image-2.5-flare. Konieczny jest dostęp do modelu, ważny klucz OpenAI API i rozliczanie API.
+- DALL-E 3 został wycofany 12 maja 2026 r.; zamiast niego wdrożony renderer wykorzystuje aktualny OpenAI Images API oraz gpt-image-2.6-sunburst (model szczegółowego renderowania, z opcją wyboru innego modelu przez .env). Konieczny jest dostęp do modelu, ważny klucz OpenAI API i rozliczanie API.
 - Real Vision wysyła obraz base64 w faktycznym żądaniu POST /api/chat do Ollamy; model powinien widnieć w wyniku ollama list.
 - Pamięć jest plikiem JSON zapisywanym atomowo z uprawnieniami 0600. Domyślny katalog to ~/.local/share/bastillaos/ dla użytkownika backendu. SVL_MEMORY_DIR może wskazywać inny katalog. Kopie zapasowe przygotowuje administrator hosta.
 - Jeśli SVL_MEMORY_EMBED_MODEL jest ustawiony i model embeddings działa w Ollama, wyszukiwanie ma ranking semantyczny. Jeśli embeddings nie odpowie, pozostaje rzeczywiste wyszukiwanie tekstowe. Nie jest to trenowanie wag LLM.
