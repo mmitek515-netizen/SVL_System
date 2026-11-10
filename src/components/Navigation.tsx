@@ -4,6 +4,7 @@ import { Terminal, MessagesSquare, FileCode2, Database, History, Activity, Cpu, 
 export type TabId =
   | 'home'
   | 'comms'
+  | 'ai_tools'
   | 'approvals'
   | 'process_matrix'
   | 'astyria_mission'
@@ -22,7 +23,7 @@ export type TabId =
   | 'github';
 
 export const TAB_IDS: readonly TabId[] = [
-  'home', 'comms', 'approvals', 'process_matrix', 'astyria_mission', 'schema_graph', 'temporal',
+  'home', 'comms', 'ai_tools', 'approvals', 'process_matrix', 'astyria_mission', 'schema_graph', 'temporal',
   'terminal', 'monolith', 'datastore', 'diagnostics', 'visualizer', 'file_explorer',
   'apps', 'hyper_com', 'fleet', 'without_nlp', 'github',
 ];
@@ -62,6 +63,12 @@ export const Navigation: React.FC<NavigationProps> = ({
       label: 'Komora Triady & Dialog',
       icon: MessagesSquare,
       badge: `${messageCount}`
+    },
+    {
+      id: 'ai_tools' as TabId,
+      label: 'Real Vision · Render · Pamięć AI',
+      icon: Brain,
+      badge: 'AI'
     },
     {
       id: 'approvals' as TabId,
