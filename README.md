@@ -80,5 +80,6 @@ Walidacja kodu aplikacji nie zastępuje budowania ani testu ISO na maszynie doce
 - [Czysta baza po reinstalacji](docs/REINSTALL_BASELINE.md)
 - [Budowa i instalacja Bastilla OS](bastillaos/README.md)
 - [Globalna synchronizacja DATA_STORE, GitHub i AI Studio](docs/GLOBAL_SYNC.md)
+- [Flota i statki kosmiczne — interaktywny panel danych rzeczywistych](docs/FLEET_REAL_DATA.md)
 - [Konfiguracja mostu MCP](docs/MCP_SETUP.md)
 - [MCP wyłącznie przez Google AI Studio (bez Codespaces)](docs/MCP_AI_STUDIO.md)
