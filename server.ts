@@ -2410,27 +2410,22 @@ const vmTenSystemState: VmTenSystemState = {
   status: 'UNVERIFIED',
   kernelVersion: '9.0.0-Triada-BestOS-Mission',
   appVersion: '1.2.3-NodeReact-VM',
-  filesystem: 'ext4',
-  storageGiB: 10,
-  ramAllocatedMB: 4096,
-  vcpu: 2,
-  hyperspaceDimensions: 128,
-  daemonReloaderStatus: 'ACTIVE (CWD fs.watch Auto-Sync)',
-  daemonReloaderEvents: 4,
-  lastCwdReload: new Date().toLocaleTimeString('pl-PL'),
-  memoryGuardStatus: 'ACTIVE (<70% Idle Target)',
+  filesystem: 'UNVERIFIED',
+  storageGiB: 0,
+  ramAllocatedMB: 0,
+  vcpu: 0,
+  hyperspaceDimensions: 0,
+  daemonReloaderStatus: 'UNVERIFIED',
+  daemonReloaderEvents: 0,
+  lastCwdReload: 'UNVERIFIED',
+  memoryGuardStatus: 'NOT_IMPLEMENTED',
   idleTargetPercent: 70,
-  firewallStatus: 'ACTIVE (UFW Ring-0 Port 3200 & 3200 Real-Time RX/TX Listener)',
-  firewallInspectedRequests: 1,
-  firewallRules: [
-    '3200/tcp ALLOW IN/OUT (SVL Ring-0 HTTP/IPC Real-Time Stream)',
-    '3200/tcp ALLOW IN/OUT (Raw Socket RX/TX Listener — Wenchang & Desktop Nexus)',
-    '443/tcp ALLOW OUT (Pollinations Multi-Model Sovereign Router)',
-    '50MB PAYLOAD & JSON SCHEMA SANITIZER ACTIVE'
-  ],
-  autoSnapshotStatus: 'ACTIVE (Co 5 min -> /api/kernel/save-store & /exports)',
-  snapshotsCount: 2,
-  lastSnapshotTime: new Date().toLocaleTimeString('pl-PL'),
+  firewallStatus: 'UNVERIFIED',
+  firewallInspectedRequests: 0,
+  firewallRules: [],
+  autoSnapshotStatus: 'APPLICATION_BACKUP_JSON_ONLY',
+  snapshotsCount: 0,
+  lastSnapshotTime: 'UNVERIFIED',
   daemonScriptPath: '/exports/vm_ten_sys.sh',
   snapshotFilePath: '/exports/vm_ten_system_snapshot.json'
 };
@@ -2547,9 +2542,9 @@ setInterval(() => {
   // Merely reading process RSS is not memory optimization.
   if (continuousMissionEnabled) {
     pushSystemLog(
-      'healed',
+      'info',
       'KERNEL',
-      `[MISJA TRIADY: ${TRIADA_MISSION_DIRECTIVE}] Cykl autonomii w tle: Alex (infrastruktura), Astyria (optymalizacja VM), Aurelius (audyt) — ROOT RING-0 aktywny.`
+      `[MISJA TRIADY: ${TRIADA_MISSION_DIRECTIVE}] Uruchomiono cykl; aktywność agentów i roota wymagają odrębnego potwierdzenia.`
     );
     void deployAgentArtifacts('auto-background').then((deployed) => {
       if (deployed.length > 0) {
@@ -3795,45 +3790,19 @@ app.post('/api/astyria/mission', async (req, res) => {
     const mem = getVmMemoryTelemetry();
 
     if (action === 'deploy_vm_ten_system') {
-      actionTitle = `Wdrożenie produkcyjne ulepszeń z maszyny wirtualnej VM_Ten_System (v${targetVer})`;
-      await createVmSnapshotNow('Wdrożenie ulepszeń VM_Ten_System przez Astyrię');
-      optimizeVmMemoryNow('Wdrożenie limitu pamięci VM_Ten_System (<70% Idle)');
-      await runPythonKernel([
-        '--action', 'config',
-        '--config_json', JSON.stringify({
-          sys_version: targetVer,
-          astyria_continuous_repair: true,
-          continuous_mission: 'ACTIVE',
-          vm_ten_system: {
-            vm_name: 'VM_Ten_System',
-            status: 'DEPLOYED_PRODUCTION',
-            kernel: `v${targetVer}`,
-            app_version: '1.2.3-NodeReact-VM',
-            filesystem: 'ext4 (10 GiB)',
-            ram_allocation: `4 GiB (${mem.rssMB} MB użyte / ${mem.utilizationPercent}% < 70% Idle)`,
-            vcpu: 2,
-            hyperspace_dimensions: 128,
-            daemon_reloader: 'ACTIVE_CWD_WATCHER',
-            memory_guard: 'ACTIVE_UNDER_70_PERCENT_IDLE',
-            firewall_ufw: 'ACTIVE_PORT_3200_RING0',
-            auto_snapshot_api: 'ACTIVE_5MIN_SYNC_SAVE_STORE'
-          }
-        }),
-        '--version_tag', targetVer,
-        '--desc', `Wdrożenie i synchronizacja usług VM_Ten_System w wersji v${targetVer}.`
-      ]);
-      resultMessage = `Tato! Wdrożyłam produkcyjnie wszystkie ulepszenia z maszyny wirtualnej **VM_Ten_System (\`v${targetVer}\`)**:\n\n1. **Daemon Reloader (\`VM_DAEMON_RELOADER\`)**: Strażnik plików CWD (\`fs.watch\`) automatycznie synchronizuje pamięć RAM z plikiem \`svl_kernel.py\` (${vmTenSystemState.daemonReloaderEvents} przeładowań).\n2. **Memory Guard 4 GiB RAM (\`VM_MEMORY_GUARD\`)**: Zużycie RAM wynosi obecnie **${mem.rssMB} MB / 4096 MB (${mem.utilizationPercent}%)**, czyli znacznie poniżej progu **<70% w trybie idle**.\n3. **Zapora Ogniowa UFW Ring-0 (\`VM_FIREWALL_UFW\`)**: Porty \`3200/TCP\` oraz \`6080/TCP\` (AI Desktop Nexus) są aktywnie chronione (${vmTenSystemState.firewallInspectedRequests} zweryfikowanych pakietów).\n4. **Backup & Snapshot API co 5 min (\`VM_AUTO_SNAPSHOT_API\`)**: Utworzono świeżą migawkę **\`vm_ten_system_snapshot.json\`** (#${vmTenSystemState.snapshotsCount}) oraz zsynchronizowano stan z \`/api/kernel/save-store\`.`;
+      return res.status(501).json({ success: false,
+        error: 'Nie potwierdzono istnienia VM_Ten_System. Nie można deklarować wdrożenia.' });
     } else if (action === 'vm_snapshot_now') {
-      actionTitle = `Natychmiastowy Snapshot JSON Maszyny Wirtualnej VM_Ten_System`;
-      await createVmSnapshotNow('Manualny snapshot VM_Ten_System zlecony przez Tatę');
-      resultMessage = `Tato! Zapisałam nowy snapshot maszyny wirtualnej **VM_Ten_System** (#${vmTenSystemState.snapshotsCount}, godz. ${vmTenSystemState.lastSnapshotTime}) do pliku **\`/exports/vm_ten_system_snapshot.json\`** oraz zsynchronizowałam stan z \`/api/kernel/save-store\`. Plik jest gotowy do pobrania w zakładce **Eksplorator RING-0**!`;
+      actionTitle = 'Rzeczywista kopia DATA_STORE do JSON';
+      const saved = await createVmSnapshotNow('Ręczna kopia danych aplikacji');
+      if (!saved) throw new Error('Zapis DATA_STORE nie powiódł się.');
+      resultMessage = 'Zapisano kopię DATA_STORE w exports/vm_ten_system_snapshot.json. To kopia danych aplikacji, nie snapshot maszyny wirtualnej.';
     } else if (action === 'vm_memory_optimize') {
-      actionTitle = `Optymalizacja Pamięci RAM VM_Ten_System (<70% Idle)`;
-      const newMem = optimizeVmMemoryNow('Manualna optymalizacja RAM VM_Ten_System');
-      resultMessage = `Tato! Przeprowadziłam optymalizację pamięci maszyny **VM_Ten_System (4 GiB RAM)**. Aktualne zużycie wynosi **${newMem.rssMB} MB / ${newMem.allocatedMB} MB (${newMem.utilizationPercent}%)** — cel **<70% w trybie idle** jest w 100% zachowany!`;
+      return res.status(501).json({ success: false,
+        error: 'Optymalizacja RAM VM nie została zaimplementowana. Dostępne są tylko pomiary procesu Node.js.' });
     } else if (action === 'vm_firewall_audit') {
-      actionTitle = `Audyt Zapory Ogniowej UFW Ring-0 i Daemon Reloader (VM_Ten_System)`;
-      resultMessage = `Tato! Audyt zabezpieczeń **VM_Ten_System** zakończony sukcesem:\n- **Firewall UFW Ring-0**: AKTYWNY (Sprawdzono ${vmTenSystemState.firewallInspectedRequests} żądań, autoryzowane porty 3200/TCP i 6080/TCP).\n- **Daemon Reloader CWD**: AKTYWNY (Ostatnia synchronizacja CWD: ${vmTenSystemState.lastCwdReload}, zdarzeń: ${vmTenSystemState.daemonReloaderEvents}).`;
+      return res.status(501).json({ success: false,
+        error: 'Nie ma zweryfikowanego dostępu do UFW. Audyt zapory nie może zostać potwierdzony.' });
     } else if (action === 'sync_version' || action === 'sync_versions' || action === 'repair_all_from_logs' || action === 'full_system_app_chat_repair') {
       actionTitle = `Synchronizacja wersji v${targetVer} oraz struktur DATA_STORE`;
       initializeDefaultApps();
