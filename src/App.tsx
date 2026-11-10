@@ -133,12 +133,24 @@ export default function App() {
     };
     void fetchState();
     const interval = window.setInterval(() => void fetchState(), 4000);
+    // Server-sent events notify all tabs after confirmed HTTP mutations.
+    // A subsequent GET still checks authoritative kernel data; SSE itself
+    // is not proof that a host-side operation succeeded.
+    const stream = typeof EventSource !== 'undefined'
+      ? new EventSource('/api/sync/events')
+      : null;
+    stream?.addEventListener('change', () => {
+      window.dispatchEvent(new Event('svl:global-sync'));
+      void fetchState();
+    });
+
     document.addEventListener('visibilitychange', refreshWhenVisible);
     window.addEventListener('focus', refreshWhenVisible);
     window.addEventListener('storage', refreshOnStorage);
     return () => {
       mounted = false;
       window.clearInterval(interval);
+      stream?.close();
       document.removeEventListener('visibilitychange', refreshWhenVisible);
       window.removeEventListener('focus', refreshWhenVisible);
       window.removeEventListener('storage', refreshOnStorage);
@@ -183,6 +195,7 @@ export default function App() {
       }
       setDataStore(normalizeDataStore(snapshot.store));
       setKernelSyncStatus('online');
+      window.dispatchEvent(new Event('svl:global-sync'));
     } catch (error) {
       setKernelSyncStatus('offline');
       throw error;
