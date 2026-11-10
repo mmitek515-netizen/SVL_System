@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Brain, ImagePlus, ScanEye, RefreshCw, Trash2 } from 'lucide-react';
+import { LinuxAgentStatus } from './LinuxAgentStatus';
 
 type Scope = 'global' | 'agent:Aria' | 'agent:Alex' | 'agent:Astyria' | 'agent:Aurelius';
 type MemoryRecord = { id: string; text: string; kind: string; scope: Scope; source: string; createdAt: string };
@@ -138,6 +139,7 @@ export const AiCapabilitiesView: React.FC = () => {
           <RefreshCw size={15} /> Sprawdź stan
         </button>
       </header>
+      <LinuxAgentStatus />
       <label className="flex max-w-lg flex-col gap-1 text-xs">
         Token dostępu do AI (tylko dla zdalnego serwera; nie jest zapisywany w przeglądarce)
         <input type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)}
