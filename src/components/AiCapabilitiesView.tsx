@@ -4,7 +4,7 @@ import { Brain, ImagePlus, ScanEye, RefreshCw, Trash2 } from 'lucide-react';
 type Scope = 'global' | 'agent:Aria' | 'agent:Alex' | 'agent:Astyria' | 'agent:Aurelius';
 type MemoryRecord = { id: string; text: string; kind: string; scope: Scope; source: string; createdAt: string };
 type RuntimeStatus = {
-  vision: { provider: string; model: string; reachable: boolean; modelInstalled: boolean; error?: string };
+  vision: { provider: string; model: string; reachable: boolean; modelInstalled: boolean; visionSupported: boolean; error?: string };
   rendering: { provider: string; model: string; configured: boolean; verified: boolean };
   memory: { persistent: boolean; entries: number; embeddingConfigured: boolean };
 };
@@ -149,7 +149,7 @@ export const AiCapabilitiesView: React.FC = () => {
         <div className="grid gap-2 text-xs sm:grid-cols-3">
           <div className="rounded border border-slate-700 p-3">
             <strong>Ollama Vision</strong><p>{status.vision.model}</p>
-            <p>{status.vision.reachable && status.vision.modelInstalled ? 'Serwer odpowiada; model jest pobrany' : 'Niepotwierdzone: serwer/model niedostępny'}</p>
+            <p>{status.vision.reachable && status.vision.modelInstalled && status.vision.visionSupported ? 'Zainstalowany model z potwierdzoną obsługą obrazów' : 'Brak potwierdzonego modelu Vision — sprawdź Ollama'}</p>
           </div>
           <div className="rounded border border-slate-700 p-3">
             <strong>Generowanie</strong><p>{status.rendering.model}</p>
