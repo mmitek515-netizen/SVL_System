@@ -7,7 +7,7 @@ type Vessel = {
   id: string; name: string; kind: Kind; missionPlan: string; missionStatus: string;
   connection: 'recent-authenticated-report' | 'unverified'; position: Position | null;
   lastObservationAt: string | null; positionAgeMs: number | null;
-  provenance: { source: string; sourceRef: string; receivedAt: string; reportedWanIp: string | null } | null;
+  provenance: { source: string; sourceId: string; sourceRef: string; receivedAt: string; reportedWanIp: string | null } | null;
   eta: null;
 };
 type Snapshot = { timestamp: string; source: string; vessels: Vessel[]; disclaimer: string };
@@ -311,7 +311,8 @@ export const FleetView: React.FC = () => {
               </div>
               <div className="rounded border border-slate-800 p-2">
                 Ostatnia obserwacja: {fmtDate(selected.lastObservationAt)}<br/>
-                Źródło: {selected.provenance?.sourceRef || 'Brak'}<br/>
+                Źródło: {selected.provenance?.sourceId || 'Brak'}<br/>
+                Raport: {selected.provenance?.sourceRef || 'Brak'}<br/>
                 IP raportowany: {selected.provenance?.reportedWanIp || 'Brak'}
               </div>
               <p className="text-[11px] text-amber-300">
