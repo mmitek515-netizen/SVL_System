@@ -51,11 +51,11 @@ function excludedName(name) {
     || name === '.github_credentials.json'
     || name === 'svl_datastore.json'
     || name === '.svl_deployments.json'
-    || /\\.(?:sqlite|sqlite3|db)(?:-(?:wal|shm))?$/i.test(name)
-    || /^SNAPSHOT-.*\\.json$/i.test(name)
-    || /_snapshot\\.json$/i.test(name)
-    || /^baza_danych_.*\\.json$/i.test(name)
-    || /\\.tar\\.gz$/i.test(name)
+    || /\.(?:sqlite|sqlite3|db)(?:-(?:wal|shm))?$/i.test(name)
+    || /^SNAPSHOT-.*\.json$/i.test(name)
+    || /_snapshot\.json$/i.test(name)
+    || /^baza_danych_.*\.json$/i.test(name)
+    || /\.tar\.gz$/i.test(name)
     || /secret|credential|private.?key/i.test(name);
 }
 
