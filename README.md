@@ -78,12 +78,18 @@ Walidacja kodu aplikacji nie zastępuje budowania ani testu ISO na maszynie doce
 ## Główny plan projektu i postęp (10.11.2026)
 
 Aktualna, zbiorcza specyfikacja właściciela, priorytety GUI → Linux → autonomiczni agenci,
-stan 26 elementów czatu i szacunkowa **realizacja kodowa 45%** (nie gotowość produkcyjna):
+bibliotekę 80 typów komponentów czatu i szacunkową **realizację kodową 50%** (nie gotowość produkcyjną):
 [Plan Bastilla OS i procent ukończenia](docs/BASTILLA_MASTER_PLAN_PROGRESS_2026-11-10.md).
 
 Procenty są szacunkami z audytu kodu i testów; działanie Ollama, root hosta,
 czterech niezależnych workerów, bootowalnego ISO oraz integracji AI Studio/MCP
 w realnym środowisku należy osobno potwierdzić. Nie wyświetlać fikcyjnych statusów.
+
+## Ochrona synchronizacji GitHub
+
+Wszelkie operacje zapisu GitHub wykonywane przez HTTP wymagają osobnego sekretu `SVL_GITHUB_WRITE_TOKEN` (co najmniej 32 znaki). Przy braku sekretu endpointy zapisu zwracają HTTP 403, natomiast odczyty statusu pozostają dostępne. Podaj sekret w rozwijanym panelu synchronizacji lub po żądaniu Eksploratora; nie jest to GitHub PAT i nie należy umieszczać go w publicznym Git.
+
+Starsze endpointy `/api/github/export` i `/api/github/pull` zostały wycofane (HTTP 410), ponieważ potrafiły zachować PAT w adresie Git remote albo nadpisywać pliki. Używaj głównego przycisku synchronizacji `main` oraz natywnej integracji GitHub w AI Studio do importu. Zapis w repo nie jest automatycznym wdrożeniem Linux.
 
 ## Główne dokumenty
 
