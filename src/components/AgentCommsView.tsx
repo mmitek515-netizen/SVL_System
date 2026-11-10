@@ -5,6 +5,8 @@ import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText,
 import { FormattedMessage } from './FormattedMessage';
 import { WorkActivityPanel } from './WorkActivityPanel';
 import { splitSvlUiContent, SvlChatUiRenderer } from './SvlChatUi';
+import { AvatarSettings, SvlAvatar, type SvlAvatars } from './AvatarSettings';
+import { UserRoundPen } from 'lucide-react';
 import { MessageCirclePlus, History, Activity } from 'lucide-react';
 import {
   ASTYRIA_MISSION_ACTIONS,
@@ -69,6 +71,20 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [mobileSection, setMobileSection] = useState<'chat' | 'agents'>('chat');
   const [selectedConversation, setSelectedConversation] = useState('latest');
   const [newChatError, setNewChatError] = useState('');
+  const [avatars, setAvatars] = useState<SvlAvatars>({});
+  const [avatarEditorOpen, setAvatarEditorOpen] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void fetch('/api/ai/runtime/avatars', { cache: 'no-store' })
+      .then(async response => {
+        if (!response.ok) throw new Error('auth');
+        const result = await response.json();
+        if (alive && result.success && result.avatars && typeof result.avatars === 'object') {
+          setAvatars(result.avatars);
+        }
+      }).catch(() => { /* Editor provides token input for protected production. */ });
+    return () => { alive = false; };
+  }, []);
   const [openingChat, setOpeningChat] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
@@ -308,9 +324,15 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               ))}
             </select>
           </label>
-          <span className="hidden text-[10px] text-slate-500 sm:inline">Na telefonie przesuń w lewo, aby zobaczyć aktywność</span>
+          <button type="button" onClick={() => setAvatarEditorOpen(value => !value)} aria-expanded={avatarEditorOpen}
+            className="flex min-h-9 items-center gap-1.5 rounded-lg border border-violet-400/20 px-2.5 text-[11px] text-violet-200 hover:bg-violet-500/15">
+            <UserRoundPen className="h-3.5 w-3.5"/> Awatary
+          </button>
           <Activity className="h-4 w-4 text-violet-300 lg:hidden" />
         </div>
+        {avatarEditorOpen && <div className="max-h-[48dvh] shrink-0 overflow-y-auto border-b border-violet-400/20 bg-[#0a1020] p-3">
+          <AvatarSettings avatars={avatars} onChange={setAvatars} onClose={() => setAvatarEditorOpen(false)}/>
+        </div>}
         {newChatError && <p role="alert" className="bg-rose-950/50 px-3 py-2 text-xs text-rose-300">{newChatError}</p>}
         <div className="flex flex-wrap items-end gap-2 border-b border-slate-800 bg-slate-900/60 px-3 py-2">
           <label className="flex min-w-48 flex-1 flex-col gap-1 text-[10px] text-slate-400">
@@ -440,6 +462,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                 {/* Header */}
                 <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-800/60">
                   <div className="flex items-center gap-2">
+                    <SvlAvatar agent={isOperator ? 'Operator' : msg.agent} avatars={avatars} size={32} />
                     <span
                       className={`font-bold px-2.5 py-0.5 rounded-md text-[11px] shadow-sm tracking-wide ${
                         isOperator
