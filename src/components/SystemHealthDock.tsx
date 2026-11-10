@@ -21,7 +21,9 @@ export const SystemHealthDock: React.FC = () => {
     };
     fetchStatus();
     const timer = setInterval(fetchStatus, 10000);
-    return () => clearInterval(timer);
+    const onSync = () => void fetchStatus();
+    window.addEventListener('svl:global-sync', onSync);
+    return () => { clearInterval(timer); window.removeEventListener('svl:global-sync', onSync); };
   }, []);
 
   return (
