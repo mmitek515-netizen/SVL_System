@@ -43,25 +43,27 @@ test('diagnostyka zbiera wersję, modele, prędkość i stan pamięci', async ()
   assert.match(describeOllamaDiagnostics(diag), /qwen3.5:4b/);
 });
 
-test('brak serwera Ollamy → jedna rekomendacja z poleceniem instalacji', async () => {
+test('brak serwera Ollamy → rekomendacja uruchomienia bez instalatora', async () => {
   const { impl } = router([[/./, () => { throw new TypeError('fetch failed'); }]]);
   const diag = await collectOllamaDiagnostics('http://127.0.0.1:11434', host, impl);
   assert.equal(diag.reachable, false);
   const recs = buildOllamaRecommendations(diag);
   assert.equal(recs.length, 1);
-  assert.equal(recs[0].command, 'npm run setup:ollama');
+  assert.equal(recs[0].command, 'ollama serve');
   assert.match(describeOllamaDiagnostics(diag), /BRAK POŁĄCZENIA/);
 });
 
-test('wolny model na CPU → mniejszy model; szybki z dużym RAM → większy', async () => {
+test('diagnostyka nie proponuje zmiany skonfigurowanego modelu', async () => {
   const slow = await collectOllamaDiagnostics('http://127.0.0.1:11434', host, router(healthyRoutes(10, 5_000_000_000)).impl);
   assert.equal(slow.tokensPerSecond, 2);
   const slowRecs = buildOllamaRecommendations(slow);
-  assert.ok(slowRecs.some((r) => r.agent === 'Astyria' && /llava-phi3:3.8b/.test(r.command ?? '')));
+  assert.ok(slowRecs.some((r) => r.agent === 'Astyria' && /8B/.test(r.text)));
+  assert.ok(slowRecs.every((r) => !/llava|gemma|setup:ollama/i.test(`${r.text} ${r.command ?? ''}`)));
 
   const fast = await collectOllamaDiagnostics('http://127.0.0.1:11434', { ...host, ramGb: 32 }, router(healthyRoutes(200, 8_000_000_000)).impl);
   const fastRecs = buildOllamaRecommendations(fast);
-  assert.ok(fastRecs.some((r) => /gemma4:12b/.test(r.command ?? '')));
+  assert.ok(fastRecs.some((r) => r.agent === 'Astyria' && /Dolphin Llama 3 8B/.test(r.text)));
+  assert.ok(fastRecs.every((r) => !/gemma|setup:ollama/i.test(`${r.text} ${r.command ?? ''}`)));
 });
 
 test('brak modeli, nieużywane duże modele i adres spoza pętli zwrotnej', async () => {
@@ -70,7 +72,7 @@ test('brak modeli, nieużywane duże modele i adres spoza pętli zwrotnej', asyn
     [/api\/tags/, () => json(200, { models: [] })],
     [/api\/ps/, () => json(200, { models: [] })],
   ]).impl);
-  assert.equal(buildOllamaRecommendations(empty)[0].command, 'npm run setup:ollama');
+  assert.equal(buildOllamaRecommendations(empty)[0].command, 'ollama pull dolphin-llama3:8b');
 
   const crowded = await collectOllamaDiagnostics('http://192.168.1.5:11434', host, router([
     [/api\/version/, () => json(200, { version: '1' })],

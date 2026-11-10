@@ -112,7 +112,7 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   xaiApiKey: XAI_API_KEY,
   xaiModel: XAI_MODEL,
   xaiBaseUrl: XAI_BASE_URL,
-  ollamaModel: (process.env.OLLAMA_MODEL || 'auto').trim(),
+  ollamaModel: (process.env.OLLAMA_MODEL || 'dolphin-llama3:8b').trim(),
   ollamaBaseUrl: (process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL).trim(),
   ollamaKeepAlive: (process.env.OLLAMA_KEEP_ALIVE || '24h').trim(),
   ollamaNumCtx: Number(process.env.OLLAMA_NUM_CTX) || 4096,
@@ -4634,10 +4634,10 @@ const BEST_FIT_MATRIX: Array<BestFitArgument<null>> = [
           `Ollama     : DZIAŁA (${base})`,
           `Model czatu: ${LLM_CHAIN_CONFIG.ollamaModel || 'auto'}`,
           `Załadowane : ${loaded.length ? loaded.join(', ') : 'żaden (pierwsza odpowiedź będzie wolniejsza)'}`,
-          `Dostępne   : ${installed.length ? installed.join(', ') : 'brak modeli — uruchom npm run setup:ollama'}`,
+          `Dostępne   : ${installed.length ? installed.join(', ') : 'brak modeli — pobierz: ollama pull dolphin-llama3:8b'}`,
         ].join('\n');
       } catch (err: any) {
-        return `Ollama     : NIEOSIĄGALNA (${base})\nPowód      : ${String(err?.message || err).slice(0, 200)}\nStart      : ollama serve  (albo npm run setup:ollama)`;
+        return `Ollama     : NIEOSIĄGALNA (${base})\nPowód      : ${String(err?.message || err).slice(0, 200)}\nStart      : ollama serve`;
       }
     },
   },
@@ -5178,7 +5178,7 @@ app.post('/api/hyperos/console', async (req, res) => {
   if (!reply && !CHAT_LOCAL_FALLBACK) {
     return res.status(502).json({
       success: false,
-      error: 'Model Ollama nie odpowiedział (sprawdź: ollama serve, npm run setup:ollama). Silniki zapasowe są wyłączone.',
+      error: 'Model Ollama nie odpowiedział (sprawdź: ollama serve i ollama pull dolphin-llama3:8b). Silniki zapasowe są wyłączone.',
     });
   }
   if (!reply) {
@@ -5559,7 +5559,7 @@ app.post('/api/triad/message', async (req, res) => {
   if (llmProviders.length === 0 && !CHAT_LOCAL_FALLBACK) {
     return res.status(503).json({
       success: false,
-      error: 'Brak skonfigurowanego modelu czatu. Ustaw LLM_PROVIDERS="ollama" (i uruchom Ollamę: npm run setup:ollama) albo klucze API w .env.',
+      error: 'Brak skonfigurowanego modelu czatu. Ustaw LLM_PROVIDERS="ollama" i skonfiguruj lokalny model Dolphin Llama 3 8B albo dodaj klucze API w .env.',
     });
   }
   if (attachments.some((attachment) => attachment.mimeType === 'application/pdf') && !llmProviders.includes('gemini')) {
@@ -5828,7 +5828,7 @@ async function startServer() {
         void warmupOllama(LLM_CHAIN_CONFIG, AbortSignal.timeout(180000)).then((warm) => {
           console.log(warm.ok
             ? `[OLLAMA] Model ${warm.model} wczytany do pamięci w ${(warm.ms / 1000).toFixed(1)} s (keep_alive ${LLM_CHAIN_CONFIG.ollamaKeepAlive}).`
-            : `[OLLAMA] Rozgrzewka nieudana: ${warm.detail}. Uruchom Ollamę: ollama serve (lub npm run setup:ollama).`);
+            : `[OLLAMA] Rozgrzewka nieudana: ${warm.detail}. Uruchom Ollamę: ollama serve.`);
         });
       }
     });

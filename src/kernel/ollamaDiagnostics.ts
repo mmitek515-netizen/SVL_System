@@ -165,7 +165,7 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
     out.push({
       agent: 'Alex',
       text: `Serwer Ollamy nie odpowiada pod ${diag.baseUrl}. Bez niego czat nie ma modelu.`,
-      command: 'npm run setup:ollama',
+      command: 'ollama serve',
     });
     return out;
   }
@@ -175,7 +175,7 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
     out.push({
       agent: 'Alex',
       text: 'Ollama działa, ale nie ma pobranego żadnego modelu czatu.',
-      command: 'npm run setup:ollama',
+      command: 'ollama pull dolphin-llama3:8b',
     });
     return out;
   }
@@ -199,14 +199,12 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
     if (!gpu && speed < 4) {
       out.push({
         agent: 'Astyria',
-        text: `Prędkość ${speed} tokenów/s na samym CPU jest za niska dla płynnej rozmowy trzech agentów. Mniejszy model odpowiada kilka razy szybciej.`,
-        command: 'bash scripts/setup-ollama.sh llava-phi3:3.8b',
+        text: `Prędkość ${speed} tokenów/s na samym CPU jest niska. Pozostawiono skonfigurowany model Dolphin Llama 3 8B; wydajność zależy od sprzętu.`,
       });
     } else if (speed >= 15 && diag.ramGb >= 16) {
       out.push({
         agent: 'Astyria',
-        text: `Prędkość ${speed} tokenów/s i ${diag.ramGb} GB RAM pozwalają na większy, mądrzejszy model bez utraty płynności.`,
-        command: 'bash scripts/setup-ollama.sh gemma4:12b',
+        text: `Prędkość ${speed} tokenów/s i ${diag.ramGb} GB RAM zapewniają dobrą wydajność dla skonfigurowanego modelu Dolphin Llama 3 8B.`,
       });
     } else {
       out.push({
@@ -229,10 +227,10 @@ export function buildOllamaRecommendations(diag: OllamaDiagnostics): OllamaRecom
   const unusedBytes = diag.models
     .filter((model) => model.name !== diag.resolvedModel && model.name !== diag.loaded[0]?.name && !embeddingModel.test(model.name))
     .reduce((sum, model) => sum + model.size, 0);
-  if (unusedBytes > 5 * GB) {
+  if (unusedBytes > 0) {
     out.push({
       agent: 'Aurelius',
-      text: `Nieużywane modele zajmują ${formatGb(unusedBytes)} dysku. Usuń zbędne (ollama rm <model>), żeby uniknąć braku miejsca.`,
+      text: `Dodatkowe modele zajmują ${formatGb(unusedBytes)} dysku. Jeśli ma pozostać tylko skonfigurowany model, usuń nieużywane modele ręcznie poleceniem ollama rm <nazwa>.`,
     });
   }
 

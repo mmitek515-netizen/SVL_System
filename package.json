@@ -11,7 +11,6 @@
     "mcp:bridge": "node scripts/mcp-bridge.mjs",
     "maintenance": "node scripts/maintenance.mjs",
     "check:gemini": "node scripts/check-gemini.mjs",
-    "setup:ollama": "bash scripts/setup-ollama.sh",
     "test": "tsx --test tests/*.test.mjs",
     "build": "vite build",
     "build:server": "mkdir -p bastillaos/build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --target=node20 --outfile=bastillaos/build/server.mjs",
