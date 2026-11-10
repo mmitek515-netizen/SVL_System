@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/kernel/systemMemory.ts'
       - 'src/kernel/llmChain.ts'
+      - 'src/kernel/visionModel.ts'
+      - 'tests/visionModel.test.mjs'
       - 'tests/llmChain.test.mjs'
       - 'src/lib/aiRuntimeRoutes.ts'
       - 'src/components/AiCapabilitiesView.tsx'
