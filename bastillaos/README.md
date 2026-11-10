@@ -1,4 +1,6 @@
-# BastillaOS
+# Bastilla OS SVL_System
+
+**Enter hyperspace** is the application welcome screen. It opens the existing Bastilla dashboard after the user selects the button; it does not represent a bootloader or an OS installation screen.
 
 BastillaOS is a Debian 13 (Trixie) Stable amd64 Live installer with KDE Plasma,
 the Bastilla visual identity, and the existing SVL system installed as a local
@@ -54,6 +56,8 @@ via the builder container. Failed builds retain that temporary tree for
 diagnosis.
 
 ## Boot and install
+
+The live session includes the Bastilla application; the web-app welcome screen is not the Debian installer. Use the Debian Live installer to install to the selected target disk. The welcome screen appears when the installed application is first opened in a browser. It remembers entry per browser profile using localStorage; clear the site's storage to show it again.
 
 Write the ISO to a USB drive with a trusted image writer, or attach it to an
 amd64 virtual machine configured for UEFI. Back up files before installation:
@@ -131,6 +135,9 @@ responses contain structured agent replies and the resulting system state;
 the application persists the protocol transcript.
 
 ## Preserved SVL functionality
+
+The fresh-install welcome screen is part of the React frontend and is included by the ordinary `npm run build` step in the ISO build. It does not change the Linux login screen, boot menu, kernel privileges, or service permissions.
+
 
 The Debian package carries the existing built web system and writable runtime
 data, including the deterministic Triad command interface, Astyria mission
