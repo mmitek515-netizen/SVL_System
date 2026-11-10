@@ -46,7 +46,7 @@ export interface LlmChainConfig {
   /** Pusty lub "auto" = pierwszy pobrany model z /api/tags. */
   ollamaModel?: string;
   ollamaBaseUrl?: string;
-  /** Jak długo model zostaje w pamięci po odpowiedzi (np. "24h", "-1" = na stałe). Domyślnie 24h. */
+  /** Jak długo model zostaje w pamięci po odpowiedzi (np. "24h", "-1" = na stałe). Domyślnie 5m. */
   ollamaKeepAlive?: string;
   /** Okno kontekstu w tokenach — mniejsze = szybszy start odpowiedzi i mniej RAM (domyślnie 4096). */
   ollamaNumCtx?: number;
@@ -97,7 +97,9 @@ export const DEFAULT_XAI_MODEL = 'grok-3-mini';
 export const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
 /** Domyślny limit pozwala na długie odpowiedzi w oknie kontekstu 4096 tokenów. */
 export const OLLAMA_MAX_OUTPUT_TOKENS = 3072;
-export const OLLAMA_DEFAULT_KEEP_ALIVE = '24h';
+export const OLLAMA_DEFAULT_KEEP_ALIVE = '5m';
+/** Conservative default for CPU-bound 14B models; allow higher explicit limits. */
+export const OLLAMA_DEFAULT_OUTPUT_TOKENS = 768;
 export const OLLAMA_DEFAULT_NUM_CTX = 4096;
 const OLLAMA_MIN_NUM_CTX = 512;
 
@@ -111,7 +113,7 @@ export function parseKeepAlive(value: string | undefined): string | number {
 function ollamaOptions(config: LlmChainConfig, request: LlmRequest): Record<string, number> {
   const configuredPredict = config.ollamaNumPredict && config.ollamaNumPredict > 0
     ? Math.floor(config.ollamaNumPredict)
-    : OLLAMA_MAX_OUTPUT_TOKENS;
+    : OLLAMA_DEFAULT_OUTPUT_TOKENS;
   return {
     temperature: request.temperature ?? 0.7,
     num_predict: Math.min(request.maxOutputTokens ?? configuredPredict, OLLAMA_MAX_OUTPUT_TOKENS),
