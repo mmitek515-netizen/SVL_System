@@ -14,6 +14,7 @@ export const FLEET_FRAME = 'heliocentric_ecliptic_J2000';
 export type VesselKind = 'ship' | 'station' | 'outpost' | 'relay';
 export interface FleetTelemetry {
   source: 'authenticated-feed';
+  sourceId: string;
   sourceRef: string;
   observedAt: string;
   receivedAt: string;
@@ -60,7 +61,7 @@ function parseDb(content: string): FleetDatabase {
     if (v.telemetry !== null) {
       const m = v.telemetry;
       if (!m || m.source !== 'authenticated-feed' || m.coordinateFrame !== FLEET_FRAME ||
-          !m.sourceRef || !Number.isFinite(Date.parse(m.observedAt)) ||
+          !m.sourceId || !m.sourceRef || !Number.isFinite(Date.parse(m.observedAt)) ||
           !Number.isFinite(Date.parse(m.receivedAt)) ||
           ![m.xAu, m.yAu, m.zAu].every(x => typeof x === 'number' && Number.isFinite(x))) {
         throw new Error('Invalid stored telemetry');
@@ -113,6 +114,7 @@ export function reportFleetPosition(db: FleetDatabase, input: unknown, now = new
   const id = validateString(record.shipId, 80, 'shipId');
   const vessel = db.vessels.find(v => v.id === id);
   if (!vessel) throw new Error('Unknown shipId');
+  const sourceId = validateString(record.sourceId, 120, 'sourceId');
   const sourceRef = validateString(record.sourceRef, 512, 'sourceRef');
   if (/^(demo|mock|fake|simulation|example|test):/i.test(sourceRef)) {
     throw new Error('Synthetic source references are prohibited');
@@ -137,6 +139,7 @@ export function reportFleetPosition(db: FleetDatabase, input: unknown, now = new
   if (reportedWanIp !== null && !isIP(reportedWanIp)) throw new Error('Invalid reported IP');
   const telemetry: FleetTelemetry = {
     source: 'authenticated-feed',
+    sourceId,
     sourceRef,
     observedAt: new Date(observed).toISOString(),
     receivedAt: now.toISOString(),
@@ -167,7 +170,7 @@ export function fleetView(db: FleetDatabase, now = new Date()) {
         } : null,
         lastObservationAt: telemetry?.observedAt ?? null,
         positionAgeMs: ageMs,
-        provenance: telemetry ? { source: telemetry.source, sourceRef: telemetry.sourceRef,
+        provenance: telemetry ? { source: telemetry.source, sourceId: telemetry.sourceId, sourceRef: telemetry.sourceRef,
           receivedAt: telemetry.receivedAt, reportedWanIp: telemetry.reportedWanIp } : null,
         eta: null,
       };
