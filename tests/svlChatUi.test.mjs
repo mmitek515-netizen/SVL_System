@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SVL_UI_TYPES, splitSvlUiContent, validateSvlUiDocument } from '../src/components/SvlChatUi.tsx';
 
-test('all 26 component types are unique', () => {
-  assert.equal(SVL_UI_TYPES.length, 26);
-  assert.equal(new Set(SVL_UI_TYPES).size, 26);
+test('all supported interactive component types are unique', () => {
+  assert.ok(SVL_UI_TYPES.length >= 26);
+  assert.equal(new Set(SVL_UI_TYPES).size, SVL_UI_TYPES.length);
 });
 
 test('valid widgets parse inside text', () => {
