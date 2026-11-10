@@ -81,7 +81,7 @@ export const AiSecurityToolkitView: React.FC = () => {
       <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-bold"><ShieldCheck size={18} /> Kali-style · narzędzia Linux dla AI</h3>
-          <p className="mt-1 text-xs text-slate-400">Prawdziwe pakiety Debian 13 z projektów open-source używanych także przez Kali. Bez mieszania repozytoriów APT.</p>
+          <p className="mt-1 text-xs text-slate-400">Otwarte narzędzia diagnostyczne oraz Maltego Graph (licencjonowany program OSINT). Bez mieszania repozytoriów Kali i Debiana.</p>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={loading}
           className="flex items-center gap-1 rounded border border-slate-700 px-3 py-2 text-xs disabled:opacity-40">
@@ -103,6 +103,25 @@ export const AiSecurityToolkitView: React.FC = () => {
           </div>
           <p className="mt-1 truncate text-slate-500">{tool.debianPackage}</p>
         </div>)}
+      </div>
+
+      <div className="mt-3 rounded border border-violet-500/25 bg-slate-950/60 p-3 text-xs">
+        <h4 className="font-semibold text-violet-200">Maltego Graph · analiza powiązań OSINT</h4>
+        <p className="mt-1 text-slate-400">
+          {status?.tools.find((tool) => tool.id === 'maltego')?.installed
+            ? 'Wykryto plik wykonywalny Maltego w środowisku backendu. Aktywacja konta, pulpit graficzny i działanie transformacji nie są potwierdzone.'
+            : 'Nie wykryto Maltego w środowisku backendu. Aplikację trzeba osobno zainstalować na Debianie 13 z działającym pulpitem KDE.'}
+        </p>
+        <p className="mt-2 text-slate-400">
+          Pobierz oryginalny .deb ze strony{' '}
+          <a href="https://www.maltego.com/downloads/" target="_blank" rel="noopener noreferrer"
+            className="text-cyan-300 underline">Maltego Downloads</a>. Plan Basic jest darmowy, ale wymaga Maltego ID.
+          Wykonaj w terminalu Debiana:
+        </p>
+        <code className="mt-2 block select-text overflow-x-auto rounded bg-black p-2 text-slate-200">
+          sudo bash scripts/install-maltego-graph.sh --install /sciezka/do/Maltego.deb
+        </code>
+        <p className="mt-2 text-slate-500">Weryfikacja: bash scripts/install-maltego-graph.sh --verify. Uruchamiaj „maltego” jako zwykły użytkownik KDE, nie jako root. Program GUI nie jest wykonywany zdalnie przez backend.</p>
       </div>
 
       <div className="mt-4 rounded border border-slate-700 bg-slate-950/60 p-3">
