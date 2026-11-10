@@ -26,7 +26,10 @@ istnienia obiektu — potwierdzają tylko, że przesłało je określone źród�
   uwierzytelnionego nadawcy.
 
 Do odczytu i rejestracji służy `FLEET_ADMIN_TOKEN`, do przesyłania
-telemetrii osobny `FLEET_INGEST_TOKEN`. Każdy powinien mieć minimum 32 znaki;
+telemetrii osobny `FLEET_INGEST_TOKEN` oraz lista `FLEET_ALLOWED_SOURCES`
+(identyfikatory zaufanych nadawców rozdzielone przecinkami).
+Przy pustej liście nadawców odbieranie telemetrii jest zablokowane.
+Tokeny muszą być różne i każdy powinien mieć minimum 32 znaki;
 ustaw je wyłącznie po stronie serwera w menedżerze sekretów. Tokeny nie
 powinny być równe. Przy braku konfiguracji API zwraca 503, a nie fikcyjne
 statki. Panel wymaga wpisania tokenu operatora w bieżącej karcie przeglądarki;
@@ -44,6 +47,7 @@ Przykładowy **format żądania** (bez wymyślonych współrzędnych):
 ```json
 {
   "shipId": "<identyfikator z rejestru>",
+  "sourceId": "<identyfikator ze skonfigurowanej listy FLEET_ALLOWED_SOURCES>",
   "sourceRef": "<identyfikator rzeczywistego raportu>",
   "observedAt": "<rzeczywisty czas w ISO-8601 UTC>",
   "coordinateFrame": "heliocentric_ecliptic_J2000",
@@ -55,15 +59,16 @@ Przykładowy **format żądania** (bez wymyślonych współrzędnych):
 
 W rzeczywistym JSON pola `xAu`, `yAu`, `zAu` muszą być liczbami.
 Przy raportach demonstracyjnych, niewłaściwym czasie lub układzie odniesienia
-API zwraca błąd. Nie ma generatorów pozycji, danych testowych ani
-sztucznego przemieszczania obiektów w produkcyjnym module.
+API zwraca błąd. Raporty z identyfikatorów źródeł spoza listy są odrzucane.
+Nie ma generatorów pozycji, danych testowych ani sztucznego przemieszczania
+obiektów w produkcyjnym module.
 
 ## AI Studio
 
 Po synchronizacji `main` w Google AI Studio otwórz zakładkę **Flota i statki
 kosmiczne**. Backend musi uruchamiać `server.ts` (wymagane API `/api/fleet`).
 Brama uruchamiana przez `npm run mcp:ai-studio` nie zawiera pełnego interfejsu
-Floty. Ustaw dwa tokeny w Secrets backendu. W aplikacji nie wykonuj pozorowanych
+Floty. Ustaw oba różne tokeny oraz listę FLEET_ALLOWED_SOURCES w Secrets backendu. W aplikacji nie wykonuj pozorowanych
 `ONLINE`, fikcyjnych przelotów ani nadawania nieistniejących sygnałów.
 
 Testy: `npm test`, `npm run lint`, `npm run build`,
