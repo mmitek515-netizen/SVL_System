@@ -5,6 +5,7 @@ import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText,
 import { FormattedMessage } from './FormattedMessage';
 import { WorkActivityPanel } from './WorkActivityPanel';
 import { splitSvlUiContent, SvlChatUiRenderer } from './SvlChatUi';
+import { SvlUiCatalog } from './SvlUiCatalog';
 import { AvatarSettings, SvlAvatar, type SvlAvatars } from './AvatarSettings';
 import { UserRoundPen } from 'lucide-react';
 import { MessageCirclePlus, History, Activity } from 'lucide-react';
@@ -66,6 +67,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [time, setTime] = useState('');
   const [selectedMissionAction, setSelectedMissionAction] = useState<AstyriaMissionAction>('deep_scan');
   const [messageText, setMessageText] = useState('');
+  const [showUiCatalog, setShowUiCatalog] = useState(false);
   const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [mobileSection, setMobileSection] = useState<'chat' | 'agents'>('chat');
@@ -564,6 +566,21 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
         </div>
         <form onSubmit={handleSendMessage} className="relative w-full shrink-0 bg-slate-950/90 p-2 backdrop-blur-md sm:p-2.5">
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <button type="button" aria-expanded={showUiCatalog} onClick={() => setShowUiCatalog(current => !current)}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-cyan-300 hover:bg-cyan-950/50">
+              <Layers className="h-3.5 w-3.5"/> Biblioteka elementów AI
+            </button>
+            <span className="text-[10px] text-slate-500">Karty · etykiety · wykresy · render GPT Image</span>
+          </div>
+          {showUiCatalog && <SvlUiCatalog onClose={() => setShowUiCatalog(false)}
+            onChoose={(type) => {
+              setMessageText(previous => (previous ? previous + '\n' : '') +
+                'Pokaż interaktywny element typu ' + type + ' w formacie svl-ui. ' +
+                'Użyj wyłącznie rzeczywistych danych lub wyraźnie oznacz DEMO.');
+              setShowUiCatalog(false);
+            }} />}
+
           {chatAttachments.length > 0 && (
             <ul aria-label="Załączone pliki" className="mb-2 flex flex-wrap gap-1.5">
               {chatAttachments.map((file, index) => (
