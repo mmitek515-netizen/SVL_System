@@ -57,29 +57,76 @@ diagnosis.
 
 ## Boot and install
 
-The live session includes the Bastilla application; the web-app welcome screen is not the Debian installer. Use the Debian Live installer to install to the selected target disk. The welcome screen appears when the installed application is first opened in a browser. It remembers entry per browser profile using localStorage; clear the site's storage to show it again.
+The ISO has two separate stages: the Debian boot/install flow and the BastillaOS
+application. **Enter hyperspace** is only the application's welcome screen; it
+is not a boot menu, Linux login screen or installer.
 
-Write the ISO to a USB drive with a trusted image writer, or attach it to an
-amd64 virtual machine configured for UEFI. Back up files before installation:
-installing an operating system can erase disk contents. Start the live session,
-review the installer partition choices, and explicitly select the target disk.
-The installed system starts the local SVL service as `root` so Triad agents can
-perform system-level changes. The root-privileged HTTP API is bound to
-`127.0.0.1:3000`; do not expose it to a network. Any local process that can
-reach this API can execute root commands. The desktop opens using Chromium.
+### Install from USB or a virtual machine
 
-Configure `/etc/bastillaos/system.env` as a root-owned file (`chmod 0600`) and
-restart `bastillaos-system.service` when setting optional runtime credentials. The
-service reads this file as root; never make it writable by the desktop user,
-and never put API secrets in a Git-tracked file or a public ISO. Optional
-Pollinations credentials are used only by the image-generation endpoint. The
-service unit fixes its listener to `127.0.0.1:3000` after reading this file, so
-the bind address cannot be changed there.
+1. Back up files from the target computer. Installing an OS can erase the
+  selected disk. Keep secrets and VM disk images out of a public USB image.
+2. Write `BastillaOS-13-amd64.iso` to a USB drive with a trusted image writer,
+  or attach it as a virtual CD/DVD to an amd64 VM. The image supports UEFI and
+  legacy BIOS. On a physical PC, use its firmware boot menu to select the USB
+  device; the key and menu wording depend on the manufacturer.
+3. In the Debian boot menu, start the live session. The desktop you see here is
+  the installer environment; **Enter hyperspace** appears later, after opening
+  the installed SVL application.
+4. Open the Debian Installer from the live desktop. Follow its language,
+  keyboard, time zone, network, user-account and disk setup screens. Choose
+  the target disk deliberately. Selecting the whole disk replaces its
+  partitions and deletes existing data; use manual partitioning only if you
+  understand the layout and mount points.
+5. Confirm the installer's final summary before it writes changes. Wait for
+  installation to finish, reboot when prompted, and remove or disconnect the
+  USB/ISO so the computer boots from the installed disk.
 
-For backup, package-only recovery and a full OS reinstall, follow the
-[reinstallation guide](../docs/REINSTALL_BASELINE.md). A Debian package upgrade
-preserves the existing writable state; reinstalling the OS onto a disk can erase
-it.
+### First boot and opening BastillaOS
+
+1. At the graphical login screen, select the KDE Plasma session if prompted and
+  sign in with the account created during installation. The image does not
+  configure automatic login.
+2. Wait for the KDE desktop and network connection. The `bastillaos-system`
+  service starts through systemd and listens locally at
+  `http://127.0.0.1:3000`; Chromium is not configured to open automatically.
+3. Open the application launcher and start **BastillaOS**. The launcher waits
+  up to 30 seconds for the local service, then opens Chromium in application
+  mode. The **without_nlp** menu entry opens that specific view directly.
+4. On the first application launch, the **Enter hyperspace** screen appears.
+  Select its enter button to open the existing SVL dashboard. The choice is
+  stored in that browser profile's localStorage; clearing site data or using a
+  fresh profile shows the welcome screen again.
+5. Confirm the dashboard loads and inspect only the integrations needed on this
+  host. Ollama, models, VM/KVM access and optional API credentials may need
+  separate setup; an installed UI does not mean those services are connected.
+
+### Service checks and recovery
+
+Use a terminal on the installed system to inspect the application service:
+
+```sh
+sudo systemctl status bastillaos-system.service
+sudo journalctl -u bastillaos-system.service -b
+```
+
+If the service is stopped after a failed start, inspect the log before
+restarting it:
+
+```sh
+sudo systemctl restart bastillaos-system.service
+```
+
+The service runs as `root` because it exposes system-management operations, but
+its HTTP listener is fixed to loopback (`127.0.0.1:3000`). Do not configure a
+firewall or proxy to expose that endpoint to a network: any local process that
+can reach it may be able to request privileged actions. The desktop launcher
+reports if the service does not become ready or Chromium is missing.
+
+For optional runtime credentials, configure
+`/etc/bastillaos/system.env` as a root-owned file with mode `0600`, then restart
+`bastillaos-system.service`. Do not put credentials in the ISO, Git, chat or a
+world-readable file. See the [reinstallation guide](../docs/REINSTALL_BASELINE.md)
+before restoring runtime data from another installation.
 
 ## without_nlp engine
 

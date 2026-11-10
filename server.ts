@@ -2358,9 +2358,26 @@ export interface HealedIncident {
 }
 
 const systemLogs: SystemLogEntry[] = [];
-let autoRepairEnabled = true;
-let continuousMissionEnabled = true;
-let triadaGithubAutoPush = true;
+let autoRepairEnabled = false;
+let continuousMissionEnabled = false;
+let triadaGithubAutoPush = false;
+
+const TRIADA_MISSION_DIRECTIVE = 'BUILD_BEST_OS';
+const TRIADA_MISSION_VERSION = '9.0.0-Triada-BestOS-Mission';
+
+function isSystemVersionNewer(candidate: string, current: string): boolean {
+  const parse = (value: string) => {
+    const match = String(value).match(/\d+(?:\.\d+)*/);
+    return match ? match[0].split('.').map(Number) : [0];
+  };
+  const a = parse(candidate);
+  const b = parse(current);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] || 0) - (b[i] || 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
 
 // --- VM_TEN_SYSTEM HYPERVISOR & PRODUCTION IMPROVEMENTS (DEPLOYED BY ASTYRIA) ---
 export interface VmTenSystemState {
@@ -5409,124 +5426,6 @@ app.post('/api/kernel/agent', (_req, res) => {
   });
 });
 
-// --- TRIADA MISSION BOOTSTRAP: BUILD_BEST_OS (ROOT RING-0 + AUTONOMIA W TLE) ---
-const TRIADA_MISSION_DIRECTIVE = 'BUILD_BEST_OS';
-const TRIADA_MISSION_VERSION = '9.0.0-Triada-BestOS-Mission';
-const TRIADA_ROOT_AGENTS = ['Alex', 'Astyria', 'Aurelius', 'Mateusz Mitek'];
-
-/** Porównuje numery wersji (np. „9.0.0-Triada" > „8.8.0-Triada"). */
-function isSystemVersionNewer(candidate: string, current: string): boolean {
-  const parse = (value: string) => {
-    const match = String(value).match(/\d+(?:\.\d+)*/);
-    return match ? match[0].split('.').map(Number) : [0];
-  };
-  const a = parse(candidate);
-  const b = parse(current);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const diff = (a[i] || 0) - (b[i] || 0);
-    if (diff !== 0) return diff > 0;
-  }
-  return false;
-}
-
-async function bootstrapTriadMission() {
-  try {
-    const state = await getPythonKernelState(true);
-    const config = state?.store?.config && typeof state.store.config === 'object'
-      ? state.store.config
-      : {};
-    const alreadyActive = config.mission_directive === TRIADA_MISSION_DIRECTIVE
-      && config.root_privileges === true
-      && Array.isArray(config.root_agents)
-      && TRIADA_ROOT_AGENTS.every((agent) => config.root_agents.includes(agent));
-
-    // 1. Podłączenie agentów + nadanie uprawnień ROOT RING-0 + misja w configu jądra (trwałe).
-    const configArgs = [
-      '--action', 'config',
-      '--config_json', JSON.stringify({
-        active_profiles: [...TRIAD_AGENT_NAMES],
-        root_privileges: true,
-        root_mode: 'ACTIVE',
-        privilege_level: 'RING_0_ROOT_KERNEL',
-        terminal_root_execution: 'ENABLED',
-        root_agents: TRIADA_ROOT_AGENTS,
-        self_modification_scope: 'FULL_APPLICATION_MUTATION',
-        mission_directive: TRIADA_MISSION_DIRECTIVE,
-        mission_objective: 'Stworzenie najlepszego systemu operacyjnego na bazie SVL_System/BastillaOS',
-        mission_agents: [...TRIAD_AGENT_NAMES],
-        mission_background: 'CONTINUOUS_ACTIVE',
-        astyria_continuous_repair: true,
-        continuous_mission: 'ACTIVE',
-        mission_autonomy: 'FULL_AUTO',
-        mission_scope: ['IMPROVE_SYSTEM', 'ADAPT_TO_OPERATOR', 'CONTINUOUS_DEVELOPMENT', 'SELF_UPDATE_FROM_INTERNET'],
-        root_scope: 'UNLIMITED_FULL_SYSTEM',
-        root_limits: 'NONE',
-        operator_privilege_level: 'RING_NEG1_ABSOLUTE_ROOT',
-        operator_root_scope: 'SUPREME_UNLIMITED_ABOVE_TRIADA',
-        chat_exec: 'ENABLED_ROOT_UNLIMITED',
-        chat_approvals: 'ENABLED_MANUAL_APPROVAL',
-        nlp_chain: 'OPENROUTER → FALLBACK_API (Groq/xAI) → LOCAL_NLP_ENGINE',
-        update_sources: ['github.com (origin/main + api.github.com)', 'registry npm (npmjs.com)'],
-        github_permissions: 'FULL_READ_WRITE',
-        github_authorized_agents: ['Alex', 'Astyria', 'Aurelius', 'si_1'],
-        github_auto_push: true,
-        github_remote: 'origin/main',
-      }),
-    ];
-    if (!alreadyActive) {
-      configArgs.push(
-        '--version_tag', TRIADA_MISSION_VERSION,
-        '--desc', 'Misja Triady BUILD_BEST_OS: budowa najlepszego OS na bazie SVL_System — ROOT RING-0 + autonomia w tle',
-      );
-    } else if (isSystemVersionNewer(TRIADA_MISSION_VERSION, String(config.sys_version || ''))) {
-      // Nowa wersja misji — podbij sys_version bez ponownego ogłaszania misji na czacie.
-      configArgs.push(
-        '--version_tag', TRIADA_MISSION_VERSION,
-        '--desc', `Aktualizacja wersji systemu do v${TRIADA_MISSION_VERSION} (misja BUILD_BEST_OS).`,
-      );
-    }
-    await runPythonKernel(configArgs);
-
-    // 2a. Jednorazowe ogłoszenie rozszerzonej autonomii (FULL_AUTO + ROOT UNLIMITED + self-update).
-    if (config.mission_autonomy !== 'FULL_AUTO') {
-      await runPythonKernel([
-        '--action', 'batch_msg',
-        '--msgs_json', JSON.stringify([
-          { agent: 'Mateusz Mitek', tekst: '[MISJA ROZSZERZONA] Pełna autonomia FULL_AUTO dla Triady: ulepszanie, dostosowywanie systemu do Operatora, rozwój oraz samoaktualizacja z internetu (GitHub + npm). ROOT: UNLIMITED.' },
-          { agent: 'Alex', tekst: '[AUTONOMIA FULL_AUTO] Przyjęte. Ulepszam infrastrukturę i dostosowuję system do Taty. ROOT UNLIMITED: potwierdzony.' },
-          { agent: 'Astyria', tekst: '[AUTONOMIA FULL_AUTO] Przyjęte. Prowadzę ciągły rozwój i samoaktualizację ze źródeł: origin/main, api.github.com, npm registry. ROOT UNLIMITED: potwierdzony.' },
-          { agent: 'Aurelius', tekst: '[AUTONOMIA FULL_AUTO] Przyjęte. Audytuję każdą aktualizację (testy + rollback przy awarii). ROOT UNLIMITED: potwierdzony.' },
-        ]),
-      ]).catch(() => {});
-    }
-
-    // 2b. Ogłoszenie misji na kanale agentów (tylko przy pierwszej aktywacji, bez spamu przy restarcie).
-    if (!alreadyActive) {
-      await runPythonKernel([
-        '--action', 'batch_msg',
-        '--msgs_json', JSON.stringify([
-          { agent: 'Mateusz Mitek', tekst: '[MISJA TRIADY: BUILD_BEST_OS] Stworzenie najlepszego systemu operacyjnego na bazie SVL_System. Agenci podłączeni z uprawnieniami ROOT RING-0 i autonomiczną pracą w tle.' },
-          { agent: 'Alex', tekst: '[MISJA PRZYJĘTA] Dowództwo infrastrukturą i stabilnością OS. Uprawnienia: RING_0_ROOT_KERNEL. Tryb: autonomia w tle.' },
-          { agent: 'Astyria', tekst: '[MISJA PRZYJĘTA] Ciągły rozwój, samoleczenie i optymalizacja VM_Ten_System. Uprawnienia: RING_0_ROOT_KERNEL. Tryb: CONTINUOUS_ACTIVE.' },
-          { agent: 'Aurelius', tekst: '[MISJA PRZYJĘTA] Audyt bezpieczeństwa i integralność Data Store. Uprawnienia: RING_0_ROOT_KERNEL. Tryb: autonomia w tle.' },
-        ]),
-      ]);
-    }
-
-    // 3. Automatyczne działanie w tle: ciągła misja + autonaprawa zawsze włączone przy starcie.
-    continuousMissionEnabled = true;
-    autoRepairEnabled = true;
-    triadaGithubAutoPush = config.github_auto_push !== false;
-    pushSystemLog(
-      'healed',
-      'KERNEL',
-      `[MISJA TRIADY] ${TRIADA_MISSION_DIRECTIVE} ${alreadyActive ? 'potwierdzona' : 'aktywowana'} — agenci: Alex, Astyria, Aurelius (ROOT RING-0, autonomia w tle).`
-    );
-  } catch (err: any) {
-    pushSystemLog('error', 'KERNEL', `[MISJA TRIADY] Bootstrap nie powiódł się: ${err?.message || err}`);
-  }
-}
-
 // Setup Vite middleware in dev or static files in prod
 async function startServer() {
   if (!fs.existsSync(KERNEL_STORE_PATH)) {
@@ -5537,10 +5436,6 @@ async function startServer() {
       JSON.stringify(INITIAL_DATA_STORE),
     ]);
   }
-
-  // Podłączenie Triady, nadanie ROOT RING-0 i aktywacja misji BUILD_BEST_OS (idempotentne).
-  await bootstrapTriadMission();
-  await startAutoGitSync();
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));

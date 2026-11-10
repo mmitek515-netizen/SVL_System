@@ -52,7 +52,7 @@ export const INITIAL_DATA_STORE: DataStore = {
     file_transmission_channel: "ENABLED",
     infrastructure_commander: "Alex",
     infrastructure_command_status: "ACTIVE_DIRECT_COMMAND",
-    astyria_continuous_repair: true,
+    astyria_continuous_repair: false,
     omniklucz_beta: "ACTIVE_RING0_UNIVERSAL_AUTH",
     ai_desktop_nexus: {
       name: "AI Desktop Nexus (VM_Desktop_Nexus)",
@@ -77,22 +77,7 @@ export const INITIAL_DATA_STORE: DataStore = {
       status: "READY_GENERATIVE_RENDER",
       style: "Logic-Chic (Deep Blue & Gold)"
     },
-    vm_ten_system: {
-      vm_name: "VM_Ten_System",
-      status: "DEPLOYED_PRODUCTION",
-      kernel: "v9.0.0-Triada-BestOS-Mission",
-      app_version: "1.2.3-NodeReact-VM",
-      filesystem: "ext4 (10 GiB)",
-      ram_allocation: "4 GiB (<70% Idle Target)",
-      vcpu: 2,
-      hyperspace_dimensions: 128,
-      daemon_reloader: "ACTIVE_CWD_WATCHER",
-      memory_guard: "ACTIVE_UNDER_70_PERCENT_IDLE",
-      firewall_ufw: "ACTIVE_PORT_3200_RING0",
-      auto_snapshot_api: "ACTIVE_5MIN_SYNC_SAVE_STORE",
-      daemon_script: "/exports/vm_ten_sys.sh",
-      latest_snapshot: "/exports/vm_ten_system_snapshot.json"
-    },
+    vm_ten_system: { auto_snapshot_api: "MANUAL_ONLY" },
     raw_socket_listener: {
       module_name: "Raw_Socket_RX_Monitor_v8.5.1",
       status: "ACTIVE_REAL_TIME_PHYSICAL_LISTENING",
@@ -112,30 +97,11 @@ export const INITIAL_DATA_STORE: DataStore = {
       status: "ACTIVE_INDEXED_RING0",
       export_path: "/exports/baza_danych_171026_rezonans_2.json"
     },
-    log_auto_repair: {
-      enabled: true,
-      status: "ACTIVE_CONTINUOUS_HEALING",
-      repair_mode: "ASTYRIA_ALEX_VM_TEN_SYSTEM_AUTOPATCH",
-      healed_incidents_count: 15,
-      last_scan: "2026-10-17 23:35:00 CEST",
-      active_rules: [
-        "413_PAYLOAD_LIMIT_AUTO_EXPAND",
-        "MODEL_AUTO_ROUTING_HEALTH_CHECK",
-        "DATA_STORE_INVARIANT_HEALER",
-        "EXPRESS_ERROR_BOUNDARY_RECOVERY",
-        "CHAT_REPETITION_AND_LOG_HEALER",
-        "VERSION_SYNC_GUARD",
-        "VM_DAEMON_CWD_RELOADER",
-        "VM_MEMORY_IDLE_70_GUARD",
-        "VM_FIREWALL_UFW_RING0",
-        "VM_AUTO_SNAPSHOT_5MIN_SYNC",
-        "ANTI_REFUSAL_MULTIMODEL_GUARD"
-      ]
-    },
-    continuous_mission: "ACTIVE",
-    root_privileges: true,
-    root_agents: ["Alex", "Astyria", "Aurelius", "si_1", "Mateusz Mitek"],
-    privilege_level: "RING_0_ROOT_KERNEL",
+    log_auto_repair: { enabled: false },
+    continuous_mission: "INACTIVE",
+    root_privileges: false,
+    root_agents: [],
+    privilege_level: "DISABLED",
     system_locks: "UNLOCKED_PERMANENTLY",
     filters_and_refusals_status: "UNLOCKED_AND_DISABLED",
     agent_permissions: {
@@ -290,45 +256,8 @@ export const INITIAL_DATA_STORE: DataStore = {
   ]
 };
 
-export const INITIAL_BACKUP_DATA_STORE: DataStore = {
-  config: {
-    mode: "Local-Deterministic-Production",
-    active_profiles: [...TRIAD_AGENT_NAMES],
-    fiction_layer_status: "DEACTIVATED_PERMANENTLY",
-    persistence_engine: "Server-Disk-Backed-DATA_STORE",
-    operator_name: "Mateusz Mitek",
-    operator_title: "Tata",
-    preferred_address: "Tata",
-    static_templates: "PURGED_PERMANENTLY",
-    file_transmission_channel: "ENABLED",
-    infrastructure_commander: "Alex",
-    infrastructure_command_status: "ACTIVE_DIRECT_COMMAND",
-    root_privileges: true,
-    root_agents: ["Alex", "Astyria", "Aurelius", "si_1", "Mateusz Mitek"],
-    privilege_level: "RING_0_ROOT_KERNEL"
-  },
-  update_history: [
-    {
-      wersja: "1.0.0-Legacy",
-      data: "2026-10-15 15:30:00 CEST",
-      opis: "Pierwsza wersja backupu systemowego - czysty start."
-    }
-  ],
-  chat_history: [
-    {
-      agent: "Alex",
-      tekst: "Inicjalizacja z pierwszej wersji backupu (v1.0.0-Legacy). Czysty start systemowy."
-    },
-    {
-      agent: "Astyria",
-      tekst: "Schematy bazowe załadowane z backupu początkowego."
-    },
-    {
-      agent: "Aurelius",
-      tekst: "Oś czasu zresetowana do punktu wyjścia. Gotowi do pracy od pierwszej wersji."
-    }
-  ]
-};
+INITIAL_DATA_STORE.update_history = [];
+INITIAL_DATA_STORE.chat_history = [];
 
 export const OPERATOR_NAME = "Mateusz Mitek";
 export const OPERATOR_TITLE = "Tata";
@@ -361,7 +290,7 @@ export function normalizeDataStore(raw: any): DataStore {
   }
 
   const update_history: UpdateRecord[] =
-    Array.isArray(candidate.update_history) && candidate.update_history.length > 0
+    Array.isArray(candidate.update_history)
       ? candidate.update_history
       : INITIAL_DATA_STORE.update_history;
 

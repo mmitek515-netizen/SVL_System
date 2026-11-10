@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { INITIAL_DATA_STORE, normalizeDataStore } from '../src/kernel/svlKernel.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const kernelPath = path.join(repoRoot, 'svl_kernel.py');
@@ -17,6 +18,25 @@ function runKernel(storePath, ...args) {
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
 }
+
+test('factory defaults disable root automation and keep runtime history empty', () => {
+  assert.equal(INITIAL_DATA_STORE.config.root_privileges, false);
+  assert.deepEqual(INITIAL_DATA_STORE.config.root_agents, []);
+  assert.equal(INITIAL_DATA_STORE.config.continuous_mission, 'INACTIVE');
+  assert.equal(INITIAL_DATA_STORE.config.astyria_continuous_repair, false);
+  assert.equal(INITIAL_DATA_STORE.config.log_auto_repair.enabled, false);
+  assert.equal(INITIAL_DATA_STORE.config.vm_ten_system.auto_snapshot_api, 'MANUAL_ONLY');
+  assert.deepEqual(INITIAL_DATA_STORE.update_history, []);
+  assert.deepEqual(INITIAL_DATA_STORE.chat_history, []);
+
+  const reset = normalizeDataStore({
+    config: { mode: 'Local-Deterministic-Production' },
+    update_history: [],
+    chat_history: [],
+  });
+  assert.deepEqual(reset.update_history, []);
+  assert.deepEqual(reset.chat_history, []);
+});
 
 test('migrates old model configuration without changing saved history', (t) => {
   const directory = mkdtempSync(path.join(tmpdir(), 'svl-kernel-migration-'));

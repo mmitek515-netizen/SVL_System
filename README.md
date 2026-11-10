@@ -12,6 +12,23 @@ To repozytorium zawiera kod aplikacji webowej i konfigurację obrazu instalacyjn
 - Wejście prowadzi do istniejącego pulpitu Bastilla; pozostałe moduły aplikacji są zachowane.
 - Kod aplikacji i skrypty ISO są w repozytorium. Zainstalowany system, uruchomiony model Ollama oraz dostęp root do hosta wymagają osobnej konfiguracji i weryfikacji.
 
+## Uruchamianie BastillaOS
+
+1. Uruchom komputer lub VM z przygotowanego ISO/USB i wybierz sesję Live.
+2. W środowisku Live otwórz instalator Debiana. Przed potwierdzeniem dokładnie
+	sprawdź dysk docelowy; instalacja na całym dysku usuwa jego dotychczasowe dane.
+3. Po instalacji uruchom komputer z dysku i zaloguj się do KDE kontem utworzonym
+	w instalatorze. System nie konfiguruje automatycznego logowania ani
+	automatycznego otwarcia Chromium.
+4. Z menu aplikacji uruchom **BastillaOS**. Poczekaj na lokalny panel, a na
+	ekranie **Enter hyperspace** wybierz wejście do pulpitu SVL.
+5. Jeśli panel się nie otwiera, sprawdź usługę przez
+	`sudo systemctl status bastillaos-system.service`.
+
+Pełna instrukcja bootowania, instalacji, pierwszego uruchomienia i diagnostyki
+jest w [przewodniku BastillaOS](bastillaos/README.md#boot-and-install). Ekran
+**Enter hyperspace** jest ekranem aplikacji, nie systemu ani instalatora.
+
 ## Czysta baza po reinstalacji
 
 Postępuj według [dokumentacji czystej bazy](docs/REINSTALL_BASELINE.md). Repozytorium zachowuje historię i kod. Dane runtime, lokalne bazy, dyski VM oraz sekrety należy utworzyć osobno dla świeżej instalacji.

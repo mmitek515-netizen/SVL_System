@@ -452,14 +452,27 @@ export default function App() {
     }
   };
 
-  const handleResetToDefault = () => {
-    if (confirm(`Czy na pewno chcesz przywrócić stan bazowy jądra SVL v${SYS_VERSION}?`)) {
-      setDataStore(INITIAL_DATA_STORE);
-      try {
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
-      } catch (e) {
-        console.error(e);
+  const handleResetToDefault = async () => {
+    if (!confirm(`Przywrócić ustawienia fabryczne SVL v${SYS_VERSION}? Historia czatu i wydań zostanie wyczyszczona.`)) return;
+    setIsAgentLoading(true);
+    setAgentError(null);
+    try {
+      const response = await fetch('/api/kernel/save-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store: INITIAL_DATA_STORE }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.success !== true || !result.state?.store) {
+        throw new Error(result.error || `Reset nie powiódł się (HTTP ${response.status}).`);
       }
+      const normalized = normalizeDataStore(result.state.store);
+      setDataStore(normalized);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+    } catch (error) {
+      setAgentError(error instanceof Error ? error.message : 'Nie udało się przywrócić ustawień fabrycznych.');
+    } finally {
+      setIsAgentLoading(false);
     }
   };
 
