@@ -58,7 +58,9 @@ chmod 0755 "$ROOT/usr/libexec/bastillaos/system-service"
 # without_nlp: deterministic harmonic engine as a native system command.
 cp "$REPO_ROOT/apps/without_nlp/engine.py" "$ROOT/usr/lib/bastillaos/without_nlp/engine.py"
 cp "$PACKAGE_DIR/bin/without-nlp" "$ROOT/usr/bin/without-nlp"
-chmod 0755 "$ROOT/usr/lib/bastillaos/without_nlp/engine.py" "$ROOT/usr/bin/without-nlp"
+# Unified Linux CLI: real local API for Vision, rendering and AI memory.
+cp "$PACKAGE_DIR/bin/svl-ai" "$ROOT/usr/bin/svl-ai"
+chmod 0755 "$ROOT/usr/lib/bastillaos/without_nlp/engine.py" "$ROOT/usr/bin/without-nlp" "$ROOT/usr/bin/svl-ai"
 
 cp -a "$REPO_ROOT/dist" "$RUNTIME/dist"
 cp "$SERVER_BUNDLE" "$RUNTIME/server.mjs"
@@ -97,6 +99,7 @@ for required_file in \
   usr/lib/systemd/system/bastillaos-system.service \
   usr/lib/bastillaos/without_nlp/engine.py \
   usr/bin/without-nlp \
+  usr/bin/svl-ai \
   usr/share/bastillaos/system-defaults/apps/without_nlp/engine.py \
   usr/share/bastillaos/system-defaults/.gitignore \
   usr/share/bastillaos/system-defaults/src/App.tsx \
