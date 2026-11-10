@@ -145,7 +145,9 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
   useEffect(() => {
     fetchApps();
     const interval = setInterval(fetchApps, 6000);
-    return () => clearInterval(interval);
+    const onSync = () => void fetchApps();
+    window.addEventListener('svl:global-sync', onSync);
+    return () => { clearInterval(interval); window.removeEventListener('svl:global-sync', onSync); };
   }, []);
 
   // Fetch files when selected app changes
