@@ -2,6 +2,18 @@
 
 Ten dokument opisuje procedurę przygotowania nowej instalacji. Zmiany w repozytorium same w sobie nie instalują systemu operacyjnego ani nie resetują urządzenia.
 
+## Zmiana historii śledzonych danych (10.11.2026)
+
+Czyszczenie kodu źródłowego usunęło z bieżącej gałęzi `main` stare dane wykonawcze: pliki `data/databases/*.sqlite`, automatyczne migawki w `exports/`, rejestr `.svl_deployments.json`, testowy bundle i pusty `bun.lock`. Zachowano kod aplikacji, skrypty wdrożeniowe, konfigurację ISO, testy i plik `package-lock.json`.
+
+**Przed synchronizacją starszego checkoutu wykonaj osobną kopię baz i eksportów, jeżeli zawierają potrzebne dane.** Zmiany w Git mogą usunąć poprzednio śledzone ścieżki przy przejściu na nowszy commit. Ignorowanie nowych plików w `.gitignore` nie tworzy ich kopii. Przykładowe odzyskiwanie pojedynczego starego pliku z punktu sprzed czyszczenia, bez przywracania całego stanu systemu:
+
+```sh
+git show 85b884accd0c019d47a8e93101da05531235c295:data/databases/hyper_com_db.sqlite > ./hyper_com_db.backup.sqlite
+```
+
+Usunięte artefakty pozostają w poprzednich commitach; to **nie** jest czyszczenie historii Git ani gwarancja usunięcia poufnych danych z publicznego repozytorium. Pełne usuwanie historii wymaga osobnej operacji i kontroli wszystkich kopii.
+
 ## Tożsamość i stan repozytorium
 
 - Nazwa systemu/aplikacji: **Bastilla OS SVL_System**

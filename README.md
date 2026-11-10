@@ -4,6 +4,14 @@
 
 To repozytorium zawiera kod aplikacji webowej i konfigurację obrazu instalacyjnego Debian 13 Live z KDE Plasma. Sam zapis w GitHub nie instaluje systemu na komputerze ani nie publikuje aplikacji.
 
+## Porządek w repozytorium
+
+Kod źródłowy, konfiguracja Debian 13/KDE i skrypty budowania ISO pozostają w `main`. W dniu 10.11.2026 usunięto z aktualnego drzewa Git historyczne pliki runtime (lokalne bazy SQLite, migawki DATA_STORE, rejestr wdrożeń oraz testowe archiwum). Nie są to elementy wymagane do zbudowania czystego ISO. Nowe dane runtime należy tworzyć lokalnie, poza historią Git.
+
+**Uwaga dla istniejących instalacji:** przed `git pull` wykonaj kopię własnych baz i eksportów, jeśli były przechowywane w śledzonych ścieżkach. Zmiana repozytorium nie czyści automatycznie hosta ani nie instaluje systemu. Historyczne pliki nadal są dostępne w poprzednich commitach Git — usunięcie z `main` nie usuwa ich z historii publicznego repozytorium.
+
+Weryfikacja i odzyskiwanie: [zasady higieny repozytorium](docs/REPO_CLEANUP.md).
+
 ## Aktualny stan
 
 - Repozytorium: `mmitek515-netizen/SVL_System`

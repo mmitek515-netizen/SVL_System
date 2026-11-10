@@ -16,3 +16,13 @@ svl_kernel.py.lock
 # Writable local runtime state
 exports/svl_datastore.json
 exports/*.tmp
+
+# Generated runtime databases, snapshots and deployment bookkeeping
+data/databases/*.sqlite
+data/databases/*.sqlite3
+data/databases/*.db
+exports/SNAPSHOT-*.json
+exports/*_snapshot.json
+exports/baza_danych_*.json
+exports/*.tar.gz
+.svl_deployments.json

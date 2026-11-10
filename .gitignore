@@ -1,12 +1,40 @@
+# Dependencies, build outputs and tooling
 node_modules/
 build/
 dist/
 coverage/
 __pycache__/
 *.py[cod]
-.DS_Store
 *.log
+*.tmp
+.DS_Store
+bun.lock
+
+# Local environment, tokens and editor state
 .env*
 !.env.example
+.github_credentials.json
 .svl_kernel_store.json
+.svl_deployments.json
 bastillaos/vm-gemini-4/data/
+
+# Temporary package/testing worktrees
+bastillaos/system-package/.build-work/
+bastillaos/system-package/.test-work/
+bastillaos/system-package/.validation-out/
+bastillaos/system-package/.node-check/
+
+# Runtime SQLite databases: create these on the installed host, not in Git
+data/databases/*.sqlite
+data/databases/*.sqlite3
+data/databases/*.db
+data/databases/*-wal
+data/databases/*-shm
+
+# Generated exports, history, snapshots and archives (preserve source scripts)
+exports/svl_datastore.json
+exports/SNAPSHOT-*.json
+exports/*_snapshot.json
+exports/baza_danych_*.json
+exports/*.tmp
+exports/*.tar.gz
