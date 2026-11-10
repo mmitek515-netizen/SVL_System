@@ -195,6 +195,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
       : messageText.trim();
     if ((!message && chatAttachments.length === 0) || isLoading) return;
     try {
+      setSelectedConversation('latest');
       await onSendMessage(message, selectedTarget, chatAttachments);
       setMessageText('');
       setChatAttachments([]);
@@ -463,6 +464,11 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                 <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-slate-800/60">
                   <div className="flex items-center gap-2">
                     <SvlAvatar agent={isOperator ? 'Operator' : msg.agent} avatars={avatars} size={32} />
+                    {msg.kind === 'agent_message' && msg.to && (
+                      <span className="rounded-md border border-violet-400/20 px-2 py-1 text-[10px] text-violet-200">
+                        do {msg.to === 'si_1' ? 'Aria' : msg.to === 'all' ? 'wszyscy' : msg.to}
+                      </span>
+                    )}
                     <span
                       className={`font-bold px-2.5 py-0.5 rounded-md text-[11px] shadow-sm tracking-wide ${
                         isOperator
