@@ -131,6 +131,7 @@ test('kolejność dostawców i wybór modelu Grok', () => {
   assert.deepEqual(configuredProviders({ geminiApiKey: 'g', xaiApiKey: 'x' }), ['gemini', 'xai']);
   assert.deepEqual(configuredProviders({ xaiApiKey: 'x' }), ['xai']);
   assert.deepEqual(configuredProviders({ geminiApiKey: '  ' }), []);
+  assert.deepEqual(configuredProviders({ providers: [], ollamaModel: 'llama3.2-vision:11b' }), [], 'pusta lista jawnie wyłącza modele');
   assert.equal(pickXaiChatModel(['grok-2-image', 'grok-vision-beta']), null);
   assert.equal(pickXaiChatModel(['grok-4', 'grok-4-fast', 'grok-imagine-video']), 'grok-4-fast');
 });
