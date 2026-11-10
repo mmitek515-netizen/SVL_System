@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Download, FileArchive, FileText, RefreshCw, FolderOpen, ShieldCheck, Rocket, GitBranch, UploadCloud } from 'lucide-react';
 import { confirmGitPush } from '../kernel/gitPushConfirmation';
 
@@ -17,15 +17,29 @@ export const FileExplorer: React.FC = () => {
   const [deployMessage, setDeployMessage] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const gitWriteToken = useRef('');
+  // The operator token is never stored in localStorage or in project files.
+  const operatorGitToken = (): string | null => {
+    if (gitWriteToken.current.trim().length >= 32) return gitWriteToken.current.trim();
+    const token = window.prompt('Wprowadź osobny SVL_GITHUB_WRITE_TOKEN backendu (nie GitHub PAT).')?.trim() || '';
+    if (token.length < 32) {
+      setDeployMessage('Zapis GitHub anulowany: wymagany sekret operatora (min. 32 znaki).');
+      return null;
+    }
+    gitWriteToken.current = token;
+    return token;
+  };
 
   const handleGithubSync = async () => {
     if (syncing) return;
+    const token = operatorGitToken();
+    if (!token) return;
     setSyncing(true);
     setDeployMessage(null);
     try {
       const res = await fetch('/api/triad/github/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ agent: 'triad', message: 'Synchronizacja prac Triady z GitHub' }),
       });
       const data = await res.json();
@@ -40,12 +54,14 @@ export const FileExplorer: React.FC = () => {
 
   const handleCommit = async () => {
     if (committing) return;
+    const token = operatorGitToken();
+    if (!token) return;
     setCommitting(true);
     setDeployMessage(null);
     try {
       const res = await fetch('/api/triad/commit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ agent: 'triad', message: 'Zapis prac Triady (artefakty, aplikacje, eksporty)' }),
       });
       const data = await res.json();
