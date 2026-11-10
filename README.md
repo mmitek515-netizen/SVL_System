@@ -1,34 +1,45 @@
 # Bastilla OS SVL_System
 
-**Enter hyperspace** — świeży punkt startowy aplikacji Bastilla OS, która udostępnia interfejs SVL System.
+**Enter hyperspace** — świeży ekran wejściowy aplikacji Bastilla OS z dostępem do pulpitu SVL.
 
-To repozytorium zawiera kod aplikacji webowej: pulpit Bastilla, interfejsy terminali, moduły SVL, integracje oraz narzędzia diagnostyczne. Sam kod nie oznacza, że Debian/Linux został zainstalowany na hoście, że Ollama jest uruchomiona ani że aplikacja ma uprawnienia root hosta.
+To repozytorium zawiera kod aplikacji webowej i konfigurację obrazu instalacyjnego Debian 13 Live z KDE Plasma. Sam zapis w GitHub nie instaluje systemu na komputerze ani nie publikuje aplikacji.
+
+## Aktualny stan
+
+- Repozytorium: `mmitek515-netizen/SVL_System`
+- Główna gałąź: `main`
+- Ekran wejściowy: **Enter hyperspace**; wybór jest pamiętany lokalnie w przeglądarce.
+- Wejście prowadzi do istniejącego pulpitu Bastilla; pozostałe moduły aplikacji są zachowane.
+- Kod aplikacji i skrypty ISO są w repozytorium. Zainstalowany system, uruchomiony model Ollama oraz dostęp root do hosta wymagają osobnej konfiguracji i weryfikacji.
 
 ## Czysta baza po reinstalacji
 
-Zasady nowego startu i rozdzielenie kodu od danych hosta opisuje [dokumentacja czystej bazy](docs/REINSTALL_BASELINE.md). Repozytorium i jego historia Git pozostają zachowane; dane runtime, sekrety, lokalne bazy i dyski VM powinny być tworzone oddzielnie dla nowej instalacji.
+Postępuj według [dokumentacji czystej bazy](docs/REINSTALL_BASELINE.md). Repozytorium zachowuje historię i kod. Dane runtime, lokalne bazy, dyski VM oraz sekrety należy utworzyć osobno dla świeżej instalacji.
 
-## Uruchomienie aplikacji lokalnie
+## Uruchomienie aplikacji webowej
 
-Wymagane: Node.js, npm oraz Python 3.
+Wymagane: Node.js 22+, npm i Python 3. Lokalny czat wymaga osobnej usługi Ollama i skonfigurowanego modelu.
 
 ```sh
 npm ci
 cp .env.example .env
+# Uzupełnij lokalne ustawienia w .env; nie dodawaj ich do Git.
 npm run dev
 ```
 
-Ollama jest osobną lokalną usługą. Jej obecność, model, uprawnienia hosta i działanie terminali można potwierdzić dopiero na docelowym komputerze. Nie dodawaj sekretów ani kluczy do repozytorium.
+Otwórz adres wyświetlony przez Vite. Ekran **Enter hyperspace** pojawi się przy pierwszym wejściu w danej przeglądarce lub po wyczyszczeniu jej danych witryny. Kliknięcie przycisku zapisuje wybór w localStorage i otwiera pulpit.
 
-## Projekt
+## Budowa bootowalnego ISO
 
-- Nazwa interfejsu: **Bastilla OS SVL_System**
-- Wejście: **Enter hyperspace**
-- Domyślna gałąź: `main`
-- Aplikacja: React + Vite + Express + lokalne SVL Kernel API
-- Szczegóły środowiska, integracji i konfiguracji: dalsze sekcje dokumentacji repozytorium.
+Wymagania i kroki opisuje [bastillaos/README.md](bastillaos/README.md). Na hoście Linux amd64 z Dockerem uruchom z katalogu głównego repozytorium:
 
-## Walidacja
+```sh
+bash bastillaos/build-iso.sh
+```
+
+Po udanej budowie skrypt tworzy ISO oraz sumę SHA-256 w `bastillaos/build/`. Samo rozpoczęcie workflow lub commity w `main` nie instalują systemu na urządzeniu. Workflow ISO jest uruchamiany ręcznie albo po wypchnięciu tagu `bastillaos-v*`.
+
+## Walidacja kodu aplikacji
 
 ```sh
 npm test
@@ -37,4 +48,10 @@ npm run build
 npm run build:server
 ```
 
-Samo zapisanie zmian w GitHub nie uruchamia ich na hostingu. Do sprawdzenia wyglądu i połączeń aplikację trzeba uruchomić lub wdrożyć w odpowiednim środowisku.
+Walidacja kodu aplikacji nie zastępuje budowania ani testu ISO na maszynie docelowej. Nie deklaruj działania funkcji hosta, roota, terminali czy Ollamy bez sprawdzenia ich na zainstalowanym systemie.
+
+## Główne dokumenty
+
+- [Czysta baza po reinstalacji](docs/REINSTALL_BASELINE.md)
+- [Budowa i instalacja Bastilla OS](bastillaos/README.md)
+- [Konfiguracja mostu MCP](docs/MCP_SETUP.md)
