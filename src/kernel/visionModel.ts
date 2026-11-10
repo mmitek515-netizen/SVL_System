@@ -1,6 +1,7 @@
 /**
- * Pick an INSTALLED Ollama vision model, preferring the user's verified 14B.
- * A name or filename alone is not proof of vision capability: /api/show is authoritative.
+ * Pick an installed Ollama model capable of processing images. The model does NOT
+ * need "vision", "vl", or any other keyword in its name. Prefer installed 14B
+ * uncensored tags; verify actual image capability via Ollama /api/show.
  */
 export interface VisionModelSelection {
   requested: string;
@@ -27,8 +28,7 @@ function priority(tag: ModelTag): number {
   const name = nameOf(tag).toLowerCase();
   const fourteen = /(^|[^0-9])14b([^0-9]|$)|(^|[^0-9])14[-_ ]?b([^0-9]|$)/i.test(name);
   const uncensored = /uncensored|abliterat|unfiltered|dolphin/i.test(name);
-  const vision = /vision|vl\b|multimodal/i.test(name);
-  return (fourteen ? 100 : 0) + (uncensored ? 30 : 0) + (vision ? 10 : 0);
+  return (fourteen ? 100 : 0) + (uncensored ? 30 : 0);
 }
 
 export async function resolveVisionModel({
@@ -95,6 +95,6 @@ export async function resolveVisionModel({
   }
   return { ...initial, reachable: true,
     modelInstalled: !automatic && candidates.length > 0, inspected,
-    error: failureReason || 'Brak zweryfikowanego modelu Vision. Sprawdź ollama show <tag>.',
+    error: failureReason || 'Brak modelu z potwierdzoną obsługą obrazów. Sprawdź ollama show <tag>.',
   };
 }
