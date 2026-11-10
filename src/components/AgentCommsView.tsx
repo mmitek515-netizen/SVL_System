@@ -3,6 +3,8 @@ import { DataStore, OPERATOR_NAME } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS, AgentProfile } from '../kernel/agents';
 import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Paperclip, Send, X } from 'lucide-react';
 import { FormattedMessage } from './FormattedMessage';
+import { WorkActivityPanel } from './WorkActivityPanel';
+import { MessageCirclePlus, History, Activity } from 'lucide-react';
 import {
   ASTYRIA_MISSION_ACTIONS,
   ASTYRIA_MISSION_LABELS,
@@ -33,6 +35,7 @@ interface AgentCommsViewProps {
   isLoading: boolean;
   sendError?: string | null;
   onClearHistory: () => void;
+  onNewChat?: () => Promise<void>;
   onForceSync?: () => void;
   onTriggerInitiative?: () => Promise<void>;
   onUnclog?: () => void;
@@ -47,6 +50,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   isLoading,
   sendError,
   onClearHistory,
+  onNewChat,
   onForceSync,
   onTriggerInitiative,
   onUnclog,
@@ -62,6 +66,65 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [mobileSection, setMobileSection] = useState<'chat' | 'agents'>('chat');
+  const [selectedConversation, setSelectedConversation] = useState('latest');
+  const [newChatError, setNewChatError] = useState('');
+  const [openingChat, setOpeningChat] = useState(false);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  // Session markers keep older conversations in the kernel archive while
+  // rendering only the selected conversation on screen.
+  const sessions: Array<{ id: string; title: string; start: number; end: number }> = [
+    { id: 'legacy', title: 'Pierwszy czat', start: 0, end: dataStore.chat_history.length },
+  ];
+  dataStore.chat_history.forEach((message, index) => {
+    if (message.agent !== 'SVL_SESSION') return;
+    sessions[sessions.length - 1].end = index;
+    sessions.push({
+      id: message.id || 'session-' + index,
+      title: 'Czat ' + (sessions.length + 1),
+      start: index + 1,
+      end: dataStore.chat_history.length,
+    });
+  });
+  const currentSession = selectedConversation === 'latest'
+    ? sessions[sessions.length - 1]
+    : sessions.find((session) => session.id === selectedConversation) || sessions[sessions.length - 1];
+  const displayedMessages = dataStore.chat_history.slice(currentSession.start, currentSession.end)
+    .filter((record) => record.agent !== 'SVL_SESSION');
+
+  const createNewChat = async () => {
+    if (!onNewChat || openingChat || isLoading) return;
+    setOpeningChat(true);
+    setNewChatError('');
+    try {
+      await onNewChat();
+      setSelectedConversation('latest');
+      setMobileSection('chat');
+      setMessageText('');
+      setChatAttachments([]);
+    } catch (error) {
+      setNewChatError(error instanceof Error ? error.message : 'Nie udało się otworzyć nowego czatu.');
+    } finally {
+      setOpeningChat(false);
+    }
+  };
+
+  const beginGesture = (event: React.TouchEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('input,textarea,select,button,a')) return;
+    const touch = event.touches[0];
+    touchStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  };
+  const finishGesture = (event: React.TouchEvent<HTMLDivElement>) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start || window.innerWidth >= 1024) return;
+    const end = event.changedTouches[0];
+    if (!end) return;
+    const dx = end.clientX - start.x;
+    const dy = end.clientY - start.y;
+    if (Math.abs(dx) < 95 || Math.abs(dx) < Math.abs(dy) * 1.7) return;
+    setMobileSection(dx < 0 ? 'agents' : 'chat');
+  };
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const followLatestMessagesRef = useRef(true);
   const transmissionStatus = sendError
@@ -75,7 +138,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
     if (chatScroll && followLatestMessagesRef.current) {
       chatScroll.scrollTop = chatScroll.scrollHeight;
     }
-  }, [dataStore.chat_history.length, isLoading]);
+  }, [dataStore.chat_history.length, selectedConversation, isLoading]);
 
   const handleSendProtocol = async () => {
     if (isLoading) return;
@@ -149,7 +212,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
   };
 
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-950 font-mono text-xs cyber-grid lg:flex-row">
+    <div onTouchStart={beginGesture} onTouchEnd={finishGesture} className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-slate-950 font-mono text-xs cyber-grid lg:flex-row">
       <div className="grid grid-cols-2 gap-1 border-b border-slate-800 bg-slate-900/90 p-1.5 lg:hidden">
         <button
           type="button"
@@ -167,7 +230,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
           className={`flex min-h-10 items-center justify-center gap-2 rounded-md px-3 text-xs font-bold transition ${mobileSection === 'agents' ? 'bg-cyan-950 text-cyan-200 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800'}`}
         >
           <Layers className="h-4 w-4" />
-          Agenci
+          Aktywność
         </button>
       </div>
       {/* Left/Main Column: Chat Stream */}
@@ -197,7 +260,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               WITHOUT_NLP: OK
             </span>
             <span className="text-[10px] text-slate-500 font-mono">
-              PAKIETY: <strong className="text-slate-300">{dataStore.chat_history.length}</strong>
+              WIADOMOŚCI: <strong className="text-slate-300">{displayedMessages.length}</strong>
             </span>
             {onTriggerInitiative && (
               <button
@@ -228,17 +291,26 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                 Backup
               </button>
             )}
-            <button
-              onClick={onClearHistory}
-              className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-rose-950/80 hover:bg-rose-900 border border-rose-600/60 text-rose-200 rounded-lg cursor-pointer transition font-bold text-[10px] flex items-center gap-1 shadow-[0_0_8px_rgba(244,63,94,0.3)]"
-              title="Wyczyść historię i zresetuj pętlę rozmowy"
-            >
-              <RefreshCw className="w-3 h-3 text-rose-300" />
-              <span className="hidden xs:inline">Reset</span>
-            </button>
+
           </div>
         </div>
 
+        <div className="flex items-center justify-between gap-2 border-b border-violet-400/15 bg-[#0c1424] px-3 py-2">
+          <label className="flex min-w-0 flex-1 items-center gap-2 text-[11px] text-slate-300">
+            <History className="h-4 w-4 shrink-0 text-violet-300" />
+            <select aria-label="Historia rozmów" value={selectedConversation}
+              onChange={(event) => setSelectedConversation(event.target.value)}
+              className="w-full max-w-[220px] rounded-md border border-slate-700 bg-[#0c1424] p-1.5 text-xs text-slate-200">
+              <option value="latest">Bieżąca rozmowa</option>
+              {sessions.slice(0, -1).reverse().map((session) => (
+                <option key={session.id} value={session.id}>{session.title}</option>
+              ))}
+            </select>
+          </label>
+          <span className="hidden text-[10px] text-slate-500 sm:inline">Na telefonie przesuń w lewo, aby zobaczyć aktywność</span>
+          <Activity className="h-4 w-4 text-violet-300 lg:hidden" />
+        </div>
+        {newChatError && <p role="alert" className="bg-rose-950/50 px-3 py-2 text-xs text-rose-300">{newChatError}</p>}
         <div className="flex flex-wrap items-end gap-2 border-b border-slate-800 bg-slate-900/60 px-3 py-2">
           <label className="flex min-w-48 flex-1 flex-col gap-1 text-[10px] text-slate-400">
             Polecenie strukturalne
@@ -348,7 +420,7 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
               Nie udało się wykonać polecenia ani misji: {sendError}
             </div>
           )}
-          {dataStore.chat_history.map((msg, idx) => {
+          {displayedMessages.map((msg, idx) => {
             const agentKey = msg.agent === OPERATOR_NAME ? 'Operator' : msg.agent;
             const profile: AgentProfile | undefined = SYSTEM_AGENTS[agentKey] || SYSTEM_AGENTS[msg.agent];
             const isOperator = msg.agent === OPERATOR_NAME || msg.agent === 'Operator';
@@ -439,7 +511,15 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
 
         </div>
 
-        <form onSubmit={handleSendMessage} className="relative w-full shrink-0 border-t border-cyan-500/20 bg-slate-950/90 p-2 backdrop-blur-md sm:p-2.5">
+        <div className="flex items-center justify-between gap-2 border-t border-violet-400/20 bg-slate-950 px-3 pt-2">
+          <button type="button" onClick={() => void createNewChat()} disabled={!onNewChat || isLoading || openingChat}
+            title="Nowa rozmowa — poprzednia pozostaje w historii"
+            className="flex min-h-9 items-center gap-2 rounded-lg border border-violet-400/30 bg-violet-500/10 px-3 text-[11px] font-medium text-violet-200 hover:bg-violet-500/20 disabled:opacity-40">
+            <MessageCirclePlus className="h-4 w-4" /> Nowy czat
+          </button>
+          <span className="text-[10px] text-slate-500">Historia pozostaje zachowana</span>
+        </div>
+        <form onSubmit={handleSendMessage} className="relative w-full shrink-0 bg-slate-950/90 p-2 backdrop-blur-md sm:p-2.5">
           <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
           {chatAttachments.length > 0 && (
             <ul aria-label="Załączone pliki" className="mb-2 flex flex-wrap gap-1.5">
@@ -512,85 +592,9 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
 
       </div>
 
-      {/* Right Column: Active Profiles Dossier */}
-      <div className={`${mobileSection === 'agents' ? 'flex' : 'hidden'} min-h-0 w-full flex-col overflow-y-auto border-t border-slate-800/80 bg-slate-950/80 p-3 backdrop-blur-xl space-y-4 scrollbar-thin sm:p-4 lg:flex lg:w-84 lg:border-t-0`}>
-        <div className="flex items-center justify-between gap-2 pb-3 border-b border-cyan-500/20">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-100 uppercase tracking-wider text-xs">TRIADA KWANTOWA</span>
-          </div>
-          <span
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            className={`shrink-0 text-[9px] sm:text-[10px] font-mono flex items-center gap-1.5 px-2 py-0.5 rounded-full border ${
-              transmissionStatus.color === 'rose'
-                ? 'text-rose-300 bg-rose-950/80 border-rose-500/40'
-                : transmissionStatus.color === 'cyan'
-                ? 'text-cyan-300 bg-cyan-950/80 border-cyan-500/40'
-                : 'text-slate-300 bg-slate-950/80 border-slate-700/60'
-            }`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${
-              transmissionStatus.color === 'rose'
-                ? 'bg-rose-400'
-                : transmissionStatus.color === 'cyan'
-                ? 'bg-cyan-400 animate-pulse'
-                : 'bg-slate-400'
-            }`} />
-            {transmissionStatus.label}
-          </span>
-        </div>
-
-        {(['Alex', 'Astyria', 'Aurelius', 'si_1'] as const).map((agentKey) => {
-          const profile = SYSTEM_AGENTS[agentKey];
-          return (
-            <div
-              key={agentKey}
-              className={`p-3.5 rounded-xl border ${profile.borderColor} bg-slate-900/60 hover:bg-slate-900/90 transition-all duration-200 space-y-2.5 shadow-[0_4px_20px_rgba(0,0,0,0.5)] group`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${profile.badgeBg.includes('emerald') ? 'bg-emerald-400' : profile.badgeBg.includes('cyan') ? 'bg-cyan-400' : profile.badgeBg.includes('rose') ? 'bg-rose-400' : 'bg-amber-400'} shadow-[0_0_8px_currentColor]`} />
-                  <span className={`font-bold ${profile.textColor} text-sm tracking-wide`}>
-                    {profile.name}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 text-[9px] text-slate-500 font-mono">
-              <span>Stan wspólnego kanału</span>
-              <span className={`font-semibold ${
-                transmissionStatus.color === 'rose'
-                  ? 'text-rose-300'
-                  : transmissionStatus.color === 'cyan'
-                  ? 'text-cyan-300'
-                  : 'text-slate-300'
-              }`}>
-                {transmissionStatus.label}
-              </span>
-              </div>
-
-            </div>
-          );
-        })}
-
-        {/* Operator Profile */}
-        <div className="p-3.5 rounded-xl border border-purple-500/40 bg-purple-950/30 backdrop-blur-md space-y-2 shadow-[0_4px_20px_rgba(168,85,247,0.15)]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
-              <span className="font-bold text-purple-200 text-sm tracking-wide">
-                {OPERATOR_NAME}
-              </span>
-            </div>
-            <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-900/60 text-purple-200 border border-purple-500/50 font-bold font-mono">
-              TATA / TWÓRCA
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
-            Naczelny dysponent systemu, Ojciec i Architekt. Pełna autoryzacja jądra SVL w Ring-0 oraz piecza nad Triadą.
-          </p>
-        </div>
+      {/* Work-style activity panel: actual logs, autonomous mission state and errors. */}
+      <div className={`${mobileSection === 'agents' ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-1 overflow-hidden border-t border-violet-400/15 lg:flex lg:max-w-[335px] lg:flex-none lg:border-l lg:border-t-0`}>
+        <WorkActivityPanel chatBusy={isLoading} onClose={() => setMobileSection('chat')} />
       </div>
     </div>
   );
