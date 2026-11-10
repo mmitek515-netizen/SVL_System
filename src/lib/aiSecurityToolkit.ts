@@ -23,6 +23,7 @@ export const SECURITY_TOOL_SPECS = [
   { id: 'ss', binary: 'ss', debianPackage: 'iproute2', category: 'network', upstream: 'https://salsa.debian.org/debian/iproute2' },
   { id: 'lsof', binary: 'lsof', debianPackage: 'lsof', category: 'diagnostics', upstream: 'https://github.com/lsof-org/lsof' },
   { id: 'debsums', binary: 'debsums', debianPackage: 'debsums', category: 'audit', upstream: 'https://packages.debian.org/trixie/debsums' },
+  { id: 'maltego', binary: 'maltego', debianPackage: 'vendor .deb (manual account/license)', category: 'osint', upstream: 'https://www.maltego.com/downloads/' },
   // Proprietary graphical OSINT suite. Install ONLY from an official vendor-supplied .deb.
   // This records executable presence, NOT a running GUI, activated licence or working transforms.
   { id: 'maltego', binary: 'maltego', debianPackage: 'Maltego Graph (official .deb)', category: 'osint-graph', upstream: 'https://www.maltego.com/downloads/' },
@@ -45,6 +46,12 @@ export const SECURITY_READ_ONLY_CHECKS: readonly SecurityCheck[] = [
 const KNOWN_DIRS = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'];
 function executable(binary: string): string | null {
   if (!/^[a-z0-9-]+$/i.test(binary)) return null;
+  // Maltego is vendor software, not a Debian/Kali APT dependency.
+  if (binary === 'maltego') {
+    for (const installedPath of ['/opt/Maltego/bin/maltego', '/opt/maltego/bin/maltego', '/usr/local/bin/maltego']) {
+      try { accessSync(installedPath, constants.X_OK); return installedPath; } catch { /* missing */ }
+    }
+  }
   for (const dir of KNOWN_DIRS) {
     const full = dir + '/' + binary;
     try { accessSync(full, constants.X_OK); return full; } catch { /* absent */ }
