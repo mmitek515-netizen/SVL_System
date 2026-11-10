@@ -90,6 +90,8 @@ w realnym środowisku należy osobno potwierdzić. Nie wyświetlać fikcyjnych s
 - [Czysta baza po reinstalacji](docs/REINSTALL_BASELINE.md)
 - [Budowa i instalacja Bastilla OS](bastillaos/README.md)
 - [Globalna synchronizacja DATA_STORE, GitHub i AI Studio](docs/GLOBAL_SYNC.md)
+- [Pełna biblioteka interaktywnych komponentów czatu AI](docs/CHAT_UI_LIBRARY.md)
+- [Rzeczywisty zdalny pulpit AI Desktop Nexus — Debian/XFCE/noVNC](docs/AI_DESKTOP_NEXUS.md)
 - [Flota i statki kosmiczne — interaktywny panel danych rzeczywistych](docs/FLEET_REAL_DATA.md)
 - [Real Vision, renderowanie GPT Image i pamięć AI](docs/AI_MULTIMODAL_MEMORY.md)
 - [Konfiguracja mostu MCP](docs/MCP_SETUP.md)
