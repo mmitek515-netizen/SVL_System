@@ -91,9 +91,14 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
       const status = await response.json();
       if (status.success !== true) throw new Error('Brak odpowiedzi diagnostycznej.');
       const connected = status.reachable === true && status.modelAvailable === true;
+      const geminiFallback = Array.isArray(status.fallbackProviders) && status.fallbackProviders.includes('gemini');
+      const unavailableDetail = String(status.error || 'Sprawdź Ollamę na hoście Linux.')
+        + (geminiFallback ? ' Gemini jest skonfigurowany jako fallback, ale działanie API nie zostało zweryfikowane.' : ' W AI Studio 127.0.0.1 oznacza serwer aplikacji, nie Twój lokalny komputer.');
       setOllamaHealth({
-        label: connected ? 'GOTOWA · ' + String(status.model || 'model') : status.reachable ? 'BRAK MODELU' : 'NIEDOSTĘPNA',
-        detail: connected ? 'Backend widzi model Ollamy przez /api/tags. To nie potwierdza jeszcze generowania.' : String(status.error || 'Sprawdź Ollamę na hoście Linux.'),
+        label: connected ? 'GOTOWA · ' + String(status.model || 'model')
+          : status.reachable ? 'BRAK MODELU'
+          : geminiFallback ? 'OFFLINE · GEMINI FALLBACK' : 'NIEDOSTĘPNA',
+        detail: connected ? 'Backend widzi model Ollamy przez /api/tags. To nie potwierdza jeszcze generowania.' : unavailableDetail,
         connected,
       });
     } catch (error) {
