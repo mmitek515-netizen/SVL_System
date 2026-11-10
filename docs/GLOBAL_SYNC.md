@@ -1,5 +1,30 @@
 # Globalna synchronizacja Bastilla OS / SVL_System
 
+## Warstwa 0 — szyna zdarzeń (nowa, po komendach w czacie)
+
+Backend udostępnia `GET /api/sync/events` (Server-Sent Events) i
+`GET /api/sync/status`. Po zakończeniu modyfikującego żądania HTTP
+w obszarach czatu, kernela, aplikacji, floty, baz, misji i AI publikuje
+powiadomienie o unieważnieniu wcześniejszego odczytu. Przeglądarki
+subskrybują SSE, a aktualnie otwarte panele odczytują dane ponownie
+z autorytatywnych API. Zdarzenie nigdy nie jest samo w sobie dowodem
+zapisania konkretnej zmiany. Jest tylko sygnałem „sprawdź ponownie”.
+
+Uzupełnienie starego polling 4 s: `EventSource` ma automatyczny retry;
+przy braku połączenia nadal działa okresowy odczyt. Ręczny przycisk
+Synchronizuj wywołuje odświeżenie także paneli narzędzi.
+Szyna jest **lokalna dla pojedynczego procesu Node**, nie ma trwałej kolejki,
+odporności na restart ani synchronizacji pomiędzy niezależnymi backendami.
+Nie publikuje sekretów lub treści czatu.
+
+**Ważne ograniczenia:** zmiany hosta Linux wykonane zewnętrznie (apt,
+systemd, root shell, Docker, inny proces) nie powodują automatycznie
+zdarzenia, jeżeli nie przechodzą przez backend Bastilla. Ollama i workery
+SPAA muszą mieć rzeczywiste podłączone API/adaptery i odczyt po statusie.
+Synchronizacja GitHub main nie instaluje kodu na hostcie i nie aktualizuje
+sama Preview Google AI Studio. Stan systemu jest potwierdzony wyłącznie
+z odczytu backendu, nie z wygenerowanego komunikatu AI.
+
 ## Warstwa 1 — DATA_STORE (interfejs ↔ backend)
 
 Źródłem prawdy jest Python SVL Kernel udostępniany przez `GET /api/kernel/state`.
