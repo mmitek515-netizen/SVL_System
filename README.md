@@ -80,3 +80,4 @@ Walidacja kodu aplikacji nie zastępuje budowania ani testu ISO na maszynie doce
 - [Czysta baza po reinstalacji](docs/REINSTALL_BASELINE.md)
 - [Budowa i instalacja Bastilla OS](bastillaos/README.md)
 - [Konfiguracja mostu MCP](docs/MCP_SETUP.md)
+- [MCP wyłącznie przez Google AI Studio (bez Codespaces)](docs/MCP_AI_STUDIO.md)
