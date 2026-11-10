@@ -254,12 +254,14 @@ node -e "
     message => message.agent === 'Mateusz Mitek' && message.tekst === messageText
   );
   const deterministicReplyPersisted = messageResult.state?.store?.chat_history?.some(
-    message => message.agent === 'Astyria' && message.tekst === messageResult.reply
+    message => message.agent === 'Astyria' && message.tekst === messageResult.replies?.Astyria
   );
   if (
     !messageResponse.ok ||
     messageResult.success !== true ||
-    !messageResult.reply?.includes('nie jest interpretowana językowo') ||
+    !messageResult.reply?.includes('Astyria:') ||
+    !messageResult.replies?.Astyria ||
+    !Object.values(messageResult.engines || {}).every(engine => engine === 'without_nlp') ||
     messageResult.analysis?.decodedText !== messageText ||
     !messagePersisted ||
     !deterministicReplyPersisted
