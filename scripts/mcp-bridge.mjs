@@ -1,7 +1,9 @@
 // Isolated, read-only Streamable HTTP MCP bridge: no command execution.
 import { createServer } from 'node:http';
-import { createHash, timingSafeEqual } from 'node:crypto';
-import { pathToFileURL } from 'node:url';
+import { createHash, timingSafeEqual, randomBytes } from 'node:crypto';
+import { appendFileSync, chmodSync, existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import 'dotenv/config';
 
 const SUPPORTED = ['2025-11-25', '2025-06-18', '2025-03-26'];
@@ -12,7 +14,13 @@ const TOOLS = [
   { name: 'svl_agents', description: 'List configured chat roles, not live worker status.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true } },
-  { name: 'svl_ai_status', description: 'Read an allowlisted subset of local SVL /api/ai/status.',
+  { name: 'svl_ai_status', description: 'Read configured AI providers and model from local SVL; this is not an Ollama connectivity check.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true } },
+  { name: 'svl_system_status', description: 'Read the actual availability of the SVL app and a safe infrastructure status subset.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true } },
+  { name: 'svl_ollama_status', description: 'Probe local Ollama directly; list installed and loaded models, not just configured ones.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true } },
 ];
@@ -21,6 +29,25 @@ const result = (id, data) => ({ jsonrpc: '2.0', id, result: data });
 const error = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, message } });
 const output = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }] });
 const short = value => typeof value === 'string' ? value.slice(0, 200) : null;
+const safeBool = value => typeof value === 'boolean' ? value : null;
+async function getJson(url) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(6500) });
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return response.json();
+}
+function resolveToken() {
+  const configured = process.env.SVL_MCP_TOKEN?.trim();
+  if (configured) return configured;
+  const envFile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.env');
+  const existing = existsSync(envFile) ? readFileSync(envFile, 'utf8') : '';
+  const generated = randomBytes(32).toString('hex');
+  appendFileSync(envFile, (existing && !existing.endsWith('\n') ? '\n' : '') +
+    'SVL_MCP_TOKEN=' + generated + '\n', { mode: 0o600 });
+  chmodSync(envFile, 0o600);
+  process.env.SVL_MCP_TOKEN = generated;
+  console.log('MCP token created in local .env (never commit or paste it into chat).');
+  return generated;
+}
 
 function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8',
@@ -91,18 +118,72 @@ export function createMcpServer({ token, appPort = 3000, allowedOrigins = [] }) 
       status: 'bridge-running', mode: 'read-only', dangerousActionsExposed: false,
     })));
     if (name === 'svl_agents') return send(res, 200, result(id, output({
-      roles: ['Alex', 'Astyria', 'Aria', 'Aurelius'],
+      agents: ['Alex', 'Astyria', 'Aria', 'Aurelius'].map(name => ({
+        name, configured: true, workerStatus: 'unverified',
+      })),
       source: 'SVL chat-role configuration', liveWorkersVerified: false,
     })));
+    const svlBase = 'http://127.0.0.1:' + Number(appPort);
+    if (name === 'svl_ollama_status') {
+      const base = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');
+      let url;
+      try {
+        url = new URL(base);
+        if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
+            (url.pathname !== '/' && url.pathname !== ''))
+          throw new Error('Only loopback HTTP Ollama endpoints are allowed');
+      } catch {
+        return send(res, 200, result(id, { ...output({
+          reachable: false, error: 'Invalid/non-local OLLAMA_BASE_URL',
+        }), isError: true }));
+      }
+      try {
+        const version = await getJson(base + '/api/version');
+        const [tags, loaded] = await Promise.all([
+          getJson(base + '/api/tags').catch(() => ({})),
+          getJson(base + '/api/ps').catch(() => ({})),
+        ]);
+        const names = entries => (Array.isArray(entries) ? entries : [])
+          .slice(0, 40).map(item => short(item?.name || item?.model)).filter(Boolean);
+        return send(res, 200, result(id, output({
+          reachable: true, version: short(version?.version),
+          configuredModel: short(process.env.OLLAMA_MODEL || 'dolphin-llama3:8b'),
+          installedModels: names(tags.models), loadedModels: names(loaded.models),
+        })));
+      } catch {
+        return send(res, 200, result(id, output({
+          reachable: false, configuredModel: short(process.env.OLLAMA_MODEL || 'dolphin-llama3:8b'),
+          installedModels: null, loadedModels: null,
+          error: 'Ollama did not respond on the configured loopback address',
+        })));
+      }
+    }
+    if (name === 'svl_system_status') {
+      const [ai, infra] = await Promise.allSettled([
+        getJson(svlBase + '/api/ai/status'),
+        getJson(svlBase + '/api/infrastructure/status'),
+      ]);
+      const a = ai.status === 'fulfilled' ? ai.value : {};
+      const i = infra.status === 'fulfilled' ? infra.value : {};
+      return send(res, 200, result(id, output({
+        svlReachable: ai.status === 'fulfilled' || infra.status === 'fulfilled',
+        aiStatusReachable: ai.status === 'fulfilled',
+        infrastructureStatusReachable: infra.status === 'fulfilled',
+        provider: short(a.provider), configuredModel: short(a.model),
+        sysVersion: short(i.sysVersion || a.sysVersion),
+        repairStatus: short(i.repairStatus), missionStatus: short(i.missionStatus),
+        autoRepairEnabled: safeBool(i.autoRepairEnabled),
+        continuousMissionEnabled: safeBool(i.continuousMissionEnabled),
+        uptimeSeconds: Number.isFinite(i.uptimeSeconds) ? i.uptimeSeconds : null,
+      })));
+    }
     try {
-      const url = 'http://127.0.0.1:' + Number(appPort) + '/api/ai/status';
-      const response = await fetch(url, { signal: AbortSignal.timeout(3500) });
-      if (!response.ok) throw new Error('Local SVL is unavailable');
-      const body = await response.json();
+      const body = await getJson(svlBase + '/api/ai/status');
       return send(res, 200, result(id, output({
         provider: short(body.provider), model: short(body.model),
-        enabled: typeof body.enabled === 'boolean' ? body.enabled : null,
+        enabled: safeBool(body.enabled),
         connection: short(body.connection), sysVersion: short(body.sysVersion),
+        modelRuntimeVerified: false,
       })));
     } catch {
       return send(res, 200, result(id, { ...output({
@@ -121,7 +202,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     ...(process.env.SVL_MCP_ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean),
   ];
   const server = createMcpServer({
-    token: process.env.SVL_MCP_TOKEN,
+    token: resolveToken(),
     appPort: Number(process.env.SVL_APP_PORT || 3000),
     allowedOrigins: origins,
   });
