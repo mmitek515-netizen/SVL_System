@@ -70,6 +70,14 @@ Wynik `autoSync: true` znaczy, że proces obserwacji został uruchomiony;
 nie dowodzi, że wszystkie commity dotarły na GitHub. Zmiany w GitHub
 nie oznaczają natychmiastowej aktualizacji już działającego wdrożenia.
 
+### Autoryzacja HTTP i wycofane endpointy
+
+Po audycie bezpieczeństwa każda mutacja `/api/github/*`, `/api/triad/github/*`, `/api/triad/git/*` oraz `POST /api/triad/commit` wymaga nagłówka `Authorization: Bearer <SVL_GITHUB_WRITE_TOKEN>` z osobnym silnym sekretem skonfigurowanym lokalnie (co najmniej 32 znaki). Bez niego API odrzuca operacje kodem HTTP 403. Token nie może być tożsamy z GitHub PAT / GITHUB_TOKEN, nie zapisuj go do repo ani localStorage. Panel synchronizacji ma pole sekretnych danych, a Eksplorator prosi o sekret przy zapisie.
+
+Endpointy `/api/github/export` i `/api/github/pull` są wycofane (HTTP 410 po uwierzytelnieniu): nie zapisujemy PAT w `git remote` ani nie wykonujemy nadpisującego katalogi importu. Synchronizacja `main` nadal wymaga faktycznego checkoutu i istniejącego połączenia GitHub. Działanie w AI Studio bez hosta Git nie jest symulowane.
+
+CI obejmuje także `tests/githubWriteAuth.test.mjs` oraz `tests/securityAndDesktopRegression.test.mjs`.
+
 ## Warstwa 3 — Google AI Studio
 
 AI Studio Build/Preview nie zawsze ma katalog `.git` i nie zapewnia bezpośredniego
