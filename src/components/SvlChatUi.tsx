@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Copy, ExternalLink, Send, Terminal, Zap } from 'lucide-react';
+import { SVL_UI_EXTRA_TYPES, SvlUiExtraWidget } from './SvlUiExtras';
 
 /**
  * SVL declarative chat UI. Agents return JSON in a fenced svl-ui block.
@@ -10,6 +11,7 @@ export const SVL_UI_TYPES = [
   'button_group', 'progress', 'toggle', 'checkbox', 'radio', 'slider',
   'text_input', 'textarea', 'select', 'tabs', 'accordion', 'table',
   'bar_chart', 'timeline', 'code', 'terminal', 'divider', 'link',
+  ...SVL_UI_EXTRA_TYPES,
 ] as const;
 export type SvlUiType = typeof SVL_UI_TYPES[number];
 export interface SvlUiItem {
@@ -167,7 +169,7 @@ function Widget({ component: c, onAction }: { component: SvlUiItem; onAction?: (
     case 'timeline': return <div className={panel}>{heading}<ol className="mt-2 border-l border-violet-400/40 pl-3">{rows.map((row, i) => <li key={i} className="mb-3 text-[11px] text-slate-300"><strong className="text-violet-200">{row.label}</strong><p>{row.value}</p></li>)}</ol></div>;
     case 'code': case 'terminal': return <div className={panel}><div className="mb-2 flex items-center justify-between">{heading}<button type="button" title="Kopiuj" onClick={() => void navigator.clipboard.writeText(asText(c.value))} className="rounded p-1.5 text-slate-400 hover:text-violet-200"><Copy size={14}/></button></div><pre className="overflow-x-auto rounded-lg bg-[#050a12] p-3 text-[11px] text-emerald-200">{asText(c.value)}</pre>{c.type === 'terminal' && <p className="mt-2 text-[10px] text-slate-500">Podgląd wyniku, bez automatycznego wykonania</p>}</div>;
     case 'link': return c.href ? <a href={c.href} rel="noopener noreferrer" target="_blank" className="inline-flex items-center gap-1 text-xs text-violet-300 underline">{c.label || c.href}<ExternalLink size={12}/></a> : null;
-    default: return null;
+    default: return <SvlUiExtraWidget component={c} onAction={onAction} />;
   }
 }
 
