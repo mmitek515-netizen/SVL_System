@@ -7,7 +7,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs';
 import os from 'os';
-import { randomUUID, createHash } from 'crypto';
+import { randomUUID, createHash, timingSafeEqual } from 'crypto';
 import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import { createFleetRouter } from './src/lib/fleetRoutes';
 import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
@@ -5211,6 +5211,61 @@ function buildWithoutNlpAgentReply(
 
 // Separate chats without deleting history. SVL_SESSION records are stored in the same
 // authoritative Python DATA_STORE and act as boundaries for LLM context.
+/** Authenticated, durable worker-to-worker and worker-to-operator messaging.
+ * The same chat_history is authoritative for UI and worker polling. Without
+ * a running worker and configured secret no proactive messages are fabricated.
+ */
+const AGENT_BUS_IDS = ['Alex', 'Astyria', 'Aurelius', 'si_1'] as const;
+const AGENT_RECIPIENTS = ['Operator', 'all', ...AGENT_BUS_IDS] as const;
+function agentBusAuthorized(req: express.Request): boolean {
+  const expected = (process.env.SVL_AGENT_MESSAGE_TOKEN || '').trim();
+  if (expected.length < 32) return false;
+  const got = String(req.header('x-svl-agent-token') || '').trim();
+  const left = Buffer.from(got);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+app.post('/api/triad/agent-messages', async (req, res) => {
+  if (!agentBusAuthorized(req)) return res.status(403).json({ success: false, error: 'Brak poprawnego tokenu agenta (SVL_AGENT_MESSAGE_TOKEN).' });
+  const { from, to, text } = req.body ?? {};
+  if (!AGENT_BUS_IDS.includes(from) || !AGENT_RECIPIENTS.includes(to) ||
+      typeof text !== 'string' || !text.trim() || text.length > 6000) {
+    return res.status(400).json({ success: false, error: 'Wymagane: from, to (Operator/all/agent), text (1..6000).' });
+  }
+  const entry = { id: randomUUID(), agent: from, to, tekst: text.trim(), kind: 'agent_message', source: 'authenticated_agent_bus', timestamp: new Date().toISOString() };
+  try {
+    await runPythonKernel(['--action', 'batch_msg', '--msgs_json', JSON.stringify([entry])]);
+    const updated = await getPythonKernelState(true);
+    const found = Array.isArray(updated?.store?.chat_history) &&
+      updated.store.chat_history.some((m: any) => m?.id === entry.id && m?.agent === from && m?.tekst === entry.tekst);
+    if (!found) throw new Error('Jądro nie potwierdziło utrwalenia wiadomości od agenta.');
+    pushSystemLog('info', 'AGENT', '[AGENT BUS] ' + from + ' → ' + to + ': wiadomość utrwalona (' + entry.id + ').');
+    return res.status(201).json({ success: true, id: entry.id, cursor: updated.store.chat_history.length });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: String(error instanceof Error ? error.message : error) });
+  }
+});
+
+app.get('/api/triad/agent-messages', async (req, res) => {
+  if (!agentBusAuthorized(req)) return res.status(403).json({ success: false, error: 'Wymagany token agenta.' });
+  const recipient = req.query.recipient;
+  const cursorValue = Number(req.query.cursor ?? 0);
+  if (typeof recipient !== 'string' || !AGENT_RECIPIENTS.includes(recipient as typeof AGENT_RECIPIENTS[number]) ||
+      !Number.isSafeInteger(cursorValue) || cursorValue < 0) {
+    return res.status(400).json({ success: false, error: 'Podaj recipient oraz cursor >= 0.' });
+  }
+  try {
+    const snapshot = await getPythonKernelState(true);
+    const all = snapshot?.store?.chat_history;
+    if (!Array.isArray(all)) throw new Error('Historia agenta niedostępna.');
+    const messages = all.slice(cursorValue).filter((record: any) =>
+      record?.kind === 'agent_message' && (record.to === recipient || record.to === 'all'));
+    return res.json({ success: true, messages: messages.slice(-100), cursor: all.length });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: String(error instanceof Error ? error.message : error) });
+  }
+});
+
 app.post('/api/triad/chat/new-session', async (_req, res) => {
   try {
     const entry = {
