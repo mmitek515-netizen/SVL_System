@@ -1,0 +1,196 @@
+/** Actual multimodal services: Ollama Vision, OpenAI image API, persisted shared memory. */
+import { Router, type Request, type Response, type NextFunction } from 'express';
+import { timingSafeEqual } from 'node:crypto';
+import { SharedSystemMemory, isMemoryScope, type MemoryScope } from '../kernel/systemMemory';
+
+const visionModel = (process.env.OLLAMA_VISION_MODEL || 'llama3.2-vision:11b').trim();
+const imageModel = (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-flare').trim();
+const ollamaUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');
+const imageSizes = ['1024x1024', '1536x1024', '1024x1536'];
+const imageMimeTypes = ['image/png', 'image/jpeg', 'image/webp'];
+
+function allowLocalOrToken(req: Request): boolean {
+  const expected = (process.env.SVL_AI_ACCESS_TOKEN || '').trim();
+  if (expected) {
+    const got = (req.header('x-svl-ai-token') || req.header('authorization')?.replace(/^Bearer /i, '') || '').trim();
+    const a = Buffer.from(got);
+    const b = Buffer.from(expected);
+    return a.length === b.length && a.length !== 0 && timingSafeEqual(a, b);
+  }
+  // An unconfigured deployment is NOT a public memory/AI proxy.
+  return ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress || '');
+}
+function handleError(res: Response, error: unknown, provider: string) {
+  const reason = error instanceof Error ? error.message : String(error);
+  console.error('[AI ' + provider + ']', reason.slice(0, 300));
+  return res.status(502).json({ success: false, provider, error: 'Usługa nie odpowiedziała: ' + reason.slice(0, 240) });
+}
+function parseImage(body: any): { mimeType: string; bytes: Buffer } {
+  const raw = body?.image;
+  if (typeof raw !== 'string') throw new Error('Prześlij obraz base64 w polu image.');
+  const dataUri = /^data:(image\/(?:png|jpeg|webp));base64,(.*)$/s.exec(raw);
+  const mimeType = dataUri ? dataUri[1] : body?.mimeType;
+  const encoded = dataUri ? dataUri[2] : raw;
+  if (!imageMimeTypes.includes(mimeType)) throw new Error('Obsługiwane obrazy: JPG, PNG lub WEBP.');
+  if (!encoded || encoded.length > 11_200_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    throw new Error('Nieprawidłowy obraz base64 lub przekroczony limit 8 MB.');
+  }
+  const bytes = Buffer.from(encoded, 'base64');
+  if (bytes.length === 0 || bytes.length > 8 * 1024 * 1024) throw new Error('Maksymalny rozmiar obrazu wynosi 8 MB.');
+  const isJpeg = bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+  const isPng = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const isWebp = bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!(mimeType === 'image/jpeg' && isJpeg || mimeType === 'image/png' && isPng || mimeType === 'image/webp' && isWebp)) {
+    throw new Error('Rozszerzenie i rzeczywista zawartość obrazu nie są zgodne.');
+  }
+  return { mimeType, bytes };
+}
+function scopesFor(value: unknown): MemoryScope[] {
+  if (value === 'all') return ['global', 'agent:Aria', 'agent:Alex', 'agent:Astyria', 'agent:Aurelius'];
+  if (value === undefined || value === null || value === '') return ['global'];
+  if (!isMemoryScope(value)) throw new Error('Nieprawidłowy zakres pamięci.');
+  return [value];
+}
+async function checkOllama(): Promise<{ reachable: boolean; modelInstalled: boolean; error?: string }> {
+  try {
+    const response = await fetch(ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(3500) });
+    if (!response.ok) return { reachable: false, modelInstalled: false, error: 'HTTP ' + response.status };
+    const body: any = await response.json();
+    const models = Array.isArray(body?.models) ? body.models : [];
+    const modelInstalled = models.some((item: any) => item?.name === visionModel || item?.model === visionModel);
+    return { reachable: true, modelInstalled };
+  } catch (error) {
+    return { reachable: false, modelInstalled: false, error: error instanceof Error ? error.message : 'Nieznany błąd' };
+  }
+}
+
+export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
+  const router = Router();
+  router.use((req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!allowLocalOrToken(req)) {
+      return res.status(403).json({ success: false, error: 'Dostęp lokalny lub poprawny SVL_AI_ACCESS_TOKEN jest wymagany.' });
+    }
+    next();
+  });
+
+  router.get('/status', async (_req, res) => {
+    try {
+      const ollama = await checkOllama();
+      const entries = await memory.count();
+      res.json({
+        success: true,
+        vision: { provider: 'ollama', model: visionModel, ...ollama },
+        rendering: { provider: 'openai', model: imageModel, configured: Boolean(process.env.OPENAI_API_KEY?.trim()), verified: false },
+        memory: { persistent: true, file: memory.filePath, entries, embeddingConfigured: memory.semanticEnabled },
+      });
+    } catch (error) {
+      handleError(res, error, 'status');
+    }
+  });
+
+  router.post('/vision/analyze', async (req, res) => {
+    let parsed;
+    try {
+      parsed = parseImage(req.body);
+    } catch (error) {
+      return res.status(400).json({ success: false, error: (error as Error).message });
+    }
+    const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+    if (prompt.length > 2000) return res.status(400).json({ success: false, error: 'Pytanie może mieć do 2000 znaków.' });
+    try {
+      const response = await fetch(ollamaUrl + '/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: visionModel,
+          stream: false,
+          keep_alive: process.env.OLLAMA_KEEP_ALIVE || '24h',
+          messages: [
+            { role: 'system', content: 'Analyze the supplied image only. Describe what is actually visible, never invent observations. Answer in Polish.' },
+            { role: 'user', content: prompt || 'Describe in detail what is in this image.', images: [parsed.bytes.toString('base64')] },
+          ],
+        }),
+        signal: AbortSignal.timeout(180000),
+      });
+      if (!response.ok) {
+        const failure = await response.text();
+        return res.status(502).json({ success: false, provider: 'ollama', error: 'Ollama HTTP ' + response.status + ': ' + failure.slice(0, 300) });
+      }
+      const result: any = await response.json();
+      if (typeof result?.message?.content !== 'string' || !result.message.content.trim()) throw new Error('Model nie zwrócił analizy obrazu.');
+      return res.json({ success: true, provider: 'ollama', model: result.model || visionModel, analysis: result.message.content.trim() });
+    } catch (error) {
+      return handleError(res, error, 'vision');
+    }
+  });
+
+  router.post('/images/generate', async (req, res) => {
+    const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+    const size = req.body?.size || '1024x1024';
+    if (!prompt || prompt.length > 5000) return res.status(400).json({ success: false, error: 'Prompt musi zawierać od 1 do 5000 znaków.' });
+    if (!imageSizes.includes(size)) return res.status(400).json({ success: false, error: 'Nieobsługiwany rozmiar obrazu.' });
+    const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+    if (!apiKey) return res.status(503).json({ success: false, provider: 'openai', error: 'Brak OPENAI_API_KEY na serwerze.' });
+    if (!/^gpt-image-[a-z0-9.-]+$/.test(imageModel)) {
+      return res.status(503).json({ success: false, error: 'Wycofany albo nieobsługiwany model. Ustaw OPENAI_IMAGE_MODEL na obsługiwany GPT Image.' });
+    }
+    try {
+      const response = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({ model: imageModel, prompt, n: 1, size, output_format: 'png' }),
+        signal: AbortSignal.timeout(180000),
+      });
+      if (!response.ok) {
+        const body: any = await response.json().catch(() => null);
+        return res.status(502).json({ success: false, provider: 'openai', error: 'OpenAI HTTP ' + response.status + ': ' + String(body?.error?.message || 'Generowanie odrzucone').slice(0, 250) });
+      }
+      const result: any = await response.json();
+      const data = result?.data?.[0]?.b64_json;
+      if (typeof data !== 'string' || !data) throw new Error('Brak obrazu w odpowiedzi API.');
+      return res.json({ success: true, provider: 'openai', model: imageModel, mimeType: 'image/png', image: data });
+    } catch (error) {
+      return handleError(res, error, 'render');
+    }
+  });
+
+  router.get('/memory', async (req, res) => {
+    try {
+      return res.json({ success: true, records: await memory.list(100, scopesFor(req.query.scope)) });
+    } catch (error) {
+      return res.status(400).json({ success: false, error: (error as Error).message });
+    }
+  });
+
+  router.get('/memory/search', async (req, res) => {
+    try {
+      const query = typeof req.query.q === 'string' ? req.query.q : '';
+      if (!query.trim()) return res.status(400).json({ success: false, error: 'Wpisz zapytanie.' });
+      const records = await memory.search(query, scopesFor(req.query.scope), 20);
+      return res.json({ success: true, records });
+    } catch (error) {
+      return res.status(400).json({ success: false, error: (error as Error).message });
+    }
+  });
+
+  router.post('/memory', async (req, res) => {
+    if (!req.body || typeof req.body.text !== 'string') return res.status(400).json({ success: false, error: 'Wymagany tekst pamięci.' });
+    try {
+      const record = await memory.add({ text: req.body.text, kind: req.body.kind, scope: req.body.scope, source: 'operator' });
+      return res.status(201).json({ success: true, record });
+    } catch (error) {
+      return res.status(400).json({ success: false, error: (error as Error).message });
+    }
+  });
+
+  router.delete('/memory/:id', async (req, res) => {
+    try {
+      const deleted = await memory.remove(String(req.params.id));
+      return res.status(deleted ? 200 : 404).json({ success: deleted, deleted });
+    } catch (error) {
+      return handleError(res, error, 'memory');
+    }
+  });
+  return router;
+}
