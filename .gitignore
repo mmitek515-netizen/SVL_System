@@ -38,3 +38,7 @@ exports/*_snapshot.json
 exports/baza_danych_*.json
 exports/*.tmp
 exports/*.tar.gz
+
+# Operator fleet registry: never publish vessel positions or access metadata
+/data/fleet-registry.json
+/data/fleet-registry.json.*.tmp
