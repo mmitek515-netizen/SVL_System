@@ -5101,7 +5101,13 @@ function buildLlmHistory(
   limit = 8,
   textLimit = 1200,
 ): LlmTurn[] {
-  return chatHistory
+  // Only the newest conversation is used as model context. Earlier conversations
+  // remain in the history archive, but cannot leak across a "New chat" boundary.
+  let sessionStart = 0;
+  for (let index = 0; index < chatHistory.length; index++) {
+    if (chatHistory[index]?.agent === 'SVL_SESSION') sessionStart = index + 1;
+  }
+  return chatHistory.slice(sessionStart)
     .filter((entry) => entry && typeof entry.tekst === 'string'
       && (entry.agent === 'Mateusz Mitek' || entry.agent === 'Operator' || entry.agent === agent))
     .slice(-limit)
@@ -5154,6 +5160,29 @@ function buildWithoutNlpAgentReply(
   }
   return lines.join('\n');
 }
+
+// Separate chats without deleting history. SVL_SESSION records are stored in the same
+// authoritative Python DATA_STORE and act as boundaries for LLM context.
+app.post('/api/triad/chat/new-session', async (_req, res) => {
+  try {
+    const entry = {
+      agent: 'SVL_SESSION',
+      tekst: 'Nowy czat',
+      id: randomUUID(),
+      timestamp: new Date().toISOString(),
+    };
+    await runPythonKernel(['--action', 'batch_msg', '--msgs_json', JSON.stringify([entry])]);
+    const state = await getPythonKernelState(true);
+    if (!Array.isArray(state?.store?.chat_history) ||
+      !state.store.chat_history.some((item: any) => item?.agent === 'SVL_SESSION' && item?.id === entry.id)) {
+      throw new Error('Jądro nie potwierdziło zapisania nowej rozmowy.');
+    }
+    return res.json({ success: true, sessionId: entry.id, state });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ success: false, error: message });
+  }
+});
 
 app.post('/api/triad/message', async (req, res) => {
   const message: unknown = req.body?.message;
