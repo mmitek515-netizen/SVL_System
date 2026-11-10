@@ -13,6 +13,7 @@ import { createFleetRouter } from './src/lib/fleetRoutes';
 import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
 import { createAiSecurityToolkitRouter } from './src/lib/aiSecurityToolkit';
 import { createAiDesktopRouter } from './src/lib/aiDesktopRoutes';
+import { createGlobalLiveSync } from './src/lib/globalLiveSync';
 import { SharedSystemMemory, memoryContext, type MemoryScope } from './src/kernel/systemMemory';
 import { resolveVisionModel } from './src/kernel/visionModel';
 import { fetchOriginalAgentsStatus } from './src/kernel/originalAgentsStatus.mjs';
@@ -168,6 +169,11 @@ const SVL_MEMORY_AUTOSAVE = /^(on|1|true|yes)$/i.test((process.env.SVL_MEMORY_AU
 // Configure high body limit (50MB) for file uploads, images, logs, and kernel snapshots
 app.use(express.json({ limit: '96mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// SSE publishes invalidation only after backend mutations complete.
+const globalLiveSync = createGlobalLiveSync();
+app.use('/api/sync', globalLiveSync.router);
+app.use(globalLiveSync.observeMutation);
 
 // Dedicated, authenticated registry; no mock assets or invented telemetry.
 app.use('/api/fleet', createFleetRouter());
