@@ -13,44 +13,97 @@ Repozytorium zachowuje historię Git i kod. Ekran powitalny jest elementem aplik
 
 ## Co oznacza „czysta instalacja”
 
-Nowa instalacja systemu docelowego powinna używać świeżo zbudowanego obrazu i pustych danych runtime. Nie kopiuj automatycznie z poprzedniej instalacji sekretów, historii czatu, baz lokalnych, danych aplikacji ani dysków VM. Repozytorium nie zawiera prywatnego pliku `.env`; utwórz go lokalnie na podstawie `.env.example`.
+Nowa instalacja systemu docelowego powinna używać świeżo zbudowanego obrazu i pustych danych runtime. Nie kopiuj automatycznie z poprzedniej instalacji sekretów, historii czatu, baz lokalnych, danych aplikacji ani dysków VM. Repozytorium nie zawiera prywatnego pliku `.env`; utwórz go lokalnie na podstawie `.env.example` tylko wtedy, gdy `.env` jeszcze nie istnieje.
 
-Obecność terminala, jądra SVL lub kodu integracji w repozytorium nie potwierdza uprawnień root na hoście, działania daemonów, uruchomienia Ollamy ani instalacji systemu.
+## Wybierz rodzaj reinstalacji
 
-## Pierwsze uruchomienie aplikacji webowej
+Te procedury mają różny zakres i nie są zamienne:
 
-Wymagane są Node.js 22+, npm i Python 3:
+- **Repozytorium** przywraca śledzone pliki do wskazanej gałęzi Git. Nie instaluje systemu operacyjnego. `git reset --hard` usuwa niezapisane zmiany w śledzonych plikach; przed nim zachowaj lub zatwierdź potrzebne zmiany. Nie używaj `git clean -fdx`, jeśli chcesz zachować `.env`, zależności, dane runtime albo lokalne pliki.
+- **Pakiet `bastillaos-system`** reinstaluje aplikację i usługę. Aktualizacja pakietu zachowuje istniejące pliki w `/var/lib/bastillaos/system`; kopiuje tylko brakujące wartości domyślne. Usunięcie pakietu zatrzymuje usługę, ale skrypty pakietu nie kasują tego katalogu.
+- **Pełna instalacja ISO** reinstaluje Debian i komponenty systemowe na wybranym dysku. W zależności od partycjonowania może usunąć wszystkie dane użytkownika, aplikacji i runtime na tym dysku.
+
+## Reinstalacja repozytorium
+
+Zachowaj poza repozytorium potrzebne zmiany i prywatne ustawienia, a następnie sprawdź stan checkoutu. Przykład przywrócenia śledzonych plików do `origin/main`:
+
+```sh
+git status --short --branch
+git fetch origin main
+git reset --hard origin/main
+npm ci
+```
+
+To nie usuwa plików ignorowanych przez Git. Zachowaj `.env` i nie kopiuj przykładowego pliku na istniejącą konfigurację:
+
+```sh
+if [ ! -f .env ]; then cp .env.example .env; fi
+```
+
+Po instalacji zależności uruchom testy i walidację z sekcji „Walidacja”. Gdy celem jest czysta instalacja systemu, samo odtworzenie repozytorium nie wystarczy — zbuduj i zainstaluj ISO opisane poniżej.
+
+## Reinstalacja samego pakietu
+
+Ta ścieżka dotyczy już zainstalowanego BastillaOS i nie formatuje dysku. Zbuduj artefakty i pakiet z repozytorium:
 
 ```sh
 npm ci
-cp .env.example .env
+npm run build
+npm run build:server
+./bastillaos/system-package/build-package.sh
+./bastillaos/system-package/test-package.sh
+```
+
+Zainstaluj wygenerowany pakiet z `bastillaos/build/` poleceniem `sudo apt install ./bastillaos/build/bastillaos-system_*.deb`. Pakiet uruchamia usługę `bastillaos-system.service`; podczas aktualizacji zachowuje zapisane dane i restartuje usługę. Konfiguracja sekretów pozostaje w `/etc/bastillaos/system.env`, poza repozytorium.
+
+## Pełna reinstalacja systemu
+
+### Kopia danych
+
+Przed instalacją wybierz dane do zachowania i skopiuj je na bezpieczny, najlepiej szyfrowany nośnik. Sprawdź kopię na innym urządzeniu. Typowe lokalizacje to:
+
+- `/home/<użytkownik>/` — pliki użytkownika i konfiguracja pulpitu.
+- `/var/lib/bastillaos/system/` — DATA_STORE, historia, aplikacje, eksporty i runtime aplikacji; mogą tu być także duże dyski VM oraz klucze dostępu.
+- `/etc/bastillaos/system.env` — sekrety i ustawienia usługi; traktuj kopię jak dane poufne i po przywróceniu ustaw właściciela `root` oraz tryb `0600`.
+
+Nie umieszczaj tych kopii w repozytorium ani w publicznym artefakcie ISO. Pełne przywrócenie starego katalogu runtime może odtworzyć konfigurację, historię lub nieaktualne pliki; przywracaj dane selektywnie.
+
+### Zbudowanie i sprawdzenie nośnika
+
+Zbuduj obraz zgodnie z [instrukcją BastillaOS](../bastillaos/README.md), a następnie zweryfikuj sumę:
+
+```sh
+bash bastillaos/build-iso.sh
+(cd bastillaos/build && sha256sum -c BastillaOS-13-amd64.iso.sha256)
+```
+
+Zapis ISO na USB nadpisuje wskazany nośnik. Zweryfikuj urządzenie docelowe w programie do nagrywania przed rozpoczęciem zapisu. Alternatywnie uruchom ISO w nowej maszynie wirtualnej, aby przetestować je bez zmian na hoście.
+
+GitHub Actions może zbudować obraz po ręcznym uruchomieniu workflow lub po wypchnięciu tagu `bastillaos-v*`. Artifact workflow nie jest automatycznie zapisywany do `main` ani instalowany na komputerze.
+
+### Instalacja i pierwsze uruchomienie
+
+1. Uruchom komputer lub VM z przygotowanego nośnika.
+2. W instalatorze Debiana sprawdź nazwę i rozmiar dysku docelowego. Opcja użycia całego dysku usuwa jego wcześniejsze partycje i dane; wybierz ją tylko wtedy, gdy taki jest zamiar i kopia zapasowa została sprawdzona.
+3. Dokończ instalację, uruchom system ponownie z dysku i wyjmij nośnik instalacyjny.
+4. Sprawdź usługę i logi: `sudo systemctl status bastillaos-system.service` oraz `sudo journalctl -u bastillaos-system.service -b`.
+5. Skonfiguruj `/etc/bastillaos/system.env` tylko wtedy, gdy jest potrzebne, ustaw `root:root` i tryb `0600`, a następnie zrestartuj `bastillaos-system.service`.
+6. Zweryfikuj lokalny interfejs pod `http://127.0.0.1:3000`, działanie sieci i Ollamy oraz wymagane urządzenia. Sama odpowiedź HTTP nie potwierdza działania roota, KVM ani innych funkcji hosta.
+7. Przywracaj wybrane pliki i aplikacje dopiero po potwierdzeniu, że nowa instalacja działa. Nie kopiuj sekretów do Git ani na publiczny port.
+
+Obecność terminala, jądra SVL lub kodu integracji w repozytorium nie potwierdza uprawnień root na hoście, działania daemonów, uruchomienia Ollamy ani instalacji systemu.
+
+## Uruchomienie aplikacji webowej w checkoutcie
+
+Wymagane są Node.js 22+, npm 10.5.1+ i Python 3:
+
+```sh
+npm ci
+if [ ! -f .env ]; then cp .env.example .env; fi
 npm run dev
 ```
 
 Uzupełniaj `.env` lokalnie i nie commituj sekretów. Lokalny czat wymaga niezależnie uruchomionej usługi Ollama oraz pobranego i skonfigurowanego modelu. Panel diagnostyczny może pokazać status dostępny z uruchomionej aplikacji; nie zastępuje kontroli hosta.
-
-## Budowa świeżego obrazu systemu
-
-Szczegółowe wymagania opisuje [bastillaos/README.md](../bastillaos/README.md). Obecny proces budowania używa skryptu `bastillaos/build-iso.sh` i wymaga hosta Linux amd64 z dostępem do Docker Engine, Node.js 22+, npm, Bash, `dpkg-deb`, `sha256sum`, internetu i około 20 GB wolnego miejsca.
-
-Z katalogu głównego repozytorium:
-
-```sh
-bash bastillaos/build-iso.sh
-sha256sum -c bastillaos/build/BastillaOS-13-amd64.iso.sha256
-```
-
-Wynik to `bastillaos/build/BastillaOS-13-amd64.iso` i plik sumy SHA-256. Następnie zapisz ISO na nośniku albo uruchom w maszynie wirtualnej, sprawdź wybór dysku instalacyjnego i dopiero wtedy rozpocznij instalację. Instalacja systemu może usunąć dane z wybranego dysku.
-
-GitHub Actions może zbudować obraz po ręcznym uruchomieniu workflow lub po wypchnięciu tagu `bastillaos-v*`. Artifact workflow nie jest automatycznie zapisywany do `main` ani instalowany na komputerze.
-
-## Po instalacji
-
-1. Uruchom system z zainstalowanego dysku i sprawdź połączenie sieciowe.
-2. Sprawdź status usługi aplikacji oraz logi zgodnie z dokumentacją Bastilla OS.
-3. Skonfiguruj wymagane sekrety i ustawienia w docelowym systemie, a nie w repozytorium.
-4. Sprawdź Ollamę, wybrany model, terminale, uprawnienia i dostęp do jądra na tym hoście.
-5. Utwórz nowe dane runtime. Przywracaj kopie tylko świadomie i wybiórczo.
 
 ## Walidacja
 

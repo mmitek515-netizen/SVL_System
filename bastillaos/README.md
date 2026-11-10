@@ -11,7 +11,7 @@ reskin.
 
 - Linux amd64 host (or GitHub Actions runner) with Docker Engine access,
   permission to run privileged build containers, and a glibc-based Node runtime.
-- Node.js 22 or later and npm.
+- Node.js 22 or later and npm 10.5.1 or later.
 - Bash, `dpkg-deb`, and `sha256sum` on the host.
 - Internet access for Debian repositories, npm, and the Debian live-build
   container.
@@ -69,12 +69,17 @@ perform system-level changes. The root-privileged HTTP API is bound to
 reach this API can execute root commands. The desktop opens using Chromium.
 
 Configure `/etc/bastillaos/system.env` as a root-owned file (`chmod 0600`) and
-restart `bastillaos-svl-system` when setting optional runtime credentials. The
+restart `bastillaos-system.service` when setting optional runtime credentials. The
 service reads this file as root; never make it writable by the desktop user,
 and never put API secrets in a Git-tracked file or a public ISO. Optional
 Pollinations credentials are used only by the image-generation endpoint. The
 service unit fixes its listener to `127.0.0.1:3000` after reading this file, so
 the bind address cannot be changed there.
+
+For backup, package-only recovery and a full OS reinstall, follow the
+[reinstallation guide](../docs/REINSTALL_BASELINE.md). A Debian package upgrade
+preserves the existing writable state; reinstalling the OS onto a disk can erase
+it.
 
 ## without_nlp engine
 

@@ -18,11 +18,11 @@ Postępuj według [dokumentacji czystej bazy](docs/REINSTALL_BASELINE.md). Repoz
 
 ## Uruchomienie aplikacji webowej
 
-Wymagane: Node.js 22+, npm i Python 3. Lokalny czat wymaga osobnej usługi Ollama i skonfigurowanego modelu.
+Wymagane: Node.js 22+, npm 10.5.1+ i Python 3. Lokalny czat wymaga osobnej usługi Ollama i skonfigurowanego modelu.
 
 ```sh
 npm ci
-cp .env.example .env
+if [ ! -f .env ]; then cp .env.example .env; fi
 # Uzupełnij lokalne ustawienia w .env; nie dodawaj ich do Git.
 npm run dev
 ```
