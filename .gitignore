@@ -39,6 +39,10 @@ exports/baza_danych_*.json
 exports/*.tmp
 exports/*.tar.gz
 
+# Durable host memory: never publish private AI records
+/data/runtime/
+ai-memory.json
+
 # Operator fleet registry: never publish vessel positions or access metadata
 /data/fleet-registry.json
 /data/fleet-registry.json.*.tmp
