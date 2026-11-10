@@ -4,6 +4,7 @@ import { SYSTEM_AGENTS, AgentProfile } from '../kernel/agents';
 import { Sparkles, Layers, ShieldCheck, RefreshCw, Image as ImageIcon, FileText, Sigma, MessagesSquare, Paperclip, Send, X } from 'lucide-react';
 import { FormattedMessage } from './FormattedMessage';
 import { WorkActivityPanel } from './WorkActivityPanel';
+import { splitSvlUiContent, SvlChatUiRenderer } from './SvlChatUi';
 import { MessageCirclePlus, History, Activity } from 'lucide-react';
 import {
   ASTYRIA_MISSION_ACTIONS,
@@ -458,7 +459,20 @@ export const AgentCommsView: React.FC<AgentCommsViewProps> = ({
                 </div>
 
                 {/* Message Body with KaTeX LaTeX formulas and Markdown */}
-                <FormattedMessage content={msg.tekst} className="text-xs leading-relaxed text-slate-200" />
+                {splitSvlUiContent(msg.tekst).map((part, partIndex) =>
+                  part.kind === 'ui' ? (
+                    <SvlChatUiRenderer key={partIndex} document={part.document}
+                      onAction={(message) => {
+                        setSelectedConversation('latest');
+                        void onSendMessage(message, selectedTarget).catch(() => {
+                          setNewChatError('Nie udało się wykonać wybranej akcji czatu.');
+                        });
+                      }}
+                    />
+                  ) : (
+                    <FormattedMessage key={partIndex} content={part.text} className="text-xs leading-relaxed text-slate-200" />
+                  )
+                )}
 
                 {/* Attached Image/File preview in chat history */}
                 {msg.file && (
