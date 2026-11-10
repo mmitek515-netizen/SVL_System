@@ -54,6 +54,7 @@ for required in \
   usr/lib/systemd/system/bastillaos-system.service \
   usr/lib/bastillaos/without_nlp/engine.py \
   usr/bin/without-nlp \
+  usr/bin/svl-ai \
   usr/share/bastillaos/system-defaults/apps/without_nlp/engine.py \
   usr/share/bastillaos/system-defaults/svl_kernel.py \
   usr/share/bastillaos/system-defaults/apps/matrix-telemetry/app.json \
@@ -71,6 +72,8 @@ done
 
 DEFAULTS="$ROOT/usr/share/bastillaos/system-defaults"
 [ -x "$ROOT/usr/bin/without-nlp" ]
+[ -x "$ROOT/usr/bin/svl-ai" ]
+node "$ROOT/usr/bin/svl-ai" --help | grep -q 'svl-ai vision'
 grep -q '/usr/lib/bastillaos/without_nlp/engine.py' "$ROOT/usr/bin/without-nlp"
 WITHOUT_NLP_OUT=$(python3 -I "$ROOT/usr/lib/bastillaos/without_nlp/engine.py" --omega 2 --t 0.5 'Zażółć 🚀')
 printf '%s\n' "$WITHOUT_NLP_OUT" | python3 -c '
@@ -142,6 +145,7 @@ grep -q 'user datastore must persist' "$STATE/exports/svl_datastore.json"
 
 PORT=42117
 NODE_ENV=production HOST=127.0.0.1 PORT="$PORT" LLM_PROVIDERS=none CHAT_LOCAL_FALLBACK=on \
+SVL_AI_ACCESS_TOKEN="ci-ephemeral-ai-test-token" SVL_MEMORY_DIR="$WORK_DIR/ai-memory" \
 BASTILLAOS_DEFAULTS_DIR="$DEFAULTS" \
 BASTILLAOS_RUNTIME_DIR="$RUNTIME" \
 BASTILLAOS_STATE_DIR="$STATE" \
@@ -163,6 +167,16 @@ while [ "$attempt" -lt 30 ]; do
   sleep 1
 done
 [ "$READY" -eq 1 ] || { cat "$WORK_DIR/server.log" >&2; echo "test-package: server did not become ready." >&2; exit 1; }
+# Verify production AI API refuses anonymous users and the CLI can access the same backend.
+SVL_AI_API_URL="http://127.0.0.1:$PORT" SVL_AI_ACCESS_TOKEN="ci-ephemeral-ai-test-token" \
+  node "$ROOT/usr/bin/svl-ai" status | grep -q '"persistent": true'
+SVL_AI_API_URL="http://127.0.0.1:$PORT" SVL_AI_ACCESS_TOKEN="ci-ephemeral-ai-test-token" \
+  node "$ROOT/usr/bin/svl-ai" remember global "SVL deployment memory smoke test" | grep -q '"success": true'
+SVL_AI_API_URL="http://127.0.0.1:$PORT" SVL_AI_ACCESS_TOKEN="ci-ephemeral-ai-test-token" \
+  node "$ROOT/usr/bin/svl-ai" recall "deployment memory" | grep -q 'SVL deployment memory smoke test'
+[ -f "$WORK_DIR/ai-memory/ai-memory.json" ]
+node -e "fetch('http://127.0.0.1:$PORT/api/ai/runtime/status').then(r => { if(r.status!==403) process.exit(1); }).catch(() => process.exit(1))"
+
 node -e "
 (async () => {
   const baseUrl = 'http://127.0.0.1:$PORT';
