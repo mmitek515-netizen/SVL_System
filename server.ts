@@ -5416,7 +5416,7 @@ app.post('/api/triad/message', async (req, res) => {
         } catch (error: any) {
           const failures = error instanceof LlmChainError ? error.failures.join(' | ') : String(error?.message || error);
           pushSystemLog('warn', 'KERNEL', `[CZAT] ${agent}: modele niedostępne (${failures})${CHAT_LOCAL_FALLBACK ? ' — fallback without_nlp.' : '.'}`);
-          if (!CHAT_LOCAL_FALLBACK) {
+          if (!CHAT_LOCAL_FALLBACK || hasImageAttachment) {
             return { agent, text: '', engine: 'error', llm: false, error: `${agent}: ${failures}` };
           }
         }
