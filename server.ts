@@ -13,6 +13,7 @@ import { createFleetRouter } from './src/lib/fleetRoutes';
 import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
 import { SharedSystemMemory, memoryContext, type MemoryScope } from './src/kernel/systemMemory';
 import { resolveVisionModel } from './src/kernel/visionModel';
+import { fetchOriginalAgentsStatus } from './src/kernel/originalAgentsStatus.mjs';
 import type { ChatSystemChange } from './src/kernel/chatChanges';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 import {
@@ -1415,7 +1416,7 @@ if __name__ == "__main__":
 // 1. GET /api/apps/list - List all created applications with stats and manifests
 app.get('/api/apps/list', (_req, res) => {
   try {
-    initializeDefaultApps();
+    // No silent reseeding: removed applications stay removed.
     const appDirs = fs.readdirSync(APPS_DIR).filter(item => {
       try {
         return fs.statSync(path.join(APPS_DIR, item)).isDirectory();
@@ -2346,6 +2347,11 @@ app.get('/api/ai/status', async (_req, res) => {
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message || 'Błąd statusu NLP.' });
   }
+});
+
+app.get('/api/original-agents/status', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(await fetchOriginalAgentsStatus());
 });
 
 // --- INFRASTRUCTURE & LOG-BASED AUTO-REPAIR ENGINE (ALEX COMMANDER) ---
@@ -3817,7 +3823,7 @@ app.post('/api/astyria/mission', async (req, res) => {
         error: 'Nie ma zweryfikowanego dostępu do UFW. Audyt zapory nie może zostać potwierdzony.' });
     } else if (action === 'sync_version' || action === 'sync_versions' || action === 'repair_all_from_logs' || action === 'full_system_app_chat_repair') {
       actionTitle = `Synchronizacja wersji v${targetVer} oraz struktur DATA_STORE`;
-      initializeDefaultApps();
+      // No silent reseeding: removed applications stay removed.
       await createVmSnapshotNow(`Pełna synchronizacja wersji v${targetVer} i wdrożenie Raw Socket RX Monitor`);
       await runPythonKernel([
         '--action', 'config',
