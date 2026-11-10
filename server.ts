@@ -5520,9 +5520,10 @@ async function startServer() {
   }
 
   const bindServer = (port: number) => {
-    const server = app.listen(port, '0.0.0.0', () => {
+    const host = (process.env.HOST || (process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0')).trim();
+    const server = app.listen(port, host, () => {
       activeServerPort = port;
-      console.log(`[SVL-KERNEL] Server listening on http://0.0.0.0:${port}`);
+      console.log(`[SVL-KERNEL] Server listening on http://${host}:${port}`);
       // Run once per process; this only starts with explicit env opt-in and a
       // verified local Git checkout, never with a bare AI Studio preview.
       void startAutoGitSync();
