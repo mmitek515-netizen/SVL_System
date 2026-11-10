@@ -82,6 +82,9 @@ export default function App() {
     try { return localStorage.getItem(HYPERSPACE_ENTERED_KEY) === 'true'; } catch { return false; }
   });
   const [isAgentLoading, setIsAgentLoading] = useState(false);
+  const activeChatRequestRef = useRef<AbortController | null>(null);
+  const [canCancelChat, setCanCancelChat] = useState(false);
+  const cancelChatRequest = () => activeChatRequestRef.current?.abort();
   const [agentError, setAgentError] = useState<string | null>(null);
   const [chatSystemChange, setChatSystemChange] = useState<ChatSystemChange | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -360,6 +363,9 @@ export default function App() {
 
     setIsAgentLoading(true);
     setAgentError(null);
+    const chatController = new AbortController();
+    activeChatRequestRef.current = chatController;
+    setCanCancelChat(true);
     try {
       const normalizedCommand = message
         .trim()
@@ -379,6 +385,7 @@ export default function App() {
         body: JSON.stringify(isFullChatRepair
           ? { action: 'full_system_app_chat_repair', userMessage: message.trim() }
           : { message, agent: chatAgent, attachments }),
+        signal: chatController.signal,
       });
       const result = await response.json();
       if (!response.ok || result.success !== true || typeof result.reply !== 'string') {
@@ -421,10 +428,15 @@ export default function App() {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
       setChatSystemChange(isChatSystemChange(result.change) ? result.change : null);
     } catch (error) {
-      const messageText = error instanceof Error ? error.message : 'Nie udało się wysłać wiadomości.';
+      const cancelled = error instanceof Error && error.name === 'AbortError';
+      const messageText = cancelled
+        ? 'Przerwano oczekiwanie na odpowiedź. Możesz ponownie wysłać zachowaną wiadomość.'
+        : error instanceof Error ? error.message : 'Nie udało się wysłać wiadomości.';
       setAgentError(messageText);
       throw error;
     } finally {
+      if (activeChatRequestRef.current === chatController) activeChatRequestRef.current = null;
+      setCanCancelChat(false);
       setIsAgentLoading(false);
     }
   };
@@ -595,6 +607,8 @@ export default function App() {
               onRunAstyriaMission={handleRunAstyriaMission}
               isLoading={isAgentLoading}
               sendError={agentError}
+              canCancelMessage={canCancelChat}
+              onCancelMessage={cancelChatRequest}
               onClearHistory={handleClearHistory}
               onNewChat={handleNewChat}
               onForceSync={handleForceSync}
