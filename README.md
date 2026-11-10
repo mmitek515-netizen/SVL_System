@@ -75,6 +75,16 @@ npm run build:server
 
 Walidacja kodu aplikacji nie zastępuje budowania ani testu ISO na maszynie docelowej. Nie deklaruj działania funkcji hosta, roota, terminali czy Ollamy bez sprawdzenia ich na zainstalowanym systemie.
 
+## Główny plan projektu i postęp (10.11.2026)
+
+Aktualna, zbiorcza specyfikacja właściciela, priorytety GUI → Linux → autonomiczni agenci,
+stan 26 elementów czatu i szacunkowa **realizacja kodowa 45%** (nie gotowość produkcyjna):
+[Plan Bastilla OS i procent ukończenia](docs/BASTILLA_MASTER_PLAN_PROGRESS_2026-11-10.md).
+
+Procenty są szacunkami z audytu kodu i testów; działanie Ollama, root hosta,
+czterech niezależnych workerów, bootowalnego ISO oraz integracji AI Studio/MCP
+w realnym środowisku należy osobno potwierdzić. Nie wyświetlać fikcyjnych statusów.
+
 ## Główne dokumenty
 
 - [Czysta baza po reinstalacji](docs/REINSTALL_BASELINE.md)
