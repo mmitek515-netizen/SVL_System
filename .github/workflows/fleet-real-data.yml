@@ -1,0 +1,35 @@
+name: Fleet real-data checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/lib/fleetRegistry.ts'
+      - 'src/lib/fleetRoutes.ts'
+      - 'src/components/FleetView.tsx'
+      - 'src/components/Navigation.tsx'
+      - 'src/components/BastillaDashboard.tsx'
+      - 'src/App.tsx'
+      - 'server.ts'
+      - 'tests/fleet.test.mjs'
+      - '.github/workflows/fleet-real-data.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run build:server
