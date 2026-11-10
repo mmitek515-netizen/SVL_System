@@ -417,12 +417,6 @@ function loadGitHubCredentials(): { username?: string; repoName?: string; token?
   return { username: 'u6930438163-code', repoName: 'SVL_Kernel' };
 }
 
-function saveGitHubCredentials(username: string, repoName: string, token: string) {
-  try {
-    fs.writeFileSync(GITHUB_CRED_PATH, JSON.stringify({ username, repoName, token }, null, 2), 'utf-8');
-  } catch {}
-}
-
 function getSyncedModulesList(): string[] {
   const mods: string[] = [];
   if (fs.existsSync(path.resolve('Nowy_system'))) mods.push('Nowy_system');
@@ -441,154 +435,25 @@ function getSyncedModulesList(): string[] {
 app.get('/api/github/status', (_req, res) => {
   const creds = loadGitHubCredentials();
   return res.json({
-    username: creds.username || 'u6930438163-code',
-    repoName: creds.repoName || 'SVL_Kernel',
+    username: creds.username || 'mmitek515-netizen',
+    repoName: creds.repoName || 'SVL_System',
     hasToken: Boolean(creds.token),
-    maskedToken: creds.token ? `${creds.token.slice(0, 6)}...` : '',
     syncedModules: getSyncedModulesList()
   });
 });
 
-app.post('/api/github/export', async (req, res) => {
-  const saved = loadGitHubCredentials();
-  const username = (req.body.username || saved.username || '').trim();
-  const repoName = (req.body.repoName || saved.repoName || '').trim();
-  const token = (req.body.token || saved.token || '').trim();
-  const commitMessage = req.body.commitMessage || 'Export from SVL Kernel v8.5.1-Desktop-Ready (Mission for Astyria)';
-
-  if (!username || !repoName || !token) {
-    return res.status(400).json({ error: 'Brak wymaganych danych: username, repoName lub token PAT.' });
-  }
-
-  saveGitHubCredentials(username, repoName, token);
-
-  const safeRepo = repoName.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-  const remoteUrl = `https://${username}:${token}@github.com/${username}/${safeRepo}.git`;
-
-  try {
-    const run = async (args: string[]) => {
-      return await execFileAsync('git', args, { timeout: 45000 });
-    };
-
-    if (!fs.existsSync(path.resolve('.git'))) {
-      await run(['init', '--initial-branch=main']);
-      if (!fs.existsSync(path.resolve('.gitignore'))) {
-        fs.writeFileSync(path.resolve('.gitignore'), 'node_modules\n.env\ndist\n.aistudio\n*.tmp\n*.lock\n.github_credentials.json\n', 'utf-8');
-      }
-    }
-
-    await run(['config', 'user.name', 'Astyria System Exporter']);
-    await run(['config', 'user.email', 'astyria@kernel.svl']);
-    await run(['add', '.']);
-
-    try {
-      await run(['commit', '-m', commitMessage]);
-    } catch (e: any) {
-      if (!String(e.stdout || e.message).includes('nothing to commit')) {
-        console.warn('[GIT COMMIT WARNING]', e.message);
-      }
-    }
-
-    try {
-      await run(['remote', 'remove', 'origin']);
-    } catch {}
-    await run(['remote', 'add', 'origin', remoteUrl]);
-    // Never overwrite origin/main when another agent or operator has made commits.
-    await run(['push', '-u', 'origin', 'main']);
-
-    pushSystemLog('info', 'INFRA', `[GITHUB] System wyeksportowany do repozytorium ${username}/${safeRepo}.`);
-    res.json({
-      success: true,
-      syncedModules: getSyncedModulesList(),
-      message: `System SVL Kernel v8.5.1-Desktop-Ready został pomyślnie wypchnięty do github.com/${username}/${safeRepo} (branch: main).`
-    });
-  } catch (err: any) {
-    console.error('[GITHUB ERROR]', err);
-    res.status(500).json({ error: `Błąd integracji GitHub: ${err.message || 'Wystąpił nieoczekiwany błąd podczas operacji git.'}` });
-  }
-});
-
-app.post('/api/github/pull', async (req, res) => {
-  const saved = loadGitHubCredentials();
-  const username = (req.body.username || saved.username || 'u6930438163-code').trim();
-  const repoName = (req.body.repoName || saved.repoName || 'SVL_Kernel').trim();
-  const token = (req.body.token || saved.token || '').trim();
-
-  if (token) {
-    saveGitHubCredentials(username, repoName, token);
-  }
-
-  const safeRepo = repoName.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-  const remoteUrl = token
-    ? `https://${username}:${token}@github.com/${username}/${safeRepo}.git`
-    : `https://github.com/${username}/${safeRepo}.git`;
-
-  try {
-    const run = async (args: string[]) => {
-      return await execFileAsync('git', args, { timeout: 45000 });
-    };
-
-    if (!fs.existsSync(path.resolve('.git'))) {
-      await run(['init', '--initial-branch=main']);
-    }
-
-    try {
-      await run(['remote', 'remove', 'origin']);
-    } catch {}
-    await run(['remote', 'add', 'origin', remoteUrl]);
-    await run(['fetch', 'origin', 'main']);
-
-    // Safely checkout external project folders from origin/main without overwriting core server/UI runtime
-    for (const targetPath of ['Nowy_system', 'apps', 'exports']) {
-      try {
-        await run(['checkout', 'origin/main', '--', targetPath]);
-      } catch {}
-    }
-
-    // Ensure Nowy_system/kernel/svl_kernel_core.py is present so Nowy_system/engine.py runs cleanly
-    const nowyKernelDir = path.resolve('Nowy_system', 'kernel');
-    if (!fs.existsSync(nowyKernelDir)) {
-      fs.mkdirSync(nowyKernelDir, { recursive: true });
-    }
-    const coreFile = path.join(nowyKernelDir, 'svl_kernel_core.py');
-    if (!fs.existsSync(coreFile)) {
-      fs.writeFileSync(
-        coreFile,
-        `from datetime import datetime\nclass SVLStudioKernel:\n    def __init__(self, sciezka_pliku="/Nowy_system/kernel/svl_kernel_core.py"):\n        self.sciezka_pliku = sciezka_pliku\n        self.sys_version = "9.0.0-Triada-BestOS-Mission"\n        self.mode = "Direct-Port-Listener-WithoutNLP"\n`,
-        'utf-8'
-      );
-    }
-
-    // Register Nowy_system in DATA_STORE
-    await runPythonKernel([
-      '--action', 'config',
-      '--config_json', JSON.stringify({
-        sys_version: '9.0.0-Triada-BestOS-Mission',
-        nowy_system: {
-          name: 'Nowy_system',
-          version: '9.0.0-Triada-BestOS-Mission',
-          status: 'ACTIVE_SYNCHRONIZED_FROM_GITHUB',
-          repository: `${username}/${safeRepo}`,
-          path: '/Nowy_system/engine.py'
-        }
-      }),
-      '--version_tag', '9.0.0-Triada-BestOS-Mission',
-      '--desc', `Synchronizacja zmian z repozytorium GitHub (${username}/${safeRepo}) oraz integracja modułu Nowy_system.`
-    ]);
-
-    const syncedModules = getSyncedModulesList();
-    pushSystemLog('healed', 'INFRA', `[GITHUB SYNC] Pomyślnie zsynchronizowano zmiany z ${username}/${safeRepo} (Moduły: ${syncedModules.join(', ')}).`);
-
-    res.json({
-      success: true,
-      syncedModules,
-      message: `Pomyślnie pobrano i zsynchronizowano zmiany z repozytorium ${username}/${safeRepo} (branch: main).\nZintegrowane moduły: ${syncedModules.join(', ')}.`
-    });
-  } catch (err: any) {
-    console.error('[GITHUB PULL ERROR]', err);
-    res.status(500).json({ error: `Błąd synchronizacji z GitHub: ${err.message}` });
-  }
-});
+// Legacy export/pull embedded GitHub PATs in git remote URLs and could
+// overwrite the local workspace. The maintained, non-force-pushing path
+// is POST /api/triad/github/sync (operator-authenticated) from a verified
+// main checkout. Inbound AI Studio imports belong to the AI Studio UI.
+app.post('/api/github/export', (_req, res) => res.status(410).json({
+  success: false,
+  error: 'Niebezpieczny stary eksport GitHub wycofano. Użyj panelu Synchronizacja aplikacji (POST /api/triad/github/sync).',
+}));
+app.post('/api/github/pull', (_req, res) => res.status(410).json({
+  success: false,
+  error: 'Stary import nadpisujący lokalne pliki wycofano. Pobierz zmiany w AI Studio przez jego integrację GitHub lub bezpieczne git pull --ff-only na hoście.',
+}));
 
 // --- GITHUB ADMIN ENGINE: pełna administracyjna integracja GitHub API dla AI (Triada) ---
 app.get('/api/github/admin/status', async (_req, res) => {
