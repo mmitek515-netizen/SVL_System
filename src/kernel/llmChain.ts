@@ -504,7 +504,8 @@ export async function warmupOllama(
 }
 
 export function configuredProviders(config: LlmChainConfig): Array<LlmProvider> {
-  if (config.providers && config.providers.length > 0) {
+  // An explicitly empty provider list means "no model", not "autodetect Ollama".
+  if (config.providers !== undefined) {
     // Jawny wybór: Ollama nie wymaga klucza (model może być wykryty automatycznie).
     return config.providers.filter((provider, index, list) => list.indexOf(provider) === index
       && (provider === 'ollama'
