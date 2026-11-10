@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'src/kernel/systemMemory.ts'
+      - 'src/kernel/llmChain.ts'
+      - 'tests/llmChain.test.mjs'
       - 'src/lib/aiRuntimeRoutes.ts'
       - 'src/components/AiCapabilitiesView.tsx'
       - 'src/components/Navigation.tsx'
