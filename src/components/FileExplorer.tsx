@@ -173,7 +173,7 @@ export const FileExplorer: React.FC = () => {
             title="Zapisz i wyślij zmiany do GitHub origin/main (nie pobiera zmian do AI Studio)"
           >
             <UploadCloud className={`w-3.5 h-3.5 ${syncing ? 'animate-bounce' : ''}`} />
-            {syncing ? 'SYNCHRONIZUJĘ...' : 'SYNCHRONIZUJ APLIKACJĘ'}
+            {syncing ? 'WYSYŁAM NA GITHUB...' : 'WYŚLIJ ZMIANY NA MAIN'}
           </button>
           {loading && <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin" />}
         </div>
