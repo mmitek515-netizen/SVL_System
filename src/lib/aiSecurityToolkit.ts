@@ -23,6 +23,9 @@ export const SECURITY_TOOL_SPECS = [
   { id: 'ss', binary: 'ss', debianPackage: 'iproute2', category: 'network', upstream: 'https://salsa.debian.org/debian/iproute2' },
   { id: 'lsof', binary: 'lsof', debianPackage: 'lsof', category: 'diagnostics', upstream: 'https://github.com/lsof-org/lsof' },
   { id: 'debsums', binary: 'debsums', debianPackage: 'debsums', category: 'audit', upstream: 'https://packages.debian.org/trixie/debsums' },
+  // Proprietary graphical OSINT suite. Install ONLY from an official vendor-supplied .deb.
+  // This records executable presence, NOT a running GUI, activated licence or working transforms.
+  { id: 'maltego', binary: 'maltego', debianPackage: 'Maltego Graph (official .deb)', category: 'osint-graph', upstream: 'https://www.maltego.com/downloads/' },
 ] as const;
 
 type SecurityCheck = { id: string; binary: string; args: readonly string[]; timeoutMs: number; description: string };
@@ -68,6 +71,8 @@ export function createAiSecurityToolkitRouter(): Router {
       platform: process.platform,
       uid: process.getuid?.() ?? null,
       protectedExecutionConfigured: configured.length >= 32,
+      // A backend DISPLAY is only a hint, not proof of an accessible user desktop.
+      graphicalSessionObserved: Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY),
       tools: SECURITY_TOOL_SPECS.map((spec) => ({
         ...spec, installed: executable(spec.binary) !== null,
       })),
