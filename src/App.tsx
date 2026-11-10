@@ -1,736 +1,84 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import {
-  DataStore,
-  INITIAL_DATA_STORE,
-  SYS_VERSION,
-  normalizeDataStore,
-} from './kernel/svlKernel';
-import { Header } from './components/Header';
-import { Navigation, TabId, initialTabFromLocation } from './components/Navigation';
-import { TerminalView } from './components/TerminalView';
-import { AgentCommsView } from './components/AgentCommsView';
-import { AiCapabilitiesView } from './components/AiCapabilitiesView';
-import { ChatApprovalsView } from './components/ChatApprovalsView';
-import { MonolithView } from './components/MonolithView';
-import { DataStoreView } from './components/DataStoreView';
-import { ChronolithView } from './components/ChronolithView';
-import { DiagnosticsView } from './components/DiagnosticsView';
-import { ReportModal } from './components/ReportModal';
-import { TaskProcessMatrix } from './components/TaskProcessMatrix';
-import { MemorySchemaGraph } from './components/MemorySchemaGraph';
-import { TemporalMatrix } from './components/TemporalMatrix';
-import { AstyriaMissionView } from './components/AstyriaMissionView';
-import { TriadVisualization } from './components/TriadVisualization';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { SystemHealthDock } from './components/SystemHealthDock';
-import { FileExplorer } from './components/FileExplorer';
-import { AppsStudioView } from './components/AppsStudioView';
-import { WithoutNlpView } from './components/WithoutNlpView';
-import { GitHubExportView } from './components/GitHubExportView';
-import { FleetView } from './components/FleetView';
-import { BastillaDashboard } from './components/BastillaDashboard';
-import {
-  AstyriaMissionAction,
-  AgentProtocolReply,
-  AgentProtocolRequest,
-  isAgentProtocolCommand,
-  isTriadAgent,
-  parseChatProtocolCommand,
-  TRIAD_AGENT_NAMES,
-} from './kernel/agentProtocol';
-import { ChatAttachment, formatChatMessage } from './kernel/chatAttachments';
-import { isChatSystemChange } from './kernel/chatChanges';
-import type { ChatSystemChange } from './kernel/chatChanges';
-import { canApplyPolledState, isKernelSnapshot } from './kernel/globalSync';
-
-const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v8_6_0_without_nlp';
-const HYPERSPACE_ENTERED_KEY = 'bastilla_svl_hyperspace_entered_v1';
-
-export default function App() {
-  const [rawDataStore, setRawDataStore] = useState<DataStore>(() => {
-    try {
-      localStorage.removeItem('svl_kernel_datastore_v8_5_1_desktop_ready');
-      const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return normalizeDataStore(parsed);
-      }
-    } catch (e) {
-      console.warn('Failed to parse cached DATA_STORE from localStorage:', e);
-    }
-    return INITIAL_DATA_STORE;
-  });
-
-  const dataStore = useMemo(() => normalizeDataStore(rawDataStore), [rawDataStore]);
-  const syncGenerationRef = useRef(0);
-  const [kernelSyncStatus, setKernelSyncStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
-
-  const setDataStore: React.Dispatch<React.SetStateAction<DataStore>> = useCallback((updater) => {
-    // Invalidate poll responses started before any user action or server write.
-    syncGenerationRef.current += 1;
-    setRawDataStore((prev) => {
-      const safePrev = normalizeDataStore(prev);
-      const next = typeof updater === 'function' ? (updater as (p: DataStore) => DataStore)(safePrev) : updater;
-      // Avoid unnecessary writes to localStorage and cross-tab re-fetch loops.
-      if (JSON.stringify(safePrev) === JSON.stringify(next)) return prev;
-      return normalizeDataStore(next);
-    });
-  }, []);
-
-  const [activeTab, setActiveTab] = useState<TabId>(initialTabFromLocation);
-  const [hasEnteredHyperspace, setHasEnteredHyperspace] = useState(() => {
-    try { return localStorage.getItem(HYPERSPACE_ENTERED_KEY) === 'true'; } catch { return false; }
-  });
-  const [isAgentLoading, setIsAgentLoading] = useState(false);
-  const activeChatRequestRef = useRef<AbortController | null>(null);
-  const [canCancelChat, setCanCancelChat] = useState(false);
-  const cancelChatRequest = () => activeChatRequestRef.current?.abort();
-  const [agentError, setAgentError] = useState<string | null>(null);
-  const [chatSystemChange, setChatSystemChange] = useState<ChatSystemChange | null>(null);
-  const [showReportModal, setShowReportModal] = useState(false);
-
-  // Expose navigation to window for internal component linking
-  useEffect(() => {
-    (window as any).setActiveTab = setActiveTab;
-  }, []);
-
-  // Ref mirrors isAgentLoading so in-flight polls never overwrite a freshly returned chat state
-  const isAgentLoadingRef = useRef(isAgentLoading);
-  useEffect(() => {
-    isAgentLoadingRef.current = isAgentLoading;
-  }, [isAgentLoading]);
-
-  // Server state is authoritative. Poll without overlapping requests and refresh
-  // immediately when a tab becomes active or another tab changes its local cache.
-  useEffect(() => {
-    let mounted = true;
-    let inFlight = false;
-    const fetchState = async () => {
-      if (!mounted || inFlight || isAgentLoadingRef.current) return;
-      inFlight = true;
-      const startedGeneration = syncGenerationRef.current;
-      try {
-        const response = await fetch('/api/kernel/state', { cache: 'no-store' });
-        if (!response.ok) throw new Error('Kernel HTTP ' + response.status);
-        const snapshot: unknown = await response.json();
-        if (!isKernelSnapshot(snapshot)) throw new Error('Invalid kernel snapshot');
-        if (!mounted) return;
-        setKernelSyncStatus('online');
-        if (canApplyPolledState(startedGeneration, syncGenerationRef.current, isAgentLoadingRef.current)) {
-          const incoming = normalizeDataStore(snapshot.store);
-          setDataStore((previous) =>
-            JSON.stringify(previous) === JSON.stringify(incoming) ? previous : incoming
-          );
-        }
-      } catch {
-        if (mounted) setKernelSyncStatus('offline');
-      } finally {
-        inFlight = false;
-      }
-    };
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') void fetchState();
-    };
-    const refreshOnStorage = (event: StorageEvent) => {
-      if (event.key === LOCAL_STORAGE_KEY) void fetchState();
-    };
-    void fetchState();
-    const interval = window.setInterval(() => void fetchState(), 4000);
-    // Server-sent events notify all tabs after confirmed HTTP mutations.
-    // A subsequent GET still checks authoritative kernel data; SSE itself
-    // is not proof that a host-side operation succeeded.
-    const stream = typeof EventSource !== 'undefined'
-      ? new EventSource('/api/sync/events')
-      : null;
-    stream?.addEventListener('change', () => {
-      window.dispatchEvent(new Event('svl:global-sync'));
-      void fetchState();
-    });
-
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-    window.addEventListener('focus', refreshWhenVisible);
-    window.addEventListener('storage', refreshOnStorage);
-    return () => {
-      mounted = false;
-      window.clearInterval(interval);
-      stream?.close();
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-      window.removeEventListener('focus', refreshWhenVisible);
-      window.removeEventListener('storage', refreshOnStorage);
-    };
-  }, [setDataStore]);
-
-  // Sync with LocalStorage whenever dataStore changes
-  useEffect(() => {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(dataStore));
-    } catch (e) {
-      console.error('LocalStorage write failed:', e);
-    }
-  }, [dataStore]);
-
-  // Execute terminal command directly on Python SVL Kernel
-  const handleExecutePythonCommand = async (command: string) => {
-    const res = await fetch('/api/kernel/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
-    });
-    if (!res.ok) {
-      throw new Error(`Błąd polecenia jądra: ${res.statusText}`);
-    }
-    const data = await res.json();
-    if (data.state?.store) {
-      setDataStore(normalizeDataStore(data.state.store));
-    }
-    return data;
-  };
-
-  // "Synchronizuj" must refresh the persisted kernel state, not run an
-  // Astyria mission that rewrites system configuration and snapshots.
-  const handleSyncSystem = async (): Promise<void> => {
-    try {
-      const response = await fetch('/api/kernel/state?fresh=1', { cache: 'no-store' });
-      if (!response.ok) throw new Error(`Odczyt jądra nie powiódł się (HTTP ${response.status}).`);
-      const snapshot: unknown = await response.json();
-      if (!isKernelSnapshot(snapshot)) {
-        throw new Error('Serwer nie zwrócił prawidłowego stanu DATA_STORE.');
-      }
-      setDataStore(normalizeDataStore(snapshot.store));
-      setKernelSyncStatus('online');
-      window.dispatchEvent(new Event('svl:global-sync'));
-    } catch (error) {
-      setKernelSyncStatus('offline');
-      throw error;
-    }
-  };
-
-  const handleForceSync = async () => {
-    try {
-      await handleSyncSystem();
-      setAgentError(null);
-    } catch (error) {
-      setAgentError(error instanceof Error ? error.message : 'Synchronizacja jądra nie powiodła się.');
-    }
-  };
-
-  const handleSendProtocol = async (request: AgentProtocolRequest): Promise<AgentProtocolReply | undefined> => {
-    setIsAgentLoading(true);
-    setAgentError(null);
-
-    try {
-      if (
-        !request ||
-        !isAgentProtocolCommand(request.command) ||
-        (request.agent !== 'triad' && !isTriadAgent(request.agent))
-      ) {
-        throw new Error('Nieprawidłowe polecenie protokołu operatora.');
-      }
-
-      const response = await fetch('/api/triad/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        let message = `Serwer zwrócił błąd HTTP ${response.status}`;
-        try {
-          const errorData: unknown = await response.json();
-          if (
-            errorData &&
-            typeof errorData === 'object' &&
-            'error' in errorData &&
-            typeof errorData.error === 'string'
-          ) {
-            message = errorData.error;
-          }
-        } catch {}
-        throw new Error(message);
-      }
-
-      const result: unknown = await response.json();
-      const resultRecord = result && typeof result === 'object' ? result as Record<string, unknown> : null;
-      const stateRecord = resultRecord?.state && typeof resultRecord.state === 'object'
-        ? resultRecord.state as Record<string, unknown>
-        : null;
-      const returnedStore = stateRecord?.store;
-      if (
-        !returnedStore ||
-        typeof returnedStore !== 'object' ||
-        Array.isArray(returnedStore) ||
-        !('config' in returnedStore) ||
-        !('chat_history' in returnedStore) ||
-        !('update_history' in returnedStore) ||
-        !returnedStore.config ||
-        typeof returnedStore.config !== 'object' ||
-        !Array.isArray(returnedStore.chat_history) ||
-        !Array.isArray(returnedStore.update_history)
-      ) {
-        throw new Error('Serwer zwrócił nieprawidłowy stan DATA_STORE dla polecenia protokołu.');
-      }
-
-      let agentReply: AgentProtocolReply | undefined;
-      if (request.agent !== 'triad') {
-        const replyRecord = resultRecord?.reply;
-        if (
-          !replyRecord ||
-          typeof replyRecord !== 'object' ||
-          Array.isArray(replyRecord) ||
-          !('agent' in replyRecord) ||
-          replyRecord.agent !== request.agent ||
-          !('command' in replyRecord) ||
-          replyRecord.command !== request.command ||
-          !('data' in replyRecord) ||
-          !replyRecord.data ||
-          typeof replyRecord.data !== 'object' ||
-          Array.isArray(replyRecord.data)
-        ) {
-          throw new Error('Serwer nie zwrócił prawidłowej odpowiedzi wybranego agenta.');
-        }
-        agentReply = {
-          agent: request.agent,
-          command: request.command,
-          data: replyRecord.data as Record<string, unknown>,
-        };
-      }
-
-      const normalized = normalizeDataStore(returnedStore as DataStore);
-      setDataStore(normalized);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
-      return agentReply;
-    } catch (err) {
-      setAgentError(err instanceof Error ? err.message : 'Nie udało się wykonać polecenia protokołu.');
-      throw err;
-    } finally {
-      setIsAgentLoading(false);
-    }
-  };
-
-  const handleRunAstyriaMission = async (action: AstyriaMissionAction) => {
-    setIsAgentLoading(true);
-    setAgentError(null);
-    try {
-      const response = await fetch('/api/astyria/mission', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      const result = await response.json();
-      if (!response.ok || result.success !== true || typeof result.reply !== 'string') {
-        throw new Error(result.error || `Nie udało się wykonać misji Astyrii (HTTP ${response.status}).`);
-      }
-      const store = result.state?.store;
-      if (
-        !store ||
-        typeof store !== 'object' ||
-        !Array.isArray(store.chat_history) ||
-        !store.chat_history.some((message: unknown) =>
-          message !== null &&
-          typeof message === 'object' &&
-          'agent' in message &&
-          'tekst' in message &&
-          (message as { agent?: unknown }).agent === 'Astyria' &&
-          (message as { tekst?: unknown }).tekst === result.reply
-        )
-      ) {
-        throw new Error('Misja zwróciła wynik, ale nie potwierdziła zapisu odpowiedzi Astyrii w historii czatu.');
-      }
-      const normalized = normalizeDataStore(store as DataStore);
-      setDataStore(normalized);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Nie udało się wykonać misji Astyrii.';
-      setAgentError(message);
-      throw error;
-    } finally {
-      setIsAgentLoading(false);
-    }
-  };
-
-  const handleSendMessage = async (
-    message: string,
-    chatAgent: AgentProtocolRequest['agent'] = 'triad',
-    attachments: ChatAttachment[] = [],
-  ) => {
-    const protocolCommand = attachments.length === 0
-      ? parseChatProtocolCommand(message, chatAgent)
-      : null;
-    if (protocolCommand) {
-      await handleSendProtocol(protocolCommand);
-      return;
-    }
-
-    setIsAgentLoading(true);
-    setAgentError(null);
-    const chatController = new AbortController();
-    activeChatRequestRef.current = chatController;
-    setCanCancelChat(true);
-    try {
-      const normalizedCommand = message
-        .trim()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLocaleLowerCase('pl-PL')
-        .replace(/\s+/g, ' ');
-      const isFullChatRepair = attachments.length === 0 && [
-        'napraw to',
-        'napraw czat',
-        'pelna naprawa czatu',
-        'odpowiedz pelna naprawa czatu',
-      ].includes(normalizedCommand);
-      const response = await fetch(isFullChatRepair ? '/api/astyria/mission' : '/api/triad/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(isFullChatRepair
-          ? { action: 'full_system_app_chat_repair', userMessage: message.trim() }
-          : { message, agent: chatAgent, attachments }),
-        signal: chatController.signal,
-      });
-      const result = await response.json();
-      if (!response.ok || result.success !== true || typeof result.reply !== 'string') {
-        throw new Error(result.error || `Nie udało się wysłać wiadomości (HTTP ${response.status}).`);
-      }
-      const normalized = normalizeDataStore(result.state?.store);
-      const expectedAgentReplies = isFullChatRepair
-        ? [{ agent: 'Astyria', tekst: result.reply }]
-        : chatAgent === 'triad'
-        ? TRIAD_AGENT_NAMES.map((agent) => ({
-            agent,
-            tekst: result.replies?.[agent],
-          }))
-        : [{ agent: chatAgent, tekst: result.reply }];
-      if (expectedAgentReplies.some((entry) => typeof entry.tekst !== 'string' || !entry.tekst.trim())) {
-        throw new Error('Nie otrzymano odpowiedzi wszystkich wybranych agentów.');
-      }
-      const expectedTranscript = [
-        {
-          agent: 'Mateusz Mitek',
-          tekst: attachments.length > 0
-            ? formatChatMessage(message, attachments)
-            : message.startsWith('/propose write-file ')
-            ? message
-            : message.trim(),
-        },
-        ...expectedAgentReplies,
-      ];
-      const history = normalized.chat_history;
-      const persisted = history.some((entry, start) =>
-        expectedTranscript.every((expected, index) =>
-          history[start + index]?.agent === expected.agent &&
-          history[start + index]?.tekst === expected.tekst
-        )
-      );
-      if (!persisted) {
-        throw new Error('Serwer nie potwierdził zapisu wiadomości i odpowiedzi.');
-      }
-      setDataStore(normalized);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
-      setChatSystemChange(isChatSystemChange(result.change) ? result.change : null);
-    } catch (error) {
-      const cancelled = error instanceof Error && error.name === 'AbortError';
-      const messageText = cancelled
-        ? 'Przerwano oczekiwanie na odpowiedź. Możesz ponownie wysłać zachowaną wiadomość.'
-        : error instanceof Error ? error.message : 'Nie udało się wysłać wiadomości.';
-      setAgentError(messageText);
-      throw error;
-    } finally {
-      if (activeChatRequestRef.current === chatController) activeChatRequestRef.current = null;
-      setCanCancelChat(false);
-      setIsAgentLoading(false);
-    }
-  };
-
-  // A new chat is a session boundary, not a destructive clear operation.
-  // The kernel retains previous transcripts, and the backend excludes them
-  // from model context after the SVL_SESSION marker.
-  const handleNewChat = async (): Promise<void> => {
-    if (isAgentLoadingRef.current) throw new Error('Zakończ bieżącą odpowiedź przed utworzeniem nowego czatu.');
-    setAgentError(null);
-    const response = await fetch('/api/triad/chat/new-session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    });
-    const result = await response.json();
-    if (!response.ok || result.success !== true || !result.state?.store) {
-      throw new Error(result.error || 'Nie udało się utworzyć nowego czatu.');
-    }
-    const normalized = normalizeDataStore(result.state.store);
-    if (!normalized.chat_history.some((entry) => entry.agent === 'SVL_SESSION' && entry.id === result.sessionId)) {
-      throw new Error('Serwer nie potwierdził zapisu granicy nowego czatu.');
-    }
-    setDataStore(normalized);
-  };
-
-  const handleProvisionGeminiVm = async (): Promise<{ status: string; sshCommand: string }> => {
-    const response = await fetch('/api/vm-gemini-4/provision', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        operation: 'create',
-        confirmation: 'CREATE_VM_GEMINI_4',
-      }),
-    });
-    const result: unknown = await response.json();
-    if (
-      !response.ok ||
-      !result ||
-      typeof result !== 'object' ||
-      !('success' in result) ||
-      result.success !== true ||
-      !('status' in result) ||
-      typeof result.status !== 'string' ||
-      !('sshCommand' in result) ||
-      typeof result.sshCommand !== 'string'
-    ) {
-      const error = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
-        ? result.error
-        : `Nie udało się utworzyć VM (HTTP ${response.status}).`;
-      throw new Error(error);
-    }
-    return { status: result.status, sshCommand: result.sshCommand };
-  };
-
-  const handleClearHistory = async () => {
-    setDataStore((prev) => ({
-      ...prev,
-      chat_history: []
-    }));
-
-    try {
-      await fetch('/api/kernel/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'clear_chat' })
-      });
-    } catch (e) {
-      console.warn('Backend clear_chat failed:', e);
-    }
-  };
-
-  const handleResetToDefault = async () => {
-    if (!confirm(`Przywrócić ustawienia fabryczne SVL v${SYS_VERSION}? Historia czatu i wydań zostanie wyczyszczona.`)) return;
-    setIsAgentLoading(true);
-    setAgentError(null);
-    try {
-      const response = await fetch('/api/kernel/save-store', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store: INITIAL_DATA_STORE }),
-      });
-      const result = await response.json();
-      if (!response.ok || result.success !== true || !result.state?.store) {
-        throw new Error(result.error || `Reset nie powiódł się (HTTP ${response.status}).`);
-      }
-      const normalized = normalizeDataStore(result.state.store);
-      setDataStore(normalized);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
-    } catch (error) {
-      setAgentError(error instanceof Error ? error.message : 'Nie udało się przywrócić ustawień fabrycznych.');
-    } finally {
-      setIsAgentLoading(false);
-    }
-  };
-
-  const enterHyperspace = () => {
-    try { localStorage.setItem(HYPERSPACE_ENTERED_KEY, 'true'); } catch {}
-    setHasEnteredHyperspace(true);
-  };
-
-  if (!hasEnteredHyperspace) {
-    return (
-      <ErrorBoundary>
-        <main className="hyperspace-screen relative isolate flex min-h-dvh w-full items-center justify-center overflow-hidden bg-[#030712] px-5 py-12 text-slate-100">
-          <div className="hyperspace-stars" aria-hidden="true" />
-          <div className="hyperspace-orbit" aria-hidden="true"><span /><i /></div>
-          <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center text-center">
-            <div className="mb-8 flex items-center gap-3 rounded-full border border-cyan-300/20 bg-slate-950/60 px-4 py-2 text-[11px] font-medium uppercase tracking-[0.28em] text-cyan-100/75 shadow-[0_0_36px_rgba(34,211,238,0.08)]">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)]" />
-              Świeży punkt startowy <span className="text-slate-600">/</span> SVL System
-            </div>
-            <div className="mb-5 grid h-20 w-20 place-items-center rounded-[1.7rem] border border-cyan-200/20 bg-cyan-300/[0.07] text-3xl font-light text-cyan-100 shadow-[0_0_55px_rgba(34,211,238,0.17),inset_0_0_30px_rgba(34,211,238,0.08)]">B</div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.48em] text-cyan-200/65">Bastilla OS</p>
-            <h1 className="text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">SVL_System</h1>
-            <p className="mt-5 max-w-xl text-pretty text-sm leading-7 text-slate-400 sm:text-base">Nowy start systemu. Wybierz wejście, aby otworzyć pulpit Bastilla i dostępne moduły SVL.</p>
-            <button type="button" onClick={enterHyperspace} className="group mt-10 inline-flex min-h-14 items-center gap-4 rounded-full border border-cyan-200/40 bg-cyan-300/[0.09] px-8 text-sm font-semibold tracking-[0.18em] text-cyan-50 shadow-[0_0_42px_rgba(34,211,238,0.13)] transition duration-300 hover:border-cyan-100/80 hover:bg-cyan-200/[0.16] hover:shadow-[0_0_64px_rgba(34,211,238,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950">
-              <span>ENTER HYPERSPACE</span><span aria-hidden="true" className="text-lg text-cyan-200 transition-transform group-hover:translate-x-1">→</span>
-            </button>
-            <div className="mt-12 grid w-full max-w-xl grid-cols-1 gap-3 text-left sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Interfejs</p><p className="mt-1 text-xs text-slate-200">Bastilla Dashboard</p></div>
-              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Jądro</p><p className="mt-1 text-xs text-slate-200">SVL Kernel UI</p></div>
-              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Tryb startu</p><p className="mt-1 text-xs text-emerald-300">Lokalna aplikacja</p></div>
-            </div>
-            <p className="mt-8 text-[10px] uppercase tracking-[0.22em] text-slate-600">Repozytorium aplikacji · main</p>
-          </div>
-        </main>
-      </ErrorBoundary>
-    );
-  }
-
-  return (
-    <ErrorBoundary>
-      <div className="flex min-h-dvh min-w-0 max-w-full flex-col overflow-x-hidden bg-[#050b18] font-sans text-slate-100 selection:bg-cyan-400/30 selection:text-cyan-100">
-        <Header
-          dataStore={dataStore}
-          onReset={handleResetToDefault}
-          onShowReport={() => setShowReportModal(true)}
-          onSyncSystem={handleSyncSystem}
-          kernelSyncStatus={kernelSyncStatus}
-        />
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-          <Navigation
-            activeTab={activeTab}
-            onSelectTab={setActiveTab}
-            messageCount={dataStore?.chat_history?.length || 0}
-            versionCount={dataStore?.update_history?.length || 0}
-          />
-
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
-          {activeTab === 'home' && (
-            <BastillaDashboard
-              dataStore={dataStore}
-              onNavigate={setActiveTab}
-              onSendMessage={handleSendMessage}
-              onProvisionGeminiVm={handleProvisionGeminiVm}
-            />
-          )}
-
-          {activeTab === 'ai_tools' && <AiCapabilitiesView />}
-
-          {activeTab === 'comms' && (
-            <AgentCommsView
-              dataStore={dataStore}
-              onSendProtocol={handleSendProtocol}
-              onSendMessage={handleSendMessage}
-              onRunAstyriaMission={handleRunAstyriaMission}
-              isLoading={isAgentLoading}
-              sendError={agentError}
-              canCancelMessage={canCancelChat}
-              onCancelMessage={cancelChatRequest}
-              onClearHistory={handleClearHistory}
-              onNewChat={handleNewChat}
-              onForceSync={handleForceSync}
-            />
-          )}
-
-          {activeTab === 'approvals' && (
-            <ChatApprovalsView
-              onUpdateDataStore={setDataStore}
-              onChatChange={setChatSystemChange}
-            />
-          )}
-
-          {activeTab === 'process_matrix' && (
-            <TaskProcessMatrix />
-          )}
-
-          {activeTab === 'astyria_mission' && (
-            <AstyriaMissionView
-              dataStore={dataStore}
-              onUpdateDataStore={setDataStore}
-            />
-          )}
-
-          {activeTab === 'schema_graph' && (
-            <MemorySchemaGraph dataStore={dataStore} />
-          )}
-
-          {activeTab === 'temporal' && (
-            <TemporalMatrix
-              dataStore={dataStore}
-              onRestoreSnapshot={(restored) => setDataStore(restored)}
-              onAddUpdate={(ver, desc) => {
-                handleExecutePythonCommand(`bump ${ver} ${desc}`);
-              }}
-            />
-          )}
-
-          {activeTab === 'terminal' && (
-            <TerminalView
-              dataStore={dataStore}
-              onUpdateDataStore={setDataStore}
-              onSendProtocol={handleSendProtocol}
-              onExecutePythonCommand={handleExecutePythonCommand}
-            />
-          )}
-
-          {activeTab === 'monolith' && (
-            <MonolithView
-              dataStore={dataStore}
-              onSetDataStore={setDataStore}
-            />
-          )}
-
-          {activeTab === 'datastore' && (
-            <DataStoreView
-              dataStore={dataStore}
-              onUpdateDataStore={setDataStore}
-            />
-          )}
-
-          {activeTab === 'diagnostics' && (
-            <DiagnosticsView dataStore={dataStore} />
-          )}
-
-          {activeTab === 'visualizer' && (
-            <TriadVisualization />
-          )}
-
-          {activeTab === 'file_explorer' && (
-            <FileExplorer />
-          )}
-
-          {activeTab === 'apps' && (
-            <AppsStudioView
-              chatChange={chatSystemChange}
-              onChatChangeApplied={() => setChatSystemChange(null)}
-            />
-          )}
-
-          {activeTab === 'fleet' && <FleetView />}
-
-          {activeTab === 'hyper_com' && (
-            <section className="flex min-h-0 flex-1 flex-col bg-slate-950">
-              <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-2">
-                <h1 className="text-xs font-semibold text-cyan-200">HyperCom — konsola transmisji</h1>
-                <a
-                  href="/api/apps/preview/hyper_com_module/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-cyan-300 hover:text-cyan-100"
-                >
-                  Otwórz osobno
-                </a>
-              </header>
-              <iframe
-                src="/api/apps/preview/hyper_com_module/"
-                title="HyperCom — konsola transmisji"
-                className="min-h-0 w-full flex-1 border-0"
-                sandbox="allow-scripts allow-forms allow-same-origin allow-modals"
-              />
-            </section>
-          )}
-
-          {activeTab === 'without_nlp' && (
-            <WithoutNlpView onSendProtocol={handleSendProtocol} />
-          )}
-
-          {activeTab === 'github' && (
-            <GitHubExportView />
-          )}
-        </main>
-        </div>
-
-        <ReportModal
-          isOpen={showReportModal}
-          onClose={() => setShowReportModal(false)}
-          dataStore={dataStore}
-        />
-
-        <SystemHealthDock />
-      </div>
-    </ErrorBoundary>
-  );
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Activity, AlertTriangle, Archive, ArrowDown, ArrowLeft, BookOpen, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Clipboard, Code2, Cpu, HardDrive, History, ImagePlus, Layers3, Menu, MessageCirclePlus, MoreHorizontal, PanelLeftClose, RefreshCcw, Search, Send, Server, Settings, ShieldCheck, Signal, Sparkles, Terminal, UserRound, WifiOff, X} from 'lucide-react';
+import {api,ApiFailure} from './lib/api';
+import type {AgentName,Bootstrap,Message,ServerHealth,Session,WidgetBlock} from './lib/types';
+import {BLOCK_DEMOS,RichBlock,RichContent,UI_GROUPS,UI_TYPES} from './components/RichBlocks';
+import './index.css';
+const AGENTS:AgentName[]=['Alex','Aria','Astyria','Aurelius'];
+const welcome=['Zacznij od pytania lub polecenia','Zaloguj ChatGPT w OpenCode','Wybierz gotowy interaktywny blok','Sprawdź rzeczywisty stan Linux i Ollamy'];
+function humanTime(value:string|null|undefined){if(!value)return 'brak';const d=new Date(value);return Number.isFinite(d.valueOf())?d.toLocaleTimeString('pl-PL',{hour:'2-digit',minute:'2-digit'}):'brak';}
+function InitialAvatar({name,avatar,size=34}:{name:string;avatar?:string;size?:number}){return avatar?<img className="avatar" alt={name} src={avatar} width={size} height={size}/>:<span className={'avatar-text avatar-'+name.toLowerCase()} style={{width:size,height:size}}>{name==='Operator'?<UserRound size={size*.5}/>:name.slice(0,1)}</span>}
+function StatusDot({online}:{online:boolean}){return <span className={'presence '+(online?'live':'idle')}/>}
+function App(){
+ const [snapshot,setSnapshot]=useState<Bootstrap|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[text,setText]=useState(''),[recipient,setRecipient]=useState<'Wszyscy'|AgentName>('Wszyscy');
+ const [sessionId,setSessionId]=useState<string>(''),[panel,setPanel]=useState<'none'|'system'|'agents'|'library'|'settings'>('none'),[drawer,setDrawer]=useState(false),[viewArchive,setViewArchive]=useState(false),[librarySearch,setLibrarySearch]=useState(''),[libraryType,setLibraryType]=useState('card'),[loginToken,setLoginToken]=useState(''),[needsLogin,setNeedsLogin]=useState(false),[syncState,setSyncState]=useState<'online'|'connecting'|'offline'>('connecting');
+ const [hostSnapshot,setHostSnapshot]=useState<any>(null),[serviceFilter,setServiceFilter]=useState(''),[hostError,setHostError]=useState(''),[archiveOpen,setArchiveOpen]=useState(false),[avatarEdit,setAvatarEdit]=useState('Operator'),[avatarValue,setAvatarValue]=useState('');
+ const bottom=useRef<HTMLDivElement>(null),viewport=useRef<HTMLDivElement>(null),touchStart=useRef<{x:number;y:number}|null>(null),lastRevision=useRef(0),lastUpdated=useRef(0),textbox=useRef<HTMLTextAreaElement>(null);
+ const refresh=useCallback(async(silent=false)=>{try{const payload=await api.bootstrap();lastUpdated.current=Date.now();lastRevision.current=payload.revision??lastRevision.current;setSnapshot(payload);setSyncState('online');setNeedsLogin(false);if(!silent)setError('');setSessionId(old=>old&&payload.sessions.some(s=>s.id===old&&!s.archived)?old:payload.sessions.filter(s=>!s.archived).at(-1)?.id||'');}
+ catch(e){setSyncState('offline');if(e instanceof ApiFailure&&e.code===401)setNeedsLogin(true);if(!silent)setError(e instanceof Error?e.message:'Backend jest niedostępny');}},[]);
+ const refreshHost=useCallback(async()=>{try{const status=await api.linuxStatus();setHostSnapshot(status);setHostError('');}catch(e){setHostSnapshot(null);setHostError(e instanceof Error?e.message:'Brak danych hosta');}},[]);
+ useEffect(()=>{void refresh();void refreshHost();let source:EventSource|null=null;let retryTimer:number|undefined;
+   const connect=()=>{source?.close();setSyncState('connecting');source=new EventSource('/api/events');source.addEventListener('update',()=>{void refresh(true);void refreshHost();});source.onopen=()=>setSyncState('online');source.onerror=()=>setSyncState('offline');};connect();
+   const onFocus=()=>{void refresh(true);void refreshHost();};const onVisibility=()=>{if(document.visibilityState==='visible')onFocus();};
+   window.addEventListener('focus',onFocus);document.addEventListener('visibilitychange',onVisibility);
+   const interval=window.setInterval(()=>{if(Date.now()-lastUpdated.current>22000)void refresh(true);void refreshHost();},25000);
+   return ()=>{source?.close();if(retryTimer)clearTimeout(retryTimer);clearInterval(interval);window.removeEventListener('focus',onFocus);document.removeEventListener('visibilitychange',onVisibility);};
+ },[refresh,refreshHost]);
+ const submitLogin=async()=>{try{await api.login(loginToken);setLoginToken('');setNeedsLogin(false);await refresh();await refreshHost();}catch(e){setError(e instanceof Error?e.message:'Nie udało się zalogować');}};
+ const activeSession=snapshot?.sessions.find(s=>s.id===sessionId);
+ const messages=useMemo(()=>(snapshot?.messages||[]).filter(m=>m.sessionId===sessionId),[snapshot,sessionId]);
+ useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth',block:'end'});},[messages.length,sessionId]);
+ const submit=async(e?:React.FormEvent)=>{e?.preventDefault();const value=text.trim();if(!value||busy||!sessionId)return;setBusy(true);setError('');setText('');try{await api.sendMessage(sessionId,value,recipient);await refresh(true);}catch(e){setText(value);setError(e instanceof Error?e.message:'Nie udało się wysłać');await refresh(true);}finally{setBusy(false);textbox.current?.focus();}};
+ const startSession=async()=>{try{const s=await api.createSession();await refresh(true);setSessionId(s.id);setDrawer(false);setPanel('none');setText('');}catch(e){setError(String(e));}};
+ const archiveSession=async(s:Session)=>{if(!window.confirm('Archiwizować rozmowę „'+s.title+'”? Historia pozostanie zapisana.'))return;try{await api.archiveSession(s.id);await refresh(true);}catch(e){setError(String(e));}};
+ const loadAvatar=async()=>{try{await api.updateAvatar(avatarEdit,avatarValue.trim());await refresh(true);setError('');}catch(e){setError(String(e));}};
+ const onAvatarFile=async(event:React.ChangeEvent<HTMLInputElement>)=>{
+   const file=event.target.files?.[0]; event.target.value=''; if(!file)return;
+   if(!['image/png','image/jpeg','image/webp','image/gif'].includes(file.type)||file.size>390000){setError('Awatar musi być obrazem PNG/JPEG/WEBP/GIF do 390 KB.');return;}
+   try{const dataUrl=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(Error('Nie można odczytać pliku.'));reader.readAsDataURL(file);});
+      await api.updateAvatar(avatarEdit,dataUrl);setAvatarValue(dataUrl);await refresh(true);setError('');
+   }catch(e){setError(e instanceof Error?e.message:'Nie udało się zapisać awatara.');}
+ };
+ const onTouchStart=(e:React.TouchEvent)=>{if((e.target as Element).closest('input,textarea,button,select'))return;touchStart.current={x:e.touches[0].clientX,y:e.touches[0].clientY};};
+ const onTouchEnd=(e:React.TouchEvent)=>{const p=touchStart.current;touchStart.current=null;if(!p||window.innerWidth>740)return;const dx=e.changedTouches[0].clientX-p.x,dy=e.changedTouches[0].clientY-p.y;if(Math.abs(dx)<95||Math.abs(dx)<Math.abs(dy)*1.5)return;if(dx>0)setDrawer(true);else if(drawer)setDrawer(false);else setPanel('system');};
+ const health=snapshot?.health;
+ const openCodeStatus=health?.opencode;
+ const copyLoginCommand=()=>{void navigator.clipboard?.writeText('opencode auth login openai');};
+ const panelTitle={none:'',system:'System Linux',agents:'Agenci AI',library:'Biblioteka UI',settings:'Wygląd i avatary'}[panel];
+ const preview=BLOCK_DEMOS[libraryType]||BLOCK_DEMOS.card;
+ const filteredLibrary=Object.entries(UI_GROUPS).map(([category,types])=>({category,types:types.filter(t=>t.toLowerCase().includes(librarySearch.trim().toLowerCase()))})).filter(g=>g.types.length);
+ return <div className="shell" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+  {drawer&&<button className="mobile-shade" aria-label="Zamknij historię" onClick={()=>setDrawer(false)}/>}
+  <aside className={'sidebar '+(drawer?'sidebar-open':'')}>
+   <div className="brand"><div className="brand-icon"><Layers3 size={21}/></div><div><strong>BASTILLA <em>OS</em></strong><span>SVL System · OpenCode ChatGPT</span></div><button className="icon-button close-drawer" onClick={()=>setDrawer(false)}><X size={18}/></button></div>
+   <button className="new-chat" onClick={()=>void startSession()}><MessageCirclePlus size={18}/> Nowy czat <span>＋</span></button>
+   <div className="sidebar-section"><span>ROZMOWY</span><button onClick={()=>setViewArchive(x=>!x)} aria-label="Archiwum"><Archive size={15}/></button></div>
+   <nav className="conversation-list" aria-label="Historia rozmów">{(snapshot?.sessions||[]).filter(s=>viewArchive?s.archived:!s.archived).slice().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).map(s=><div className={'session '+(s.id===sessionId?'active':'')} key={s.id}><button title={s.title} className="session-main" onClick={()=>{setSessionId(s.id);setDrawer(false)}}><History size={16}/><span>{s.title}</span></button>{!s.archived&&<button title="Archiwizuj" className="session-archive" onClick={()=>void archiveSession(s)}><Archive size={14}/></button>}</div>)}</nav>
+   <div className="sidebar-bottom"><button onClick={()=>{setPanel('library');setDrawer(false)}}><BookOpen size={17}/> Biblioteka elementów <small>{UI_TYPES.length}</small></button><button onClick={()=>{setPanel('system');setDrawer(false)}}><Server size={17}/> Linux i synchronizacja</button><button onClick={()=>{setPanel('agents');setDrawer(false)}}><Activity size={17}/> Agenci AI</button><button onClick={()=>{setPanel('settings');setDrawer(false)}}><Settings size={17}/> Personalizacja</button></div>
+   <div className="sidebar-footer"><div className="user-dot"><InitialAvatar name="Operator" avatar={snapshot?.avatars?.Operator} size={33}/><div><strong>Operator</strong><span>Własny interfejs</span></div></div><span className="build-tag">LOCAL-FIRST</span></div>
+  </aside>
+  <main className="workspace">
+   <header className="topbar"><div className="top-left"><button className="icon-button sidebar-toggle" aria-label="Otwórz historię" onClick={()=>setDrawer(!drawer)}><Menu size={21}/></button><div className="page-title"><strong>BASTILLA OS</strong><span>{activeSession?.title||'Enter hyperspace'}</span></div><ChevronDown size={14} className="subtle"/></div><div className="top-actions"><span className={'sync-badge '+syncState}><StatusDot online={syncState==='online'}/>{syncState==='online'?'Synchronizacja aktywna':syncState==='connecting'?'Łączenie…':'Brak połączenia'}</span><button className="icon-button" aria-label="Synchronizuj" title="Synchronizuj ze wspólnym stanem" onClick={()=>{void refresh();void refreshHost()}}><RefreshCcw size={18}/></button><button className="icon-button" aria-label="Panel systemowy" title="Centrum systemowe" onClick={()=>setPanel(panel==='system'?'none':'system')}><Activity size={19}/></button><button className="icon-button" aria-label="Biblioteka" title="Biblioteka elementów" onClick={()=>setPanel(panel==='library'?'none':'library')}><Layers3 size={19}/></button></div></header>
+   {error&&<div role="alert" className="error-banner"><AlertTriangle size={16}/><span>{error}</span><button onClick={()=>setError('')} aria-label="Zamknij"><X size={16}/></button></div>}
+   {needsLogin&&<div className="login-backdrop"><form className="login-dialog" onSubmit={e=>{e.preventDefault();void submitLogin()}}><div className="hero-symbol"><ShieldCheck size={34}/></div><h2>Dostęp operatora</h2><p>Podaj SVL_OPERATOR_TOKEN skonfigurowany na serwerze. Token nie jest zapisywany w przeglądarce.</p><input aria-label="Token operatora" type="password" autoComplete="off" value={loginToken} onChange={e=>setLoginToken(e.target.value)} placeholder="Token operatora"/><button type="submit" disabled={!loginToken}>Połącz</button></form></div>}
+   <div className="chat-scroll" ref={viewport}>
+    <div className="chat-inner">{messages.length===0?<div className="welcome"><div className="hero-symbol"><Layers3 size={44}/></div><div className="eyebrow">BASTILLA OS / SVL SYSTEM</div><h1>Enter <span>hyperspace.</span></h1><p>Jeden czat, własny design i ChatGPT przez OpenCode na Debianie 13. Statusy pochodzą wyłącznie z działających usług.</p><div className="suggestions">{welcome.map((line,i)=><button key={line} onClick={()=>i===2?setPanel('library'):i===3||i===1?setPanel('system'):setText(line)}><span>{i===0?<Sparkles size={19}/>:i===1?<Activity size={19}/>:i===2?<Layers3 size={19}/>:<Cpu size={19}/>}</span>{line}<ChevronRight size={16}/></button>)}</div></div>:
+    messages.map(m=><div className={'message-row '+(m.role==='user'?'user-message':'')} key={m.id}><InitialAvatar name={m.author.startsWith('Operator')?'Operator':m.author} avatar={snapshot?.avatars?.[m.author]} size={36}/><div className="message-body"><div className="message-meta"><strong>{m.author}</strong><span>{humanTime(m.createdAt)}</span>{m.provider&&<small>{m.provider}</small>}{m.status==='failed'&&<span className="failure">Błąd</span>}</div><RichContent content={m.content} onDraft={s=>{setText(s);textbox.current?.focus()}}/><button className="copy-message" aria-label="Kopiuj wiadomość" onClick={()=>navigator.clipboard?.writeText(m.content)}><Clipboard size={13}/> Kopiuj</button></div></div>)}
+    <div ref={bottom}/></div>
+   </div>
+   <footer className="composer-shell"><form className="composer" onSubmit={e=>void submit(e)}><div className="recipient-row"><span><Signal size={14}/> Odbiorca:</span><select aria-label="Odbiorca wiadomości" value={recipient} onChange={e=>setRecipient(e.target.value as typeof recipient)}><option value="Wszyscy">Wszyscy · OpenCode / OpenAI</option>{AGENTS.map(a=><option value={a} key={a}>{a} · kolejka agenta</option>)}</select><span className="footer-real">{openCodeStatus?.openaiConnected?'OpenCode · OpenAI dostępne':openCodeStatus?.reachable?'OpenCode · wymagane logowanie':'OpenCode · backend offline'}</span></div><textarea ref={textbox} rows={2} value={text} placeholder="Napisz do Bastilla OS…" aria-label="Wiadomość" onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void submit();}}}/><div className="compose-actions"><div><button type="button" title="Biblioteka elementów" onClick={()=>setPanel('library')}><Layers3 size={18}/></button><button type="button" title="Stan hosta Linux" onClick={()=>setPanel('system')}><Terminal size={18}/></button><span className="small-caption">Shift + Enter — nowy wiersz</span></div><button className="send-button" type="submit" disabled={!text.trim()||busy||!sessionId}>{busy?'Wysyłanie…':<Send size={18}/>}</button></div></form><div className="disclaimer">Bastilla OS · ChatGPT przez OpenCode na hoście · globalny stan jednej instancji · Linux przez uwierzytelniony observer</div></footer>
+  </main>
+  {panel!=='none'&&<><button className="panel-shade" aria-label="Zamknij panel" onClick={()=>setPanel('none')}/><aside className="detail-panel"><div className="detail-head"><div><small>CENTRUM STEROWANIA</small><h2>{panelTitle}</h2></div><button className="icon-button" aria-label="Zamknij panel" onClick={()=>setPanel('none')}><X size={19}/></button></div><div className="detail-content">
+    {panel==='system'&&<><div className="detail-card"><div className="info-title"><Server size={17}/> Global Sync <StatusDot online={syncState==='online'}/></div><p>Dane czatu i pamięci synchronizują się przez wspólny backend. Linux wymaga aktywnej usługi na hoście.</p><div className="metric-grid"><div><small>Stan GUI</small><strong>{syncState==='online'?'ONLINE':'OFFLINE'}</strong></div><div><small>Host Linux</small><strong>{hostSnapshot?.connected?'POŁĄCZONY':'BRAK'}</strong></div></div><button className="subtle-button" onClick={()=>{void refresh();void refreshHost()}}><RefreshCcw size={15}/> Synchronizuj wszystko</button></div><div className="detail-card"><div className="info-title"><HardDrive size={17}/> Host Debian / Linux</div>{hostSnapshot?.connected?<><div className="metric-grid"><div><small>Nazwa hosta</small><strong>{hostSnapshot.host?.hostname||'—'}</strong></div><div><small>System</small><strong>{hostSnapshot.host?.os||'Linux'}</strong></div><div><small>RAM</small><strong>{hostSnapshot.host?.memoryPercent??'—'}%</strong></div><div><small>Usługi</small><strong>{hostSnapshot.host?.services?.length??0}</strong></div></div><p>Ostatni pomiar: {humanTime(hostSnapshot.receivedAt)}. Dane wyłącznie z połączonego obserwatora Linux.</p>
+         <div className="metric-grid"><div><small>Procesy Linux</small><strong>{hostSnapshot.host?.processCount??'—'}</strong></div><div><small>Dysk systemowy</small><strong>{hostSnapshot.host?.diskPercent??'—'}%</strong></div></div>
+         <p>Ollama na hoście: <strong>{hostSnapshot.host?.ollama?.reachable?'ODPOWIADA':'BRAK POŁĄCZENIA'}</strong></p>
+         {hostSnapshot.host?.ollama?.models?.length>0&&<p>Modele: {hostSnapshot.host.ollama.models.join(', ')}</p>}
+         <label>Wyszukaj usługę systemd<input value={serviceFilter} onChange={e=>setServiceFilter(e.target.value)} placeholder="np. ollama.service"/></label>
+         <div className="host-services">{(hostSnapshot.host?.services||[]).filter((service:{name:string})=>service.name.toLowerCase().includes(serviceFilter.toLowerCase())).slice(0,80).map((service:{name:string;state:string})=><div className="host-service" key={service.name}><span>{service.name}</span><small>{service.state}</small></div>)}</div></>:<p>Brak świeżego pomiaru hosta. Włącz usługę linux-sync-agent na docelowym Debianie 13.</p>}</div><div className="detail-card"><div className="info-title"><Cpu size={17}/> OpenCode · konto ChatGPT</div><p>Status serwera: <strong>{openCodeStatus?.reachable?'OSIĄGALNY':'OFFLINE'}</strong></p><p>OpenAI: <strong>{openCodeStatus?.openaiConnected?'PODŁĄCZONE':'NIEPODŁĄCZONE'}</strong></p><p>Typ logowania: <strong>NIEZWERYFIKOWANY PRZEZ API</strong></p><p>Model OpenAI: <strong>{openCodeStatus?.defaultOpenAiModel||'nie wybrano'}</strong></p><p>{openCodeStatus?.message||'Oczekiwanie na status OpenCode…'}</p><p>Logowanie odbywa się na hoście Debian 13. Nigdy nie przesyłaj tokenów ChatGPT do czatu ani GUI.</p><button className="subtle-button" onClick={copyLoginCommand}><Clipboard size={15}/> Kopiuj: opencode auth login openai</button><p><a href="https://opencode.ai/docs/providers" target="_blank" rel="noreferrer">Instrukcja logowania OpenCode</a></p></div><div className="detail-card"><div className="info-title"><Cpu size={17}/> Ollama i modele</div><p>Połączenie: <strong>{health?.ollama.reachable?'OK':'NIEDOSTĘPNE'}</strong></p><p>Model: <strong>{health?.ollama.model||'brak potwierdzenia'}</strong></p><p>Ollama jest dostępna wyłącznie jako jawnie włączony fallback (SVL_ALLOW_OLLAMA_FALLBACK=true).</p></div><div className="detail-card"><div className="info-title"><ShieldCheck size={17}/> Uprawnienia i zakres</div><p>Interfejs nie wykonuje poleceń root automatycznie. Status systemd/UID pochodzi z połączonego hosta i nie jest wytwarzany przez model.</p></div></>}
+    {panel==='agents'&&<><p className="panel-intro">Cztery niezależne tożsamości. Status ONLINE wymaga prawdziwego heartbeat, nie wpisu w konfiguracji.</p>{AGENTS.map(a=>{const agent=health?.agents.find(x=>x.name===a);return <div className="agent-card" key={a}><InitialAvatar name={a} avatar={snapshot?.avatars?.[a]} size={40}/><div><strong>{a}</strong><p>{agent?.connected?'Worker potwierdzony':'Worker niepodłączony'}</p><small>Ostatni heartbeat: {humanTime(agent?.lastSeen)}</small></div><StatusDot online={Boolean(agent?.connected)}/></div>})}<div className="detail-card"><p>Wiadomości do agenta trafiają do kolejki. Agent odpowie dopiero po uwierzytelnionym odebraniu i wykonaniu zadania.</p></div></>}
+    {panel==='library'&&<><p className="panel-intro">{UI_TYPES.length} interaktywnych elementów w {Object.keys(UI_GROUPS).length} kategoriach. Podglądy są przykładami, nie wynikami systemu.</p><div className="library-search"><Search size={16}/><input placeholder="Wyszukaj typ elementu…" value={librarySearch} onChange={e=>setLibrarySearch(e.target.value)}/></div>{filteredLibrary.map(g=><div className="lib-group" key={g.category}><h3>{g.category} <small>{g.types.length}</small></h3><div className="lib-chips">{g.types.map(t=><button key={t} className={libraryType===t?'selected':''} onClick={()=>setLibraryType(t)}>{t}</button>)}</div></div>)}<div className="preview-area"><h3>Podgląd · {libraryType}</h3><RichBlock block={preview}/><button className="subtle-button" onClick={()=>{setText('Pokaż element '+libraryType+' jako interaktywny blok svl-ui.');setPanel('none')}}>Użyj w czacie</button></div></>}
+    {panel==='settings'&&<><p className="panel-intro">Ustaw awatary własne i agentów. Adres HTTPS zostanie zsynchronizowany na wszystkich urządzeniach.</p><div className="detail-card"><label>Profil<select value={avatarEdit} onChange={e=>{setAvatarEdit(e.target.value);setAvatarValue(snapshot?.avatars?.[e.target.value]||'')}}>{['Operator',...AGENTS].map(a=><option key={a}>{a}</option>)}</select></label><label>Wgraj własny obraz (do 390 KB)<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e=>void onAvatarFile(e)}/></label><label>URL HTTPS awatara<input value={avatarValue} placeholder="https://…" onChange={e=>setAvatarValue(e.target.value)}/></label><button className="subtle-button" onClick={()=>void loadAvatar()}><CheckCircle2 size={15}/> Zapisz i synchronizuj</button></div><div className="detail-card"><p>Generowanie awatara z promptu wymaga podłączonego i działającego API generatora obrazów. Ten interfejs nie pokazuje fikcyjnego renderowania.</p></div></>}
+   </div></aside></>}
+ </div>;
 }
+export default App;

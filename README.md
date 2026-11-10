@@ -1,104 +1,55 @@
-# Bastilla OS SVL_System
+# Bastilla OS · GUI First · new backend
 
-**Enter hyperspace** — świeży ekran wejściowy aplikacji Bastilla OS z dostępem do pulpitu SVL.
+This is a **replacement** for the prior SVL_System web server. GUI, chat history, 80+ interactive block types, and cross-tab/server realtime updates use the new JSON database and SSE. There are **no fake AI/agent/host success states**. This package is standalone; it does not require GitHub.
 
-To repozytorium zawiera kod aplikacji webowej i konfigurację obrazu instalacyjnego Debian 13 Live z KDE Plasma. Sam zapis w GitHub nie instaluje systemu na komputerze ani nie publikuje aplikacji.
+## Run
 
-## Porządek w repozytorium
-
-Kod źródłowy, konfiguracja Debian 13/KDE i skrypty budowania ISO pozostają w `main`. W dniu 10.11.2026 usunięto z aktualnego drzewa Git historyczne pliki runtime (lokalne bazy SQLite, migawki DATA_STORE, rejestr wdrożeń oraz testowe archiwum). Nie są to elementy wymagane do zbudowania czystego ISO. Nowe dane runtime należy tworzyć lokalnie, poza historią Git.
-
-**Uwaga dla istniejących instalacji:** przed `git pull` wykonaj kopię własnych baz i eksportów, jeśli były przechowywane w śledzonych ścieżkach. Zmiana repozytorium nie czyści automatycznie hosta ani nie instaluje systemu. Historyczne pliki nadal są dostępne w poprzednich commitach Git — usunięcie z `main` nie usuwa ich z historii publicznego repozytorium.
-
-Weryfikacja i odzyskiwanie: [zasady higieny repozytorium](docs/REPO_CLEANUP.md).
-
-## Aktualny stan
-
-- Repozytorium: `mmitek515-netizen/SVL_System`
-- Główna gałąź: `main`
-- Ekran wejściowy: **Enter hyperspace**; wybór jest pamiętany lokalnie w przeglądarce.
-- Wejście prowadzi do istniejącego pulpitu Bastilla; pozostałe moduły aplikacji są zachowane.
-- Kod aplikacji i skrypty ISO są w repozytorium. Zainstalowany system, uruchomiony model Ollama oraz dostęp root do hosta wymagają osobnej konfiguracji i weryfikacji.
-
-## Uruchamianie BastillaOS
-
-1. Uruchom komputer lub VM z przygotowanego ISO/USB i wybierz sesję Live.
-2. W środowisku Live otwórz instalator Debiana. Przed potwierdzeniem dokładnie
-	sprawdź dysk docelowy; instalacja na całym dysku usuwa jego dotychczasowe dane.
-3. Po instalacji uruchom komputer z dysku i zaloguj się do KDE kontem utworzonym
-	w instalatorze. System nie konfiguruje automatycznego logowania ani
-	automatycznego otwarcia Chromium.
-4. Z menu aplikacji uruchom **BastillaOS**. Poczekaj na lokalny panel, a na
-	ekranie **Enter hyperspace** wybierz wejście do pulpitu SVL.
-5. Jeśli panel się nie otwiera, sprawdź usługę przez
-	`sudo systemctl status bastillaos-system.service`.
-
-Pełna instrukcja bootowania, instalacji, pierwszego uruchomienia i diagnostyki
-jest w [przewodniku BastillaOS](bastillaos/README.md#boot-and-install). Ekran
-**Enter hyperspace** jest ekranem aplikacji, nie systemu ani instalatora.
-
-## Czysta baza po reinstalacji
-
-Postępuj według [dokumentacji czystej bazy](docs/REINSTALL_BASELINE.md). Repozytorium zachowuje historię i kod. Dane runtime, lokalne bazy, dyski VM oraz sekrety należy utworzyć osobno dla świeżej instalacji.
-
-## Uruchomienie aplikacji webowej
-
-Wymagane: Node.js 22+, npm 10.5.1+ i Python 3. Lokalny czat wymaga osobnej usługi Ollama i skonfigurowanego modelu.
-
-```sh
-npm ci
-if [ ! -f .env ]; then cp .env.example .env; fi
-# Uzupełnij lokalne ustawienia w .env; nie dodawaj ich do Git.
+```bash
+npm install
+cp .env.example .env
+# set SVL_OPERATOR_TOKEN (32+ random characters) when exposed to others
 npm run dev
 ```
 
-Otwórz adres wyświetlony przez Vite. Ekran **Enter hyperspace** pojawi się przy pierwszym wejściu w danej przeglądarce lub po wyczyszczeniu jej danych witryny. Kliknięcie przycisku zapisuje wybór w localStorage i otwiera pulpit.
+`npm run build` and `npm start` produce/serve the production web app. The UI is responsive for mobile and desktop. The same backend instance is the authoritative source for chats, avatars, and queued agent work. OpenCode with ChatGPT sign-in is the primary model backend. State persists at `DATA_DIR/bastilla-state.json`. Web pages sync via SSE `/api/events`, plus refetch on focus and scheduled checks. Changes on *another* backend URL are not synchronized without a separate external database or replication setup.
 
-## Budowa bootowalnego ISO
+## Linux host global sync
 
-Wymagania i kroki opisuje [bastillaos/README.md](bastillaos/README.md). Na hoście Linux amd64 z Dockerem uruchom z katalogu głównego repozytorium:
+The application server may run inside AI Studio/hosting, which is **not** your full Linux host. To see real Debian 13/systemd/Ollama metrics, deploy `linux/linux-sync-agent.py` **on that host**. Configure `SVL_BACKEND_URL` to the actual HTTPS backend URL and the same 32+ character `SVL_LINUX_SYNC_TOKEN` on both sides. It sends signed read-only snapshots every 15 seconds: Linux version/kernel, host UID, memory, disk, services, processes, Ollama tags. `/api/linux/status` reports OFFLINE if no fresh sample arrives within 45 seconds. This bridge does **not** copy your entire filesystem, root-control Linux, or sync remote repositories.
 
-```sh
-bash bastillaos/build-iso.sh
+To install as systemd service (on your authorized Debian host):
+
+```bash
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin bastilla-sync || true
+sudo install -Dm644 linux/linux-sync-agent.py /opt/bastillaos/linux-sync-agent.py
+sudo install -Dm644 linux/systemd/bastilla-linux-sync.service /etc/systemd/system/bastilla-linux-sync.service
+sudo install -d -m700 /etc/bastillaos
+sudo sh -c 'umask 077; printf "SVL_BACKEND_URL=https://YOUR-BACKEND-URL\nSVL_LINUX_SYNC_TOKEN=PASTE-SAME-32+CHAR-TOKEN\n" > /etc/bastillaos/linux-sync.env'
+sudo systemctl daemon-reload
+sudo systemctl enable --now bastilla-linux-sync
 ```
 
-Po udanej budowie skrypt tworzy ISO oraz sumę SHA-256 w `bastillaos/build/`. Samo rozpoczęcie workflow lub commity w `main` nie instalują systemu na urządzeniu. Workflow ISO jest uruchamiany ręcznie albo po wypchnięciu tagu `bastillaos-v*`.
+## OpenCode with ChatGPT Plus/Pro login (primary AI)
 
-## Walidacja kodu aplikacji
+OpenCode runs **on Debian 13**, not inside the phone and not inside Google AI Studio preview. On the SAME Linux user account that will run OpenCode:
 
-```sh
-npm test
-npm run lint
-npm run build
-npm run build:server
+```bash
+opencode auth login openai
+# Select "Sign in with ChatGPT", complete OAuth in your browser or via device code.
+# Then check that your model is available with /models in the OpenCode TUI.
+OPENCODE_SERVER_PASSWORD="YOUR-LONG-RANDOM-SECRET" opencode serve --hostname 127.0.0.1 --port 4096
 ```
 
-Walidacja kodu aplikacji nie zastępuje budowania ani testu ISO na maszynie docelowej. Nie deklaruj działania funkcji hosta, roota, terminali czy Ollamy bez sprawdzenia ich na zainstalowanym systemie.
+Set the same `OPENCODE_SERVER_PASSWORD` in Bastilla's backend environment and `OPENCODE_BASE_URL=http://127.0.0.1:4096` (when both services run on the same host). Host credentials remain in the OpenCode user profile; the browser **never receives OAuth credentials**. `GET /api/opencode/status` explicitly reports whether OpenCode is reachable and whether its `/provider` endpoint identifies OpenAI as connected, and checks the selected default OpenAI model. The API cannot distinguish ChatGPT OAuth from OpenAI API-key authentication; this is explicitly marked UNVERIFIED, so complete the **Sign in with ChatGPT** step on the host. A real response checks the OpenAI model path, not the OAuth method. The `Wszyscy` chat routes to OpenCode's real session APIs. Persistent mapping from Bastilla sessions to OpenCode sessions is stored in the Bastilla database. SSE sends GUI invalidations across devices.
 
-## Główny plan projektu i postęp (10.11.2026)
+When Bastilla backend runs in another container/host, configure a private HTTPS-protected reverse proxy and `OPENCODE_ALLOW_REMOTE=true`; never expose port 4096 publicly. Operator authentication uses `SVL_OPERATOR_TOKEN` on production deployments. Sign in with ChatGPT is provider authentication, **not** a substitute for authenticating users of the Bastilla GUI.
 
-Aktualna, zbiorcza specyfikacja właściciela, priorytety GUI → Linux → autonomiczni agenci,
-bibliotekę 80 typów komponentów czatu i szacunkową **realizację kodową 50%** (nie gotowość produkcyjną):
-[Plan Bastilla OS i procent ukończenia](docs/BASTILLA_MASTER_PLAN_PROGRESS_2026-11-10.md).
+Only if explicitly configured `SVL_ALLOW_OLLAMA_FALLBACK=true`, requests may fall back to local Ollama when OpenCode is unavailable. ChatGPT plan usage remains subject to account limits. The system does not provide unlimited API credentials or an OpenAI API key.
 
-Procenty są szacunkami z audytu kodu i testów; działanie Ollama, root hosta,
-czterech niezależnych workerów, bootowalnego ISO oraz integracji AI Studio/MCP
-w realnym środowisku należy osobno potwierdzić. Nie wyświetlać fikcyjnych statusów.
+### Agent communication
 
-## Ochrona synchronizacji GitHub
+Each agent requires its own 32+ character bearer token in the JSON `SVL_WORKER_TOKENS` env variable. `POST /api/worker/heartbeat`, `POST /api/worker/next`, and `POST /api/worker/complete` support real jobs/responses. A named profile does not mean that worker is running. No unrestricted remote/root shell endpoint is provided. In the chat, messages to `Wszyscy` use OpenCode with a verified connected OpenAI provider; messages addressed to an individual are queued until that agent actually connects.
 
-Wszelkie operacje zapisu GitHub wykonywane przez HTTP wymagają osobnego sekretu `SVL_GITHUB_WRITE_TOKEN` (co najmniej 32 znaki). Przy braku sekretu endpointy zapisu zwracają HTTP 403, natomiast odczyty statusu pozostają dostępne. Podaj sekret w rozwijanym panelu synchronizacji lub po żądaniu Eksploratora; nie jest to GitHub PAT i nie należy umieszczać go w publicznym Git.
+### Security scope and limitations
 
-Starsze endpointy `/api/github/export` i `/api/github/pull` zostały wycofane (HTTP 410), ponieważ potrafiły zachować PAT w adresie Git remote albo nadpisywać pliki. Używaj głównego przycisku synchronizacji `main` oraz natywnej integracji GitHub w AI Studio do importu. Zapis w repo nie jest automatycznym wdrożeniem Linux.
-
-## Główne dokumenty
-
-- [Czysta baza po reinstalacji](docs/REINSTALL_BASELINE.md)
-- [Budowa i instalacja Bastilla OS](bastillaos/README.md)
-- [Globalna synchronizacja DATA_STORE, GitHub i AI Studio](docs/GLOBAL_SYNC.md)
-- [Pełna biblioteka interaktywnych komponentów czatu AI](docs/CHAT_UI_LIBRARY.md)
-- [Rzeczywisty zdalny pulpit AI Desktop Nexus — Debian/XFCE/noVNC](docs/AI_DESKTOP_NEXUS.md)
-- [Flota i statki kosmiczne — interaktywny panel danych rzeczywistych](docs/FLEET_REAL_DATA.md)
-- [Real Vision, renderowanie GPT Image i pamięć AI](docs/AI_MULTIMODAL_MEMORY.md)
-- [Konfiguracja mostu MCP](docs/MCP_SETUP.md)
-- [MCP wyłącznie przez Google AI Studio (bez Codespaces)](docs/MCP_AI_STUDIO.md)
+Use `SVL_OPERATOR_TOKEN` for remote access: the `/api/auth/login` endpoint establishes an HttpOnly session cookie; the GUI exposes a login form. The public web backend **cannot** manage or install Linux itself. The host observer requires HTTPS except loopback. Do not put secrets in Git/AI Studio client-side variables. There is no fake DALL-E render, full OS mirror, root access, or automatic AI Studio-to-GitHub two-way sync.
