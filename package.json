@@ -1,6 +1,6 @@
 {
-  "name": "svl-system",
-  "description": "Local SVL system panel with structured agent commands and OpenRouter chat.",
+  "name": "bastilla-os-svl-system",
+  "description": "Bastilla OS SVL_System — fresh-install application baseline with Enter hyperspace welcome screen.",
   "private": true,
   "version": "0.0.0",
   "type": "module",
