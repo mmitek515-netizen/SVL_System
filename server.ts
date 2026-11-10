@@ -3283,7 +3283,16 @@ async function autoSyncGitChanges(): Promise<void> {
 }
 
 async function startAutoGitSync(): Promise<void> {
+  // Automatic Git writes are opt-in. AI Studio preview commonly has no .git
+  // worktree and should never claim to sync the public GitHub repository.
+  if (process.env.SVL_GIT_AUTO_SYNC !== 'on' || process.env.SVL_GIT_AUTO_PUSH !== 'on') return;
   try {
+    const { stdout: branch } = await execFileAsync('git', ['branch', '--show-current'], { timeout: 5000 });
+    const { stdout: origin } = await execFileAsync('git', ['remote', 'get-url', 'origin'], { timeout: 5000 });
+    if (branch.trim() !== 'main' || !/github\.com[:/]mmitek515-netizen\/SVL_System(?:\.git)?$/i.test(origin.trim())) {
+      pushSystemLog('warn', 'KERNEL', '[GITHUB AUTO] Wyłączono auto-sync: wymagane main i origin mmitek515-netizen/SVL_System.');
+      return;
+    }
     for (const file of await getAutoGitSyncChanges()) autoGitSyncStartupDirtyPaths.add(file);
     const { stdout: ahead } = await execFileAsync('git', ['rev-list', '--count', '@{upstream}..HEAD'], { timeout: 10000 });
     if (Number(ahead.trim()) > 0) {
@@ -3296,6 +3305,8 @@ async function startAutoGitSync(): Promise<void> {
       return;
     }
   }
+  // Enable both switches only after the local branch and remote are validated.
+  triadaGithubAutoPush = true;
   autoGitSyncEnabled = true;
   const timer = setInterval(() => void autoSyncGitChanges(), AUTO_GIT_SYNC_INTERVAL_MS);
   timer.unref();
@@ -3378,7 +3389,7 @@ app.get('/api/triad/git/status', async (_req, res) => {
       commits,
       ahead,
       behind,
-      githubPermissions: 'FULL_READ_WRITE',
+      githubPermissions: 'UNVERIFIED_BY_STATUS_ENDPOINT',
       autoPush: triadaGithubAutoPush,
       autoSync: autoGitSyncEnabled,
       dirtyFiles: statusOut.split('\n').filter((line) => line.trim().length > 0).length,
@@ -5457,6 +5468,9 @@ async function startServer() {
     const server = app.listen(port, '0.0.0.0', () => {
       activeServerPort = port;
       console.log(`[SVL-KERNEL] Server listening on http://0.0.0.0:${port}`);
+      // Run once per process; this only starts with explicit env opt-in and a
+      // verified local Git checkout, never with a bare AI Studio preview.
+      void startAutoGitSync();
       if (usesOllama()) {
         // Rozgrzewka w tle: wagi modelu trafiają do pamięci, zanim padnie pierwsza wiadomość.
         void warmupOllama(LLM_CHAIN_CONFIG, AbortSignal.timeout(180000)).then((warm) => {
