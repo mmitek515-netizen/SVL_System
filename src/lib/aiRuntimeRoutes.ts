@@ -21,7 +21,7 @@ function allowLocalOrToken(req: Request): boolean {
   // even when the end-user is remote: TCP remoteAddress alone must NEVER authorize them.
   if (process.env.NODE_ENV === 'production') return false;
   const host = (req.get('host') || '').toLowerCase();
-  const hostIsLocal = /^(localhost|127\\.0\\.0\\.1|\\[::1\\])(?::\\d+)?$/.test(host);
+  const hostIsLocal = /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(host);
   const directConnection = !req.header('forwarded') && !req.header('x-forwarded-for')
     && !req.header('x-real-ip');
   return hostIsLocal && directConnection
