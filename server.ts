@@ -12,6 +12,7 @@ import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import { createFleetRouter } from './src/lib/fleetRoutes';
 import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
 import { SharedSystemMemory, memoryContext, type MemoryScope } from './src/kernel/systemMemory';
+import { resolveVisionModel } from './src/kernel/visionModel';
 import type { ChatSystemChange } from './src/kernel/chatChanges';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 import {
@@ -115,7 +116,7 @@ const LLM_CHAIN_CONFIG: LlmChainConfig = {
   xaiApiKey: XAI_API_KEY,
   xaiModel: XAI_MODEL,
   xaiBaseUrl: XAI_BASE_URL,
-  ollamaModel: (process.env.OLLAMA_MODEL || 'dolphin-llama3:8b').trim(),
+  ollamaModel: (process.env.OLLAMA_MODEL || 'auto').trim(),
   ollamaBaseUrl: (process.env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL).trim(),
   ollamaKeepAlive: (process.env.OLLAMA_KEEP_ALIVE || '24h').trim(),
   ollamaNumCtx: Number(process.env.OLLAMA_NUM_CTX) || 4096,
@@ -158,7 +159,7 @@ let activeServerPort = PORT;
 const PYTHON_SCRIPT_PATH = path.resolve('svl_kernel.py');
 const KERNEL_STORE_PATH = path.resolve(process.env.SVL_KERNEL_STORE_PATH || '.svl_kernel_store.json');
 const sharedSystemMemory = new SharedSystemMemory();
-const OLLAMA_VISION_MODEL = (process.env.OLLAMA_VISION_MODEL || 'llama3.2-vision:11b').trim();
+const OLLAMA_VISION_MODEL = (process.env.OLLAMA_VISION_MODEL || 'auto').trim();
 const SVL_MEMORY_AUTOSAVE = /^(on|1|true|yes)$/i.test((process.env.SVL_MEMORY_AUTOSAVE || 'on').trim());
 
 // Configure high body limit (50MB) for file uploads, images, logs, and kernel snapshots
@@ -5360,7 +5361,7 @@ app.post('/api/triad/message', async (req, res) => {
   if (llmProviders.length === 0 && !CHAT_LOCAL_FALLBACK) {
     return res.status(503).json({
       success: false,
-      error: 'Brak skonfigurowanego modelu czatu. Ustaw LLM_PROVIDERS="ollama" i skonfiguruj lokalny model Dolphin Llama 3 8B albo dodaj klucze API w .env.',
+      error: 'Brak skonfigurowanego modelu czatu. Ustaw LLM_PROVIDERS="ollama" i OLLAMA_MODEL="auto" albo podaj dokładną nazwę modelu z ollama list.',
     });
   }
   if (attachments.some((attachment) => attachment.mimeType === 'application/pdf') && !llmProviders.includes('gemini')) {
@@ -5383,6 +5384,13 @@ app.post('/api/triad/message', async (req, res) => {
       .filter((attachment) => attachment.mimeType)
       .map((attachment) => ({ name: attachment.name, mimeType: attachment.mimeType!, content: attachment.content }));
     const hasImageAttachment = binaryAttachments.some((attachment) => attachment.mimeType.startsWith('image/'));
+    // One verified model selection per image request; the exact tag comes from the host.
+    const visionSelection = hasImageAttachment
+      ? await resolveVisionModel({
+          baseUrl: LLM_CHAIN_CONFIG.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL,
+          requested: OLLAMA_VISION_MODEL,
+        })
+      : null;
     // Lokalna Ollama obsługuje agentów po kolei, więc limit rośnie z liczbą agentów.
     const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS * (usesOllama() ? targetAgents.length : 1));
 
@@ -5398,8 +5406,11 @@ app.post('/api/triad/message', async (req, res) => {
             return [];
           });
           // A vision-capable model is required for attached images. Never send them to a text-only model.
+          if (hasImageAttachment && (!visionSelection?.model || !visionSelection.visionSupported)) {
+            throw new Error(visionSelection?.error || 'Ollama nie potwierdziła modelu obsługującego obrazy.');
+          }
           const requestConfig: LlmChainConfig = hasImageAttachment
-            ? { ...LLM_CHAIN_CONFIG, providers: ['ollama'], ollamaModel: OLLAMA_VISION_MODEL }
+            ? { ...LLM_CHAIN_CONFIG, providers: ['ollama'], ollamaModel: visionSelection!.model! }
             : LLM_CHAIN_CONFIG;
           const result = await generateWithChain(requestConfig, {
             system: `${CHAT_AGENT_MISSIONS[agent]}${memoryContext(relevantMemory)} ${CHAT_AGENT_CONVERSATION_STYLE} ${CHAT_AGENT_SAFETY_BOUNDARIES}${hasImageAttachment ? ' Do wiadomości dołączono zdjęcie — obejrzyj je i opisz konkretnie, co faktycznie na nim widać (obiekty, osoby, światło, zmiany). Nie powtarzaj wcześniejszych odpowiedzi i nie odpowiadaj ogólnikami o systemie.' : ''}`,
