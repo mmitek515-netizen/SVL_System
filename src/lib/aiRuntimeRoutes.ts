@@ -71,7 +71,7 @@ async function checkOllama(ollamaUrl: string, visionModel: string): Promise<{ re
 export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
   // Instantiate after server.ts loads .env and .env.local.
   const visionModel = (process.env.OLLAMA_VISION_MODEL || 'llama3.2-vision:11b').trim();
-  const imageModel = (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-flare').trim();
+  const imageModel = (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.6-sunburst').trim();
   const ollamaUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');
   const router = Router();
   router.use((req: Request, res: Response, next: NextFunction) => {
