@@ -18,14 +18,18 @@ export const WorkActivityPanel: React.FC<{ chatBusy?: boolean; onClose?: () => v
   const [filter, setFilter] = useState<Filter>('all');
   const [error, setError] = useState('');
   const [lastSync, setLastSync] = useState('');
+  const [originalAgents, setOriginalAgents] = useState<{
+    connection: string; agents: Array<{ name: string; state: string; sourceState?: string }>
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [logsResponse, statusResponse] = await Promise.all([
+      const [logsResponse, statusResponse, agentsResponse] = await Promise.all([
         fetch('/api/infrastructure/logs?filter=' + filter, { cache: 'no-store', signal }),
         fetch('/api/infrastructure/status', { cache: 'no-store', signal }),
+        fetch('/api/original-agents/status', { cache: 'no-store', signal }),
       ]);
       if (!logsResponse.ok || !statusResponse.ok) {
         throw new Error('Błąd odpowiedzi backendu: HTTP ' + (!logsResponse.ok ? logsResponse.status : statusResponse.status));
@@ -42,6 +46,14 @@ export const WorkActivityPanel: React.FC<{ chatBusy?: boolean; onClose?: () => v
         entry !== null && typeof entry === 'object' &&
         typeof (entry as Event).id === 'string' && typeof (entry as Event).message === 'string' &&
         ['info', 'warn', 'error', 'healed'].includes((entry as Event).level));
+      if (agentsResponse.ok) {
+        try {
+          const original = await agentsResponse.json();
+          if (original && ['connected', 'not_connected', 'blocked'].includes(original.connection) && Array.isArray(original.agents)) {
+            setOriginalAgents(original);
+          } else setOriginalAgents(null);
+        } catch { setOriginalAgents(null); }
+      } else setOriginalAgents(null);
       setEvents(entries.slice(0, 60));
       setStatus(runtime as Status);
       setError('');
@@ -93,7 +105,22 @@ export const WorkActivityPanel: React.FC<{ chatBusy?: boolean; onClose?: () => v
             {!status ? 'NIEZWERYFIKOWANO' : status.continuousMissionEnabled ? 'WŁĄCZONA' : 'WSTRZYMANA'}
           </span>
         </div>
-        <div className="mt-2 flex items-center justify-between">
+        <div className="mt-2 rounded-lg border border-slate-700/70 bg-[#0f1a2e] p-2">
+        <div className="flex items-center justify-between text-[11px] text-slate-300">
+          <span>Oryginalni agenci</span>
+          <strong className={originalAgents?.connection === 'connected' ? 'text-emerald-300' : 'text-amber-300'}>
+            {originalAgents?.connection || 'NIEZWERYFIKOWANI'}
+          </strong>
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px] text-slate-400">
+          {['Aria', 'Alex', 'Astyria', 'Aurelius'].map(name => {
+            const worker = originalAgents?.agents.find(agent => agent.name === name);
+            return <span key={name}>{name}: {worker?.sourceState === 'running' ? 'źródło aktywne' : worker?.state || 'brak danych'}</span>;
+          })}
+        </div>
+        <p className="mt-1 text-[10px] text-slate-500">Profil czatu nie jest dowodem uruchomienia workera.</p>
+      </div>
+      <div className="mt-2 flex items-center justify-between">
           <span className="text-[10px] text-slate-400">{chatBusy ? 'Odpowiedź czatu w toku' : 'Stan z serwera, bez symulacji'}</span>
           <button type="button" onClick={() => void toggle()} disabled={!status || busy} className="flex min-h-9 items-center gap-1 rounded-lg border border-violet-400/30 bg-violet-500/15 px-2.5 text-[11px] text-violet-100 disabled:opacity-40">
             {status?.continuousMissionEnabled ? <PauseCircle size={14}/> : <PlayCircle size={14}/>}
