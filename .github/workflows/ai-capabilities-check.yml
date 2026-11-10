@@ -11,6 +11,9 @@ on:
       - 'src/App.tsx'
       - 'server.ts'
       - 'tests/systemMemory.test.mjs'
+      - 'bastillaos/system-package/bin/svl-ai'
+      - 'bastillaos/system-package/build-package.sh'
+      - 'bastillaos/system-package/test-package.sh'
       - '.github/workflows/ai-capabilities-check.yml'
   workflow_dispatch:
 
@@ -33,3 +36,4 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm run build:server
+      - run: bash bastillaos/system-package/test-package.sh
