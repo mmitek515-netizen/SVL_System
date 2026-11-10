@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, MessagesSquare, FileCode2, Database, History, Activity, Cpu, GitBranch, Clock, Sigma, FolderOpen, HardDrive, LayoutGrid, Brain, Github, Home, ClipboardCheck, Radio } from 'lucide-react';
+import { Terminal, MessagesSquare, FileCode2, Database, History, Activity, Cpu, GitBranch, Clock, Sigma, FolderOpen, HardDrive, LayoutGrid, Brain, Github, Home, ClipboardCheck, Radio, Satellite } from 'lucide-react';
 
 export type TabId =
   | 'home'
@@ -17,13 +17,14 @@ export type TabId =
   | 'file_explorer'
   | 'apps'
   | 'hyper_com'
+  | 'fleet'
   | 'without_nlp'
   | 'github';
 
 export const TAB_IDS: readonly TabId[] = [
   'home', 'comms', 'approvals', 'process_matrix', 'astyria_mission', 'schema_graph', 'temporal',
   'terminal', 'monolith', 'datastore', 'diagnostics', 'visualizer', 'file_explorer',
-  'apps', 'hyper_com', 'without_nlp', 'github',
+  'apps', 'hyper_com', 'fleet', 'without_nlp', 'github',
 ];
 
 /** Widok startowy z adresu, np. /?view=without_nlp (launchery KDE w BastillaOS). */
@@ -133,6 +134,12 @@ export const Navigation: React.FC<NavigationProps> = ({
       label: 'Aplikacje [Terminal Forge]',
       icon: LayoutGrid,
       badge: 'FORGE'
+    },
+    {
+      id: 'fleet' as TabId,
+      label: 'Flota i statki kosmiczne',
+      icon: Satellite,
+      badge: 'DANE'
     },
     {
       id: 'hyper_com' as TabId,
