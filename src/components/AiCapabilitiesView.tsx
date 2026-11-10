@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Brain, ImagePlus, ScanEye, RefreshCw, Trash2 } from 'lucide-react';
 import { LinuxAgentStatus } from './LinuxAgentStatus';
 import { AiSecurityToolkitView } from './AiSecurityToolkitView';
+import { AiDesktopView } from './AiDesktopView';
 
 type Scope = 'global' | 'agent:Aria' | 'agent:Alex' | 'agent:Astyria' | 'agent:Aurelius';
 type MemoryRecord = { id: string; text: string; kind: string; scope: Scope; source: string; createdAt: string };
@@ -216,6 +217,7 @@ export const AiCapabilitiesView: React.FC = () => {
           </div>)}
         </div>
       </section>
+      <AiDesktopView />
       <AiSecurityToolkitView />
     </div>
   );
