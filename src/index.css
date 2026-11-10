@@ -151,3 +151,76 @@ input, select, textarea {
   animation: neonPulse 2.5s infinite ease-in-out;
 }
 
+
+
+/* Bastilla OS — fresh-install hyperspace entry */
+.hyperspace-screen::before,
+.hyperspace-screen::after {
+  position: absolute;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+}
+
+.hyperspace-screen::before {
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(8, 47, 73, 0.38), transparent 48%),
+    radial-gradient(ellipse at 50% 110%, rgba(8, 145, 178, 0.13), transparent 52%),
+    linear-gradient(180deg, #030712 0%, #07111f 54%, #030712 100%);
+}
+
+.hyperspace-screen::after {
+  inset: 0;
+  opacity: 0.25;
+  background-image: linear-gradient(rgba(103, 232, 249, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(103, 232, 249, 0.045) 1px, transparent 1px);
+  background-size: 62px 62px;
+  mask-image: radial-gradient(ellipse at center, #000 0%, transparent 74%);
+}
+
+.hyperspace-stars {
+  position: absolute;
+  inset: -25%;
+  z-index: -1;
+  opacity: 0.46;
+  background-image: radial-gradient(1px 1px at 12% 23%, #bae6fd 95%, transparent), radial-gradient(1px 1px at 78% 31%, #fff 95%, transparent), radial-gradient(1px 1px at 66% 78%, #67e8f9 95%, transparent), radial-gradient(1px 1px at 31% 72%, #fff 95%, transparent), radial-gradient(2px 2px at 88% 65%, #a5f3fc 95%, transparent), radial-gradient(1px 1px at 48% 12%, #fff 95%, transparent);
+  background-size: 420px 360px;
+  animation: hyperspace-drift 42s linear infinite;
+}
+
+.hyperspace-orbit {
+  position: absolute;
+  z-index: -1;
+  top: 50%;
+  left: 50%;
+  width: min(82vw, 760px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(103, 232, 249, 0.08);
+  border-radius: 50%;
+  box-shadow: 0 0 100px rgba(8, 145, 178, 0.06), inset 0 0 90px rgba(8, 145, 178, 0.035);
+}
+
+.hyperspace-orbit::before,
+.hyperspace-orbit::after,
+.hyperspace-orbit span,
+.hyperspace-orbit i {
+  position: absolute;
+  inset: 9%;
+  border: 1px solid rgba(103, 232, 249, 0.08);
+  border-radius: 50%;
+  content: "";
+}
+
+.hyperspace-orbit::after { inset: 21%; border-color: rgba(34, 211, 238, 0.1); }
+.hyperspace-orbit span { inset: 32%; border-color: rgba(103, 232, 249, 0.12); }
+.hyperspace-orbit i { inset: 43%; border-color: rgba(165, 243, 252, 0.16); }
+
+@keyframes hyperspace-drift {
+  from { transform: translate3d(0, 0, 0) rotate(0deg); }
+  to { transform: translate3d(2%, -1%, 0) rotate(4deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hyperspace-stars { animation: none; }
+}
