@@ -1,6 +1,6 @@
 # Bastilla OS / SVL_System — pełny plan, wymagania i procent ukończenia
 
-**Stan na 2026-11-10 (ok. 16:42 Europe/Warsaw).** Repozytorium: `mmitek515-netizen/SVL_System`, jedyna gałąź robocza wskazana przez właściciela: `main`. Obowiązuje zasada: **najpierw GUI/design, potem rozbudowa i autonomiczne ulepszanie przez AI**. Hasło otwarcia: **Enter hyperspace**.
+**Stan na 2026-11-10, po wdrożeniach do `main` (odniesienie `768b966f`).** Repozytorium: `mmitek515-netizen/SVL_System`, jedyna gałąź robocza wskazana przez właściciela: `main`. Obowiązuje zasada: **najpierw GUI/design, potem rozbudowa i autonomiczne ulepszanie przez AI**. Hasło otwarcia: **Enter hyperspace**.
 
 ## Sposób oceny
 
@@ -8,23 +8,36 @@ Szacunki procentowe odzwierciedlają **stopień realizacji wymagań w aktualnym 
 
 | Obszar | Waga | Realizacja, szacunek | Stan i brakujące kryteria |
 | --- | ---: | ---: | --- |
-| GUI, design, nawigacja, gesty, Android | 16% | 50% | Istnieją interfejs React, ekran wejściowy, pulpit, komponenty; wymagane uproszczenie modułów, gesty i test na telefonie |
-| Główny czat dwustronny jak ChatGPT Work | 13% | 50% | Czat, nowy czat, historia, panel aktywności i załączniki w kodzie; brak dowodu niezależnego pisania agentów 24/7 |
-| Pełna biblioteka interaktywnych bloków wiadomości | 10% | 45% | Renderer `svl-ui` obsługuje 26 typów; potrzebne kolejne typy, bezpieczne powiązanie akcji z realnym API i większa zgodność UX |
-| Awatary operatora i agentów | 3% | 65% | Plik, HTTPS i generowanie z promptu w GUI/API; wymagane sprawdzenie prawdziwego renderowania i trwałości |
-| Debian 13 / KDE / ISO / pakiet systemowy | 10% | 40% | Skrypty live-build, pakiet Debian, branding i launcher pulpitu istnieją; brak potwierdzonego gotowego ISO i instalacji end-to-end |
-| Terminale i operacje systemowe | 8% | 40% | Istnieją terminal React, Python/kernel, polecenia i kod binarnej hiperprzestrzeni; brak testu rzeczywistego roota hosta przez każdy terminal |
-| Osobne konta Linux i administracja agentów | 5% | 60% | Skrypt `bastilla-agent-accounts` tworzy osobne konta; dostęp sudo/root wymaga świadomej aktywacji; brak dowodu instalacji na docelowym Debianie |
-| Niezależne workery, daemony, topologia sferyczna i autoregeneracja | 9% | 15% | Profile czterech agentów i monitorowanie są w kodzie; niezależne usługi, komunikacja i udowodniona samonaprawa niepotwierdzone |
-| Ollama i Gemini fallback | 4% | 50% | Backend routingu i diagnostyka istnieją; brak dowodu podłączenia rzeczywistego 14B użytkownika lub działającego fallbacku w AI Studio |
-| Real Vision + generowanie obrazów z promptów | 4% | 55% | Kod do analizy zdjęć i OpenAI Images API istnieje; dokładny model/klucz i generowanie na żywo niezweryfikowane |
-| Pamięć globalna + agentowa | 3% | 60% | Trwały magazyn JSON, API, wyszukiwanie i kontekst agentów; brak testu odporności na reinstalację oraz długiej pracy na hoście |
-| GitHub `main` / globalna synchronizacja | 4% | 45% | API i testy synchronizacji istnieją; dwukierunkowa propagacja GitHub ↔ AI Studio niepotwierdzona |
-| MCP, ChatGPT plugin i integracja AI Studio | 5% | 35% | Kod bramy MCP, testy i konfiguracje istnieją; pełny dostęp z ChatGPT oraz backend Linux w samym podglądzie AI Studio niezweryfikowane |
-| Diagnostyka, rzeczywiste logi, Work Activity | 2% | 55% | Istnieją panele oraz endpointy; wymaga testów hosta, aktualnych heartbeatów i raportów z wykonań |
-| Narzędzia bezpieczeństwa Debian/Kali-style i Maltego | 2% | 35% | Skrypty instalacyjne i panel istnieją; instalacja pakietów i aktywacja Maltego na hoście niepotwierdzone |
-| Flota / mapa / moduł hiperprzestrzeni z rzeczywistymi danymi | 2% | 60% | Panel i uwierzytelnione API raportów istnieją; brak dowodu prawdziwych źródeł telemetrycznych i pełnej mapy Układu Słonecznego |
-| **Suma ważona** | **100%** | **45%** | **Szacunek realizacji kodowej całego zakresu, nie gotowości produkcyjnej** |
+| GUI, design, nawigacja, gesty, Android | 16% | 52% | Istnieje GUI z katalogiem komponentów i reakcjami na zdarzenia; brakuje pełnych testów dotykowych i dopracowania gestów na telefonie |
+| Główny czat dwustronny jak ChatGPT Work | 13% | 54% | Czat, historia, załączniki, wydarzenia SSE i odświeżanie; brak potwierdzonych inicjatyw niezależnych agentów 24/7 |
+| Pełna biblioteka interaktywnych bloków wiadomości | 10% | 75% | Renderer 80 unikalnych typów w 5 kategoriach, katalog i testy; część działań pozostaje lokalna lub wymaga wiarygodnych integracji API |
+| Awatary operatora i agentów | 3% | 65% | Plik, HTTPS, render z promptu w kodzie; trwałość i generowanie na żywo niepotwierdzone |
+| Debian 13 / KDE / ISO / pakiet systemowy | 10% | 40% | Live-build, pakiet, branding; brak testu instalacji ISO end-to-end na Debianie |
+| Terminale i operacje systemowe | 8% | 40% | UI terminali i backend w kodzie; brak testu roota hosta w terminalach |
+| Osobne konta Linux i administracja agentów | 5% | 60% | bastilla-agent-accounts tworzy konta, sudo oddzielnie włączane; brak weryfikacji na hoście |
+| Niezależne workery, daemony, topologia sferyczna i autoregeneracja | 9% | 15% | Profile agentów Copilot istnieją; niezależne usługi systemd, kolejki i autoregeneracja bez dowodu runtime |
+| Ollama i Gemini fallback | 4% | 50% | Kod integracji i statusów; brak testu uruchomionego modelu 14B i fallbacku |
+| Real Vision + generowanie obrazów z promptów | 4% | 60% | image_prompt z ręcznym wywołaniem API i testami biblioteki; rzeczywisty render i vision hosta niezweryfikowane |
+| Pamięć globalna + agentowa | 3% | 60% | Trwały magazyn, wyszukiwanie, kontekst agentów; brak testu odtwarzania po reinstalacji |
+| GitHub `main` / globalna synchronizacja | 4% | 65% | SSE i aktualizacja danych po zmianach, token operatora i ochrona operacji zapisu; dwustronne AI Studio ↔ main niezweryfikowane |
+| MCP, ChatGPT plugin i integracja AI Studio | 5% | 35% | Kod bramy MCP istnieje; zewnętrzny odczyt/zapis i backend hosta niepotwierdzone |
+| Diagnostyka, rzeczywiste logi, Work Activity | 2% | 55% | Statusy procesów i panel zdalnego pulpitu opierają się na rzeczywistych sprawdzeniach; brak heartbeatów niezależnych workerów |
+| Narzędzia bezpieczeństwa Debian/Kali-style i Maltego | 2% | 40% | Wykrywanie oficjalnie zainstalowanego Maltego; brakuje potwierdzenia faktycznej instalacji pakietów |
+| Flota / mapa / moduł hiperprzestrzeni z rzeczywistymi danymi | 2% | 60% | Panel i API danych istnieją; rzeczywiste źródła telemetrii i mapa niezweryfikowane |
+| **Suma ważona** | **100%** | **50%** | **Ocena stopnia wdrożenia w kodzie, nie gotowości produkcyjnej** |
+
+## Audyt kolejnych wdrożeń AI — aktualizacja 2026-11-10
+
+- Podstawa: `142b4038` (poprzednia ocena **45,05% ≈ 45%**) → `768b966f` (`main`), **31 commitów** i **23 zmienione lub dodane pliki**.
+- **Biblioteka UI:** 80 unikalnych typów w 5 kategoriach, wyszukiwalny katalog, walidacja JSON oraz testy (`SvlChatUi.tsx`, `SvlUiExtras.tsx`, `SvlUiCatalog.tsx`, `tests/svlUiLibrary.test.mjs`).
+- **Globalne odświeżanie:** `src/lib/globalLiveSync.ts`, zdarzenia SSE `GET /api/sync/events`, subskrypcja w `src/App.tsx`. Procesowa szyna zdarzeń nie jest trwała i nie przenosi automatycznie zmian hosta do AI Studio.
+- **Synchronizacja GitHub:** `src/lib/githubWriteAuth.ts`, kontrola uprawnień osobnym tokenem operatora, testy, usunięty legacy force push, poprawiona obsługa ścieżek Express i dodatkowe zabezpieczenie zapisów. Nie dowodzi to aktywnego automatycznego push na hostcie.
+- **Zdalny pulpit:** `apps/ai_desktop_nexus/index.html` zamiast fikcyjnego zawsze-ONLINE odpytuje `/api/ai/desktop/status`. Narzędzie nie potwierdza jeszcze sterowania pulpitem przez agentów.
+- **Maltego:** dostępne rozpoznawanie oficjalnej instalacji; instalacja na docelowym Debianie pozostaje niezweryfikowana.
+- **CI:** nowsze ukończone kontrole `Global sync checks` (`398a671e`), `AI Vision, render and memory checks` i `Fleet real-data checks` (`1660da86`) były zielone; nie stanowi to testu ISO ani rzeczywistego uruchomienia agentów.
+- **Ważona realizacja kodowa:** **49.99% ≈ 50%**; różnica względem poprzedniego raportu **+4.94 punktu procentowego**. Oceny eksperckie, nie automatyczne metryki.
+- **Pochodzenie:** historia GitHub potwierdza commity na koncie repozytorium; nie potwierdza, który z nazwanych agentów faktycznie wykonał poszczególną zmianę.
+- **Wciąż niezweryfikowane:** niezależne workery systemd agentów, własne konta Linux na docelowym hoście, wykonywanie operacji root, bootowalne ISO po instalacji, uruchomiona Ollama i połączenie zewnętrznego MCP, dwustronna synchronizacja Google AI Studio.
 
 ## Wymagania docelowe — wiążąca specyfikacja
 
@@ -34,7 +47,7 @@ Szacunki procentowe odzwierciedlają **stopień realizacji wymagań w aktualnym 
 2. Dwustronna komunikacja: operator ↔ Alex/Aria/Astyria/Aurelius i agent ↔ agent; agent może sam napisać, gdy potrzebuje informacji. Strumieniowanie odpowiedzi, realne statusy `queued/running/success/failure`, czas i źródło zdarzenia. Cisza oznacza brak zdarzeń, a nie ukrywanie śladów działań.
 3. Gesty zamiast nadmiaru przycisków (swipe, long press, wysuwane panele), z zachowaniem przewijania na Androidzie i alternatyw dla klawiatury/myszy. Nowy czat od dołu, czyszczenie widoku z zachowaniem opcjonalnego archiwum.
 4. Zmienialne awatary operatora i każdego z czterech agentów: z linku HTTPS, pliku oraz z promptu generatora obrazu; fioletowy motyw, wysoka czytelność, animacje dostępności i responsywność.
-5. Pełna **rozszerzalna** biblioteka natywnych elementów czatu: nagłówki/formatowanie, statusy, karty, powiadomienia, akordeony, zakładki, przyciski i formularze, suwaki, przełączniki, tabele, wykresy, osie czasu, progres, mapy, pliki, podglądy obrazów/wideo/PDF, terminale, diagnostyka, grafy zależności, 3D i zaawansowane interaktywne panele. Stan obecny: **26 typów** w `src/components/SvlChatUi.tsx`, a nie „wszystkie elementy ChatGPT”. Każda akcja mająca zmieniać system musi mieć realny handler/API i wynik, nie tylko zmianę lokalnego stanu.
+5. Pełna **rozszerzalna** biblioteka natywnych elementów czatu: nagłówki/formatowanie, statusy, karty, powiadomienia, akordeony, zakładki, przyciski i formularze, suwaki, przełączniki, tabele, wykresy, osie czasu, progres, mapy, pliki, podglądy obrazów/wideo/PDF, terminale, diagnostyka, grafy zależności, 3D i zaawansowane interaktywne panele. Stan obecny: **80 typów** w `src/components/SvlChatUi.tsx`, a nie „wszystkie elementy ChatGPT”. Każda akcja mająca zmieniać system musi mieć realny handler/API i wynik, nie tylko zmianę lokalnego stanu.
 6. Nie używać nieruchomych makiet DALL-E jako zastępstwa działających widgetów. Dopuszczalne generowane obrazy to awatary, tapety i prawdziwe materiały do pokazania w czacie.
 
 ### ETAP 2 — stabilny Linux i interfejs wykonywania
@@ -69,7 +82,7 @@ Szacunki procentowe odzwierciedlają **stopień realizacji wymagań w aktualnym 
 
 ## Kontrola audytowa z 2026-11-10
 
-Zweryfikowane pliki: `src/components/SvlChatUi.tsx`, `FormattedMessage.tsx`, `AgentCommsView.tsx`, `AvatarSettings.tsx`, `WorkActivityPanel.tsx`, `src/lib/aiRuntimeRoutes.ts`, `docs/AI_AGENT_LINUX_ACCOUNTS.md`, `docs/GLOBAL_SYNC.md`, `docs/SVL_CHAT_UI.md`, `docs/FLEET_REAL_DATA.md`, `scripts/install-ai-security-toolkit.sh` i `scripts/install-maltego-graph.sh`. Zidentyfikowane skrypty ISO, pakietu systemowego, desktopu oraz MCP. Ostatnie zweryfikowane workflow: `AI Vision, render and memory checks` na SHA `6ab09569` — **success**; `Fleet real-data checks` i `Global sync checks` na `0775c4d8` — **success**. Wynik CI nie dowodzi uruchomienia na komputerze, a w historii występowały także nieudane przebiegi.
+Zweryfikowane pliki: `src/components/SvlChatUi.tsx`, `FormattedMessage.tsx`, `AgentCommsView.tsx`, `AvatarSettings.tsx`, `WorkActivityPanel.tsx`, `src/lib/aiRuntimeRoutes.ts`, `docs/AI_AGENT_LINUX_ACCOUNTS.md`, `docs/GLOBAL_SYNC.md`, `docs/SVL_CHAT_UI.md`, `docs/FLEET_REAL_DATA.md`, `scripts/install-ai-security-toolkit.sh` i `scripts/install-maltego-graph.sh`. Zidentyfikowane skrypty ISO, pakietu systemowego, desktopu oraz MCP. Weryfikacja CI: `Global sync checks` na SHA `398a671e` — **success**; `AI Vision, render and memory checks` oraz `Fleet real-data checks` na SHA `1660da86` — **success**. Ostatnie dwa commity zabezpieczeń oraz aplikacja zdalnego pulpitu nie miały osobnego odnotowanego przebiegu w momencie audytu.
 
 ## Kolejność dalszych prac
 
