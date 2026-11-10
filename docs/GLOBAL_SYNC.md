@@ -1,0 +1,65 @@
+# Globalna synchronizacja Bastilla OS / SVL_System
+
+## Warstwa 1 — DATA_STORE (interfejs ↔ backend)
+
+Źródłem prawdy jest Python SVL Kernel udostępniany przez `GET /api/kernel/state`.
+Przeglądarka nie może traktować samego localStorage jako potwierdzonego stanu systemu.
+
+- Automatyczny odczyt co ~4 s i przy aktywacji karty/okna.
+- Zmiany między kartami tej samej przeglądarki przyspieszają odczyt z backendu przez `storage` event.
+- Odrzucamy niepełne odpowiedzi serwera i wyniki starych żądań rozpoczętych przed zapisem lub czatem.
+- Przycisk **Synchronizuj** wykonuje tylko `GET /api/kernel/state?fresh=1`.
+  Nie uruchamia już misji `sync_versions` (ta tworzy migawki i zmienia konfigurację).
+- HTTP error lub brak kompletnego stanu pokazuje błąd, nie fałszywy zielony sukces.
+- Backend nie może zastępować błędu `fresh=1` starą pamięcią podręczną.
+- Etykieta DATA_STORE ONLINE/OFFLINE dotyczy osiągalności API, nie możliwości działania roota,
+  Ollamy ani synchronizacji GitHub.
+
+## Warstwa 2 — GitHub (kod ↔ origin/main)
+
+Panel **Synchronizacja aplikacji** korzysta z `GET /api/triad/git/status`
+i `POST /api/triad/github/sync`. Status odświeża się co 15 s i po powrocie do okna.
+Pomyślny Git push musi zostać potwierdzony polem `pushed:true`.
+Na innych gałęziach niż main oraz bez lokalnego checkoutu Git przycisk jest wyłączony.
+
+Tryb automatyczny jest **wyłączony domyślnie**. Wymaga jawnego ustawienia
+w lokalnym środowisku procesu (nie w publicznym repo):
+
+```dotenv
+SVL_GIT_AUTO_SYNC=on
+SVL_GIT_AUTO_PUSH=on
+```
+
+Warunki uruchomienia: lokalny checkout Git, aktywna gałąź `main`,
+`origin` wskazujące `mmitek515-netizen/SVL_System` i rzeczywiste
+uwierzytelnianie GitHub umożliwiające push. Kod obserwuje zmiany w dozwolonych
+ścieżkach, czeka na stabilizację, wykonuje testy, lint i build przed commitem;
+nie eksportuje lokalnych baz, sekretów i historii rozmów.
+**Nie używa force push.** Konflikt z nowszym origin jest błędem wymagającym
+uzgodnienia, nie powodem do nadpisywania historii.
+
+Wynik `autoSync: true` znaczy, że proces obserwacji został uruchomiony;
+nie dowodzi, że wszystkie commity dotarły na GitHub. Zmiany w GitHub
+nie oznaczają natychmiastowej aktualizacji już działającego wdrożenia.
+
+## Warstwa 3 — Google AI Studio
+
+AI Studio Build/Preview nie zawsze ma katalog `.git` i nie zapewnia bezpośredniego
+dostępu do powłoki hosta. Zmiany w AI Studio należy **synchronizować przez
+integrację GitHub w panelu AI Studio** i wdrożyć/odświeżyć uruchomioną aplikację.
+Nie istnieje automatyczna dwukierunkowa propagacja danych i kodu tylko dlatego,
+że przycisk w Bastilla OS jest zielony.
+
+W projekcie AI Studio, po pobraniu `main`, sprawdź działanie przycisku
+**Synchronizuj** i etykietę `DATA_STORE`. Jeśli backend kernel Python nie jest
+uruchomiony, zobaczysz **OFFLINE** — jest to poprawna diagnostyka.
+
+## Testy
+
+CI: `.github/workflows/global-sync-check.yml` uruchamia `npm test`,
+`npm run lint`, `npm run build` i `npm run build:server`.
+Testy `tests/globalSync.test.mjs` weryfikują walidację migawki i ochronę
+przed nadpisaniem nowszych zmian.
+
+Sukces CI oznacza poprawność kodu w testowym środowisku GitHub Actions,
+a nie dowód, że preview AI Studio ma działający backend lub połączenie GitHub.
