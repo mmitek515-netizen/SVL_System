@@ -58,7 +58,12 @@ export const AiCapabilitiesView: React.FC = () => {
     }
   }, [request]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    const onSync = () => void refresh();
+    window.addEventListener('svl:global-sync', onSync);
+    return () => window.removeEventListener('svl:global-sync', onSync);
+  }, [refresh]);
 
   const analyze = async () => {
     if (!file) { setError('Wybierz prawdziwy plik JPG, PNG albo WEBP.'); return; }
