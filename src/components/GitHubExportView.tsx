@@ -17,6 +17,8 @@ export const GitHubExportView: React.FC = () => {
   const [message, setMessage] = useState('');
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
   const [statusUnavailable, setStatusUnavailable] = useState(false);
+  // Operator secret stays only in component memory (never localStorage or Git).
+  const [githubWriteToken, setGithubWriteToken] = useState('');
 
   const refreshStatus = useCallback(async () => {
     const response = await fetch('/api/triad/git/status');
@@ -60,13 +62,18 @@ export const GitHubExportView: React.FC = () => {
       setMessage('Synchronizacja GitHub wymaga lokalnego repozytorium na gałęzi main. Podgląd AI Studio nie zapewnia automatycznie checkoutu Git.');
       return;
     }
+    if (githubWriteToken.trim().length < 32) {
+      setStatus('error');
+      setMessage('Wprowadź osobny token zapisu GitHub skonfigurowany na backendzie (SVL_GITHUB_WRITE_TOKEN). To nie jest GitHub PAT.');
+      return;
+    }
     setLoading(true);
     setStatus('idle');
     setMessage('Sprawdzam zmiany aplikacji, zapisuję commit i wysyłam do origin...');
     try {
       const response = await fetch('/api/triad/github/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${githubWriteToken.trim()}` },
         body: JSON.stringify({
           agent: 'triad',
           message: 'Synchronizacja kodu aplikacji z GitHub',
@@ -142,6 +149,15 @@ export const GitHubExportView: React.FC = () => {
             Automatyczny commit/push wymaga osobno uruchomionego procesu z dostępem do Git i GitHub.
             {lastCheckedAt ? ` Ostatni odczyt lokalny: ${lastCheckedAt}.` : ''}
           </p>
+          <details className="rounded border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs text-slate-300">
+            <summary className="cursor-pointer select-none text-cyan-200">Autoryzacja zapisu GitHub</summary>
+            <label className="mt-2 block text-slate-400" htmlFor="github-write-token">Osobny token operatora (min. 32 znaki)</label>
+            <input id="github-write-token" type="password" autoComplete="off" spellCheck={false}
+              value={githubWriteToken} onChange={e => setGithubWriteToken(e.target.value)}
+              placeholder="SVL_GITHUB_WRITE_TOKEN" aria-label="Token zapisu GitHub"
+              className="mt-1 w-full rounded border border-slate-700 bg-slate-900 p-2 text-slate-100" />
+            <p className="mt-1 text-[11px] text-slate-500">Nie podawaj tu GitHub PAT. Token pozostaje tylko w pamięci tej karty i znika po odświeżeniu.</p>
+          </details>
           <button
             type="button"
             onClick={() => void handleSync()}
