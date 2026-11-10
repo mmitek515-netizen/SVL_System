@@ -400,7 +400,7 @@ async function resolveOllamaModel(
   const models = Array.isArray(data?.models) ? data.models : [];
   const picked = pickOllamaChatModel(models.map((model: any) => ({ name: String(model?.name || ''), size: Number(model?.size) || 0 })));
   if (!picked) {
-    throw new LlmProviderError('ollama', 404, 'Ollama: brak pobranych modeli. Pobierz model: npm run setup:ollama');
+    throw new LlmProviderError('ollama', 404, 'Ollama: brak pobranych modeli czatu. Pobierz zalecany model: ollama pull dolphin-llama3:8b');
   }
   resolvedOllamaModels.set(base, picked);
   return picked;
@@ -421,7 +421,7 @@ export async function generateOllama(
     throw new LlmProviderError(
       'ollama',
       400,
-      `Ollama: model ${model} nie analizuje zdjęć. Pobierz model z obsługą obrazów (np. ollama pull gemma3:4b) albo wyślij załącznik tekstowy.`,
+      `Ollama: model ${model} nie analizuje zdjęć. Ten model jest tekstowy; wyślij załącznik tekstowy albo użyj osobnego narzędzia do analizy obrazu.`,
     );
   }
   const messages = [

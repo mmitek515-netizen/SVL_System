@@ -222,7 +222,7 @@ test('tylko Ollama bez pobranych modeli → czytelny błąd', async () => {
   const { impl } = mockFetch([[/api\/tags/, { respond: () => json(200, { models: [] }) }]]);
   await assert.rejects(
     generateWithChain({ providers: ['ollama'], fetchImpl: impl }, request),
-    (error) => error instanceof LlmChainError && /npm run setup:ollama/.test(error.failures[0]),
+    (error) => error instanceof LlmChainError && /ollama pull dolphin-llama3:8b/.test(error.failures[0]),
   );
   assert.equal(pickOllamaChatModel([{ name: 'bge-m3' }]), null);
 });
