@@ -1,41 +1,29 @@
-import React from 'react';
-import { Terminal, MessagesSquare, FileCode2, Database, History, Activity, Cpu, GitBranch, Clock, Sigma, FolderOpen, HardDrive, LayoutGrid, Brain, Github, Home, ClipboardCheck, Radio, Satellite } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  Activity, Brain, ChevronDown, ChevronRight, Cpu, Database, FileCode2,
+  FolderOpen, GitBranch, Github, HardDrive, Home, LayoutGrid, Menu,
+  MessageSquare, Radio, Satellite, ShieldCheck, Sigma, Terminal, Clock, Layers
+} from 'lucide-react';
 
 export type TabId =
-  | 'home'
-  | 'comms'
-  | 'ai_tools'
-  | 'approvals'
-  | 'process_matrix'
-  | 'astyria_mission'
-  | 'schema_graph'
-  | 'temporal'
-  | 'terminal'
-  | 'monolith'
-  | 'datastore'
-  | 'diagnostics'
-  | 'visualizer'
-  | 'file_explorer'
-  | 'apps'
-  | 'hyper_com'
-  | 'fleet'
-  | 'without_nlp'
-  | 'github';
+  | 'home' | 'comms' | 'ai_tools' | 'approvals' | 'process_matrix'
+  | 'astyria_mission' | 'schema_graph' | 'temporal' | 'terminal'
+  | 'monolith' | 'datastore' | 'diagnostics' | 'visualizer'
+  | 'file_explorer' | 'apps' | 'hyper_com' | 'fleet' | 'without_nlp' | 'github';
 
 export const TAB_IDS: readonly TabId[] = [
-  'home', 'comms', 'ai_tools', 'approvals', 'process_matrix', 'astyria_mission', 'schema_graph', 'temporal',
-  'terminal', 'monolith', 'datastore', 'diagnostics', 'visualizer', 'file_explorer',
-  'apps', 'hyper_com', 'fleet', 'without_nlp', 'github',
+  'home', 'comms', 'ai_tools', 'approvals', 'process_matrix', 'astyria_mission',
+  'schema_graph', 'temporal', 'terminal', 'monolith', 'datastore',
+  'diagnostics', 'visualizer', 'file_explorer', 'apps', 'hyper_com',
+  'fleet', 'without_nlp', 'github',
 ];
 
-/** Widok startowy z adresu, np. /?view=without_nlp (launchery KDE w BastillaOS). */
+/** Keep deep links to every legacy module; use chat as the compact home screen. */
 export function initialTabFromLocation(): TabId {
   try {
     const view = new URLSearchParams(window.location.search).get('view');
-    return view && (TAB_IDS as readonly string[]).includes(view) ? (view as TabId) : 'home';
-  } catch {
-    return 'home';
-  }
+    return view && (TAB_IDS as readonly string[]).includes(view) ? view as TabId : 'comms';
+  } catch { return 'comms'; }
 }
 
 interface NavigationProps {
@@ -45,164 +33,108 @@ interface NavigationProps {
   versionCount: number;
 }
 
-export const Navigation: React.FC<NavigationProps> = ({
-  activeTab,
-  onSelectTab,
-  messageCount,
-  versionCount,
-}) => {
-  const tabs = [
-    {
-      id: 'home' as TabId,
-      label: 'BastillaOS',
-      icon: Home,
-      badge: 'SYSTEM'
-    },
-    {
-      id: 'comms' as TabId,
-      label: 'Komora Triady & Dialog',
-      icon: MessagesSquare,
-      badge: `${messageCount}`
-    },
-    {
-      id: 'ai_tools' as TabId,
-      label: 'Real Vision · Render · Pamięć AI',
-      icon: Brain,
-      badge: 'AI'
-    },
-    {
-      id: 'approvals' as TabId,
-      label: 'Akceptacje czatu',
-      icon: ClipboardCheck,
-      badge: 'DECYZJE'
-    },
-    {
-      id: 'process_matrix' as TabId,
-      label: 'Infrastruktura & Naprawa z Logów [Alex]',
-      icon: Cpu,
-      badge: 'DOWÓDCA'
-    },
-    {
-      id: 'astyria_mission' as TabId,
-      label: 'Misja Astyria & VM_Ten_System',
-      icon: GitBranch,
-      badge: 'VM v8.5'
-    },
-    {
-      id: 'schema_graph' as TabId,
-      label: 'Mapa Pamięci [Astyria]',
-      icon: GitBranch,
-      badge: 'ASTYRIA'
-    },
-    {
-      id: 'temporal' as TabId,
-      label: 'Oś Czasu & Migawki [Aurelius]',
-      icon: Clock,
-      badge: 'AURELIUS'
-    },
-    {
-      id: 'terminal' as TabId,
-      label: 'Konsola CLI',
-      icon: Terminal,
-      badge: 'PY 3.10'
-    },
-    {
-      id: 'monolith' as TabId,
-      label: 'Monolit Python (.py)',
-      icon: FileCode2,
-      badge: 'CODE'
-    },
-    {
-      id: 'datastore' as TabId,
-      label: 'Rejestr DATA_STORE',
-      icon: Database,
-      badge: 'JSON'
-    },
-    {
-      id: 'diagnostics' as TabId,
-      label: 'Telemetria',
-      icon: Activity,
-      badge: 'LIVE'
-    },
-    {
-      id: 'visualizer' as TabId,
-      label: 'Wizualizator Triady',
-      icon: Sigma,
-      badge: '3D'
-    },
-    {
-      id: 'file_explorer' as TabId,
-      label: 'Eksplorator RING-0',
-      icon: HardDrive,
-      badge: 'STORAGE'
-    },
-    {
-      id: 'apps' as TabId,
-      label: 'Aplikacje [Terminal Forge]',
-      icon: LayoutGrid,
-      badge: 'FORGE'
-    },
-    {
-      id: 'fleet' as TabId,
-      label: 'Flota i statki kosmiczne',
-      icon: Satellite,
-      badge: 'DANE'
-    },
-    {
-      id: 'hyper_com' as TabId,
-      label: 'HyperCom — transmisje',
-      icon: Radio,
-      badge: 'HYPERCOM'
-    },
-    {
-      id: 'without_nlp' as TabId,
-      label: 'Rdzeń without_nlp [Astyria]',
-      icon: Sigma,
-      badge: 'EULER'
-    },
-    {
-      id: 'github' as TabId,
-      label: 'Eksport GitHub',
-      icon: Github,
-      badge: 'GIT'
-    }
-  ];
+type Entry = { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> };
+
+const QUICK: Entry[] = [
+  { id: 'comms', label: 'Czat', icon: MessageSquare },
+  { id: 'terminal', label: 'Terminal', icon: Terminal },
+  { id: 'ai_tools', label: 'AI', icon: Brain },
+  { id: 'diagnostics', label: 'Diagnostyka', icon: Activity },
+];
+
+const SECTIONS: { id: string; label: string; icon: React.ComponentType<{ className?: string }>; items: Entry[] }[] = [
+  { id: 'system', label: 'System i jądro', icon: Cpu, items: [
+    { id: 'home', label: 'Pulpit BastillaOS', icon: Home },
+    { id: 'datastore', label: 'DATA_STORE', icon: Database },
+    { id: 'monolith', label: 'Monolit Python', icon: FileCode2 },
+    { id: 'without_nlp', label: 'Rdzeń matematyczny', icon: Sigma },
+  ] },
+  { id: 'agents', label: 'Agenci i pamięć', icon: Layers, items: [
+    { id: 'process_matrix', label: 'Procesy i naprawy', icon: Cpu },
+    { id: 'astyria_mission', label: 'Misje Astyrii', icon: GitBranch },
+    { id: 'schema_graph', label: 'Mapa pamięci', icon: Brain },
+    { id: 'temporal', label: 'Migawki i oś czasu', icon: Clock },
+    { id: 'visualizer', label: 'Wizualizator agentów', icon: Sigma },
+    { id: 'approvals', label: 'Decyzje i akceptacje', icon: ShieldCheck },
+  ] },
+  { id: 'workspace', label: 'Pliki i projekty', icon: FolderOpen, items: [
+    { id: 'file_explorer', label: 'Eksplorator plików', icon: HardDrive },
+    { id: 'apps', label: 'Studio aplikacji', icon: LayoutGrid },
+    { id: 'github', label: 'GitHub i synchronizacja', icon: Github },
+  ] },
+  { id: 'fleet', label: 'Flota i łączność', icon: Satellite, items: [
+    { id: 'fleet', label: 'Flota', icon: Satellite },
+    { id: 'hyper_com', label: 'HyperCom', icon: Radio },
+  ] },
+];
+
+export const Navigation: React.FC<NavigationProps> = ({ activeTab, onSelectTab, messageCount }) => {
+  const [showMore, setShowMore] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const isExtraActive = !QUICK.some(item => item.id === activeTab);
+  const navigate = (tab: TabId) => {
+    onSelectTab(tab);
+    setShowMore(false);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', tab);
+      window.history.replaceState(null, '', url);
+    } catch { /* Navigation still works in restricted browser contexts. */ }
+  };
 
   return (
-    <nav aria-label="Nawigacja BastillaOS" className="order-last flex h-14 w-full shrink-0 flex-row border-t border-blue-200/10 bg-[#07101e] lg:order-first lg:h-auto lg:w-60 lg:flex-col lg:border-r lg:border-t-0">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-row gap-1 overflow-x-auto p-1.5 scrollbar-none lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:p-3">
-        <div className="hidden px-3 pb-2 pt-1 text-[9px] font-mono font-bold tracking-[0.18em] text-blue-200/40 lg:block">
-          OBSZAR ROBOCZY
+    <nav aria-label="Nawigacja Bastilla OS" className="relative z-30 order-last flex h-[60px] w-full shrink-0 border-t border-violet-400/15 bg-[#080e1b] lg:order-first lg:h-auto lg:w-[205px] lg:flex-col lg:border-r lg:border-t-0">
+      <div className="flex min-w-0 flex-1 items-center justify-around gap-1 px-1.5 lg:flex-col lg:items-stretch lg:justify-start lg:px-2 lg:py-3">
+        {QUICK.map(({ id, label, icon: Icon }) => (
+          <button key={id} type="button" title={label} aria-current={activeTab === id ? 'page' : undefined}
+            onClick={() => navigate(id)}
+            className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1.5 text-[10px] font-medium transition-colors lg:min-h-10 lg:w-full lg:flex-none lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:text-xs ${activeTab === id ? 'border border-violet-400/30 bg-violet-500/15 text-violet-100' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}>
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="truncate">{label}</span>
+            {id === 'comms' && messageCount > 0 && <span className="hidden rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-300 xl:inline">{messageCount}</span>}
+          </button>
+        ))}
+        <button type="button" aria-expanded={showMore} aria-controls="svl-more-menu" title="Pozostałe moduły"
+          onClick={() => setShowMore(value => !value)}
+          className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1.5 text-[10px] font-medium transition-colors lg:min-h-10 lg:w-full lg:flex-none lg:flex-row lg:justify-start lg:gap-3 lg:px-3 lg:text-xs ${showMore || isExtraActive ? 'border border-violet-400/30 bg-violet-500/15 text-violet-100' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`}>
+          <Menu className="h-4 w-4 shrink-0" />
+          <span>Więcej</span>
+          <ChevronDown className="hidden h-3.5 w-3.5 lg:ml-auto lg:block" />
+        </button>
+      </div>
+      {showMore && (
+        <div id="svl-more-menu" className="absolute bottom-full left-2 right-2 z-50 mb-2 max-h-[68dvh] overflow-y-auto rounded-xl border border-violet-400/25 bg-[#10192b] p-2 shadow-2xl shadow-black/70 lg:bottom-auto lg:left-full lg:right-auto lg:top-2 lg:mb-0 lg:ml-2 lg:w-[300px]" role="region" aria-label="Wszystkie kategorie modułów">
+          <div className="mb-2 flex items-center justify-between px-2 py-1">
+            <span className="text-xs font-semibold text-violet-200">Wszystkie moduły</span>
+            <button type="button" onClick={() => setShowMore(false)} className="rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800 hover:text-white">Zamknij</button>
+          </div>
+          {SECTIONS.map(section => {
+            const SIcon = section.icon;
+            const open = expanded === section.id || (expanded === null && section.items.some(item => item.id === activeTab));
+            return <section key={section.id} className="mb-1">
+              <button type="button" aria-expanded={open}
+                onClick={() => setExpanded(open ? '' : section.id)}
+                className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-slate-200 hover:bg-violet-500/10">
+                <SIcon className="h-4 w-4 text-violet-300" />
+                <span className="flex-1">{section.label}</span>
+                {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              </button>
+              {open && <div className="ml-3 border-l border-violet-400/20 pl-2">
+                {section.items.map(item => {
+                  const I = item.icon;
+                  return <button key={item.id} type="button" onClick={() => navigate(item.id)}
+                    aria-current={activeTab === item.id ? 'page' : undefined}
+                    className={`my-0.5 flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-[11px] ${activeTab === item.id ? 'bg-violet-500/20 text-violet-100' : 'text-slate-300 hover:bg-slate-800'}`}>
+                    <I className="h-3.5 w-3.5 shrink-0" />
+                    {item.label}
+                  </button>;
+                })}
+              </div>}
+            </section>;
+          })}
         </div>
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              title={tab.label}
-              aria-label={tab.label}
-              aria-current={isActive ? 'page' : undefined}
-              onClick={() => onSelectTab(tab.id)}
-              className={`group relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-3 rounded-xl px-2 text-left transition-all duration-200 lg:min-h-11 lg:w-full lg:justify-start lg:px-3 ${
-                isActive
-                  ? 'border border-cyan-300/15 bg-cyan-950/50 text-cyan-100 shadow-[inset_2px_0_0_#67e8f9,0_4px_18px_rgba(8,145,178,0.08)]'
-                  : 'border border-transparent text-slate-400 hover:bg-blue-950/50 hover:text-blue-100'
-              }`}
-            >
-              <Icon className={`h-4 w-4 shrink-0 transition ${isActive ? 'text-cyan-200' : 'text-slate-500 group-hover:text-cyan-200'}`} />
-              <span className="hidden min-w-0 flex-1 truncate text-[11px] font-medium lg:block">{tab.label}</span>
-              <span className={`hidden rounded-md px-1.5 py-0.5 text-[8px] font-mono font-bold xl:block ${isActive ? 'bg-cyan-900/70 text-cyan-200' : 'bg-slate-900 text-slate-500'}`}>
-                {tab.badge}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="hidden border-t border-blue-200/10 p-3 text-[9px] font-mono text-blue-200/40 lg:block">
-        BASTILLAOS · DEBIAN 13
-      </div>
+      )}
+      <div className="hidden border-t border-violet-400/10 px-4 py-3 text-[10px] text-slate-600 lg:block">SVL_System · Bastilla OS</div>
     </nav>
   );
 };
