@@ -125,7 +125,9 @@ export const FileExplorer: React.FC = () => {
       fetchFiles();
       fetchDeployStatus();
     }, 5000);
-    return () => clearInterval(interval);
+    const onSync = () => { void fetchFiles(); void fetchDeployStatus(); };
+    window.addEventListener('svl:global-sync', onSync);
+    return () => { clearInterval(interval); window.removeEventListener('svl:global-sync', onSync); };
   }, []);
 
   return (
