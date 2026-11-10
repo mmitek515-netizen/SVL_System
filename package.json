@@ -16,7 +16,8 @@
     "build:server": "mkdir -p bastillaos/build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --target=node20 --outfile=bastillaos/build/server.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "mcp:ai-studio": "node scripts/ai-studio-mcp.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",
