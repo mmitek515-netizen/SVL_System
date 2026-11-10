@@ -184,15 +184,17 @@ node -e "
   const status = await statusResponse.json();
   if (
     !statusResponse.ok ||
-    typeof status.enabled !== 'boolean' ||
-    status.provider !== (status.enabled ? 'Google Gemini API' : 'disabled') ||
-    status.connection !== (status.enabled ? 'configured' : 'disabled') ||
+    status.enabled !== true ||
+    status.provider !== 'brak modelu' ||
+    status.connection !== 'local-deterministic' ||
+    !Array.isArray(status.chain) ||
+    !status.chain.some(value => String(value).includes('without_nlp')) ||
     status.protocol !== '/api/triad/command' ||
     status.chatProtocol !== '/api/triad/message' ||
     'apiKey' in status ||
-    'model' in status
+    typeof status.model !== 'string'
   ) {
-    throw new Error('text model status does not accurately report Gemini chat configuration');
+    throw new Error('text model status does not accurately report disabled LLM and deterministic local fallback');
   }
 
   for (const route of ['/api/kernel/agent', '/api/terminal/generate-script']) {
