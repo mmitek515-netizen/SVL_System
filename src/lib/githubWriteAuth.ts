@@ -9,7 +9,7 @@ import type { NextFunction, Request, Response } from 'express';
 export function isGitHubWritePath(path: string): boolean {
   // Express routes are case-insensitive by default; the guard must be too.
   const normalized = path.toLowerCase();
-  return normalized.startsWith('/api/github/')
+  return normalized === '/api/triad/commit' || normalized.startsWith('/api/github/')
     || normalized.startsWith('/api/triad/github/')
     || normalized.startsWith('/api/triad/git/');
 }
