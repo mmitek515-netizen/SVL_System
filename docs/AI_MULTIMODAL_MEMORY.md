@@ -32,7 +32,7 @@ Uzupełnij własny lokalny plik .env, nigdy nie publikuj go w Git:
 - Pamięć jest plikiem JSON zapisywanym atomowo z uprawnieniami 0600. Domyślny katalog to ~/.local/share/bastillaos/ dla użytkownika backendu. SVL_MEMORY_DIR może wskazywać inny katalog. Kopie zapasowe przygotowuje administrator hosta.
 - Jeśli SVL_MEMORY_EMBED_MODEL jest ustawiony i model embeddings działa w Ollama, wyszukiwanie ma ranking semantyczny. Jeśli embeddings nie odpowie, pozostaje rzeczywiste wyszukiwanie tekstowe. Nie jest to trenowanie wag LLM.
 - SVL_MEMORY_AUTOSAVE=on zapisuje udane epizody czatu (wiadomość operatora i fragment rzeczywistej odpowiedzi); pomija załączniki i komendy z prefiksem /. Można go wyłączyć przez off. Nie wklejaj sekretów do czatu. Filtr redaguje część formatów tokenów, ale nie zastępuje ochrony informacji poufnych.
-- Bez SVL_AI_ACCESS_TOKEN API multimodalne jest dostępne wyłącznie z loopback TCP backendu. Dla dostępu przez przeglądarkowy zdalny podgląd ustaw silny, losowy token na serwerze i wprowadź go w panelu SVL. Używaj HTTPS. Nie publikuj niezabezpieczonego portu Ollama.
+- W środowisku produkcyjnym bez SVL_AI_ACCESS_TOKEN API multimodalne odrzuca wszystkie żądania, w tym lokalne. Tylko w nieprodukcyjnym trybie developerskim akceptuje bez tokenu bezpośrednie połączenia na localhost. Dla dostępu przez przeglądarkowy zdalny podgląd ustaw silny, losowy token na serwerze i wprowadź go w panelu SVL. Używaj HTTPS. Nie publikuj niezabezpieczonego portu Ollama.
 
 ## Panel w interfejsie
 
@@ -59,6 +59,23 @@ Wszystkie endpointy są pod ścieżką /api/ai/runtime i wymagają dostępu loka
 | DELETE | /memory/:id | Trwałe usunięcie wpisu |
 
 Zakresy: global, agent:Aria, agent:Alex, agent:Astyria, agent:Aurelius. Wyszukiwanie z scope=all jest dostępne operatorowi w panelu; kontekst modelu używa wyłącznie wpisów globalnych i właściwego agenta.
+
+## CLI dostępne systemowo
+
+Pakiet Debian BastillaOS instaluje również polecenie /usr/bin/svl-ai. Korzysta ono z dokładnie tego samego backendu i trwałego magazynu pamięci co GUI.
+
+Przykłady (na hoście z działającym backendem):
+
+    svl-ai status
+    svl-ai remember global "Pracujemy na GitHub main"
+    svl-ai recall "GitHub main" all
+    svl-ai list global
+    svl-ai vision "/home/user/zdjecie.jpg" "Co widzisz?"
+    svl-ai render "Mapa układu słonecznego" "/home/user/mapa.png"
+
+Aby połączyć się z backendem uruchomionym w innej lokalizacji, ustaw SVL_AI_API_URL na pełny adres HTTPS i SVL_AI_ACCESS_TOKEN na rzeczywisty sekret skonfigurowany w procesie backendu. Nie przekazuj tokenów jako argumentów poleceń ani nie commituj ich w GitHub. W środowisku produkcyjnym SVL_AI_ACCESS_TOKEN jest wymagany nawet dla lokalnego klienta, a panel zdalny wymaga poprawnego tokenu; nie ma anonimowego wyjątku przez reverse proxy.
+
+Na instalacji systemd: klucz umieść w /etc/bastillaos/system.env z uprawnieniami 0600, po czym wykonaj restart usługi. Do własnej sesji CLI podaj token bezpieczną metodą administracyjną. Przechowywanie danych na hoście nie zastępuje kopii zapasowej.
 
 ## Testy i granice
 
