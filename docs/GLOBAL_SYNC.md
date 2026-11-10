@@ -20,6 +20,9 @@ Przeglądarka nie może traktować samego localStorage jako potwierdzonego stanu
 Panel **Synchronizacja aplikacji** korzysta z `GET /api/triad/git/status`
 i `POST /api/triad/github/sync`. Status odświeża się co 15 s i po powrocie do okna.
 Pomyślny Git push musi zostać potwierdzony polem `pushed:true`.
+Dotyczy to również przycisku **Wyślij zmiany na main** w Eksploratorze Plików:
+odpowiedź HTTP 200 czy samo `success:true` nie potwierdzają synchronizacji.
+Klient akceptuje tylko odpowiedź z `success:true`, `pushed:true` i `branch:main`.
 Na innych gałęziach niż main oraz bez lokalnego checkoutu Git przycisk jest wyłączony.
 
 Tryb automatyczny jest **wyłączony domyślnie**. Wymaga jawnego ustawienia
@@ -49,6 +52,11 @@ dostępu do powłoki hosta. Zmiany w AI Studio należy **synchronizować przez
 integrację GitHub w panelu AI Studio** i wdrożyć/odświeżyć uruchomioną aplikację.
 Nie istnieje automatyczna dwukierunkowa propagacja danych i kodu tylko dlatego,
 że przycisk w Bastilla OS jest zielony.
+
+Ważne: przycisk w Eksploratorze Plików **wysyła kod z lokalnego hosta do GitHub**.
+Nie pobiera nowego `main` z GitHub do AI Studio. Użytkownik musi użyć funkcji importu/
+pobrania zmian w integracji GitHub istniejącej aplikacji AI Studio. Nie nadpisuj
+niesynchronizowanych zmian AI Studio bez ich wcześniejszego zabezpieczenia.
 
 W projekcie AI Studio, po pobraniu `main`, sprawdź działanie przycisku
 **Synchronizuj** i etykietę `DATA_STORE`. Jeśli backend kernel Python nie jest
