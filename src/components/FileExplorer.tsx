@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Download, FileArchive, FileText, RefreshCw, FolderOpen, ShieldCheck, Rocket, GitBranch, UploadCloud } from 'lucide-react';
+import { confirmGitPush } from '../kernel/gitPushConfirmation';
 
 interface FileInfo {
   name: string;
@@ -28,13 +29,8 @@ export const FileExplorer: React.FC = () => {
         body: JSON.stringify({ agent: 'triad', message: 'Synchronizacja prac Triady z GitHub' }),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setDeployMessage(data.sha
-          ? `Zapisano commit ${data.sha} i wysłano do origin/${data.branch}.`
-          : `Brak nowych zmian do commita; origin/${data.branch} jest zsynchronizowane.`);
-      } else {
-        setDeployMessage(`Błąd synchronizacji z GitHub: ${data.error || `HTTP ${res.status}`}`);
-      }
+      const confirmation = confirmGitPush(res.ok, res.status, data);
+      setDeployMessage(confirmation.message);
     } catch (e: any) {
       setDeployMessage(`Błąd synchronizacji z GitHub: ${e?.message || 'brak połączenia'}`);
     } finally {
@@ -174,7 +170,7 @@ export const FileExplorer: React.FC = () => {
             onClick={handleGithubSync}
             disabled={syncing}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-indigo-950/70 border border-indigo-700/60 text-indigo-300 text-[10px] font-bold hover:bg-indigo-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
-            title="Synchronizuj kod aplikacji: commit + push do bieżącej gałęzi origin"
+            title="Zapisz i wyślij zmiany do GitHub origin/main (nie pobiera zmian do AI Studio)"
           >
             <UploadCloud className={`w-3.5 h-3.5 ${syncing ? 'animate-bounce' : ''}`} />
             {syncing ? 'SYNCHRONIZUJĘ...' : 'SYNCHRONIZUJ APLIKACJĘ'}
