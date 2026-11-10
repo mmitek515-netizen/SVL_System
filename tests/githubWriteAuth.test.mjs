@@ -4,11 +4,12 @@ import { isGitHubWritePath, validGitHubWriteToken, requireGitHubWriteToken } fro
 
 const TOKEN = 'sample-only-operator-secret-with-40-chars-123456';
 test('all GitHub write API roots are identified; normal chat is not', () => {
-  for (const path of ['/api/github/export', '/api/github/pull', '/api/github/admin/execute', '/api/triad/github/sync', '/api/triad/git/commit']) {
+  for (const path of ['/api/github/export', '/api/github/pull', '/api/github/admin/execute', '/api/triad/github/sync', '/api/triad/git/commit', '/API/GITHUB/ADMIN/EXECUTE']) {
     assert.equal(isGitHubWritePath(path), true, path);
   }
   assert.equal(isGitHubWritePath('/api/triad/message'), false);
   assert.equal(isGitHubWritePath('/api/github-malicious'), false);
+  assert.equal(validGitHubWriteToken(TOKEN, `Bearer ${TOKEN}extra`), false);
 });
 test('write token requires explicit strong secret and constant-time equality', () => {
   assert.equal(validGitHubWriteToken(undefined, `Bearer ${TOKEN}`), false);
