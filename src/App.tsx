@@ -39,6 +39,7 @@ import {
 import { ChatAttachment, formatChatMessage } from './kernel/chatAttachments';
 import { isChatSystemChange } from './kernel/chatChanges';
 import type { ChatSystemChange } from './kernel/chatChanges';
+import { canApplyPolledState, isKernelSnapshot } from './kernel/globalSync';
 
 const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v8_6_0_without_nlp';
 const HYPERSPACE_ENTERED_KEY = 'bastilla_svl_hyperspace_entered_v1';
@@ -59,8 +60,12 @@ export default function App() {
   });
 
   const dataStore = normalizeDataStore(rawDataStore);
+  const syncGenerationRef = useRef(0);
+  const [kernelSyncStatus, setKernelSyncStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
 
   const setDataStore: React.Dispatch<React.SetStateAction<DataStore>> = useCallback((updater) => {
+    // Invalidate poll responses started before any user action or server write.
+    syncGenerationRef.current += 1;
     setRawDataStore((prev) => {
       const safePrev = normalizeDataStore(prev);
       const next = typeof updater === 'function' ? (updater as (p: DataStore) => DataStore)(safePrev) : updater;
@@ -88,34 +93,51 @@ export default function App() {
     isAgentLoadingRef.current = isAgentLoading;
   }, [isAgentLoading]);
 
-  // Periodic live sync with real Python SVL Kernel on disk
+  // Server state is authoritative. Poll without overlapping requests and refresh
+  // immediately when a tab becomes active or another tab changes its local cache.
   useEffect(() => {
-    let isMounted = true;
+    let mounted = true;
+    let inFlight = false;
     const fetchState = async () => {
-      if (isAgentLoadingRef.current) return;
+      if (!mounted || inFlight || isAgentLoadingRef.current) return;
+      inFlight = true;
+      const startedGeneration = syncGenerationRef.current;
       try {
-        const res = await fetch('/api/kernel/state');
-        if (res.ok && isMounted && !isAgentLoadingRef.current) {
-          const data = await res.json();
-          if (data && data.store && !isAgentLoadingRef.current) {
-            const incomingStore = normalizeDataStore(data.store);
-            setDataStore((prev) =>
-              // Adopt any difference (chat, config, update history, apps…) so chat-driven
-              // changes are reflected immediately, not only version/chat-length bumps.
-              JSON.stringify(prev) === JSON.stringify(incomingStore) ? prev : incomingStore
-            );
-          }
+        const response = await fetch('/api/kernel/state', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Kernel HTTP ' + response.status);
+        const snapshot: unknown = await response.json();
+        if (!isKernelSnapshot(snapshot)) throw new Error('Invalid kernel snapshot');
+        if (!mounted) return;
+        setKernelSyncStatus('online');
+        if (canApplyPolledState(startedGeneration, syncGenerationRef.current, isAgentLoadingRef.current)) {
+          const incoming = normalizeDataStore(snapshot.store);
+          setDataStore((previous) =>
+            JSON.stringify(previous) === JSON.stringify(incoming) ? previous : incoming
+          );
         }
-      } catch (err) {
-        // quiet error
+      } catch {
+        if (mounted) setKernelSyncStatus('offline');
+      } finally {
+        inFlight = false;
       }
     };
-
-    fetchState();
-    const interval = setInterval(fetchState, 4000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void fetchState();
+    };
+    const refreshOnStorage = (event: StorageEvent) => {
+      if (event.key === LOCAL_STORAGE_KEY) void fetchState();
+    };
+    void fetchState();
+    const interval = window.setInterval(() => void fetchState(), 4000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
+    window.addEventListener('storage', refreshOnStorage);
     return () => {
-      isMounted = false;
-      clearInterval(interval);
+      mounted = false;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
+      window.removeEventListener('storage', refreshOnStorage);
     };
   }, [setDataStore]);
 
@@ -145,47 +167,26 @@ export default function App() {
     return data;
   };
 
-  // Full system & version synchronization via Astyria mission endpoint + kernel state
-  const handleSyncSystem = async () => {
+  // "Synchronizuj" must refresh the persisted kernel state, not run an
+  // Astyria mission that rewrites system configuration and snapshots.
+  const handleSyncSystem = async (): Promise<void> => {
     try {
-      const res = await fetch('/api/astyria/mission', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sync_versions', silentChat: true }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const rawStore = data.state?.store || data.state;
-        if (rawStore) {
-          const normalized = normalizeDataStore(rawStore);
-          setDataStore(normalized);
-          try {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(normalized));
-          } catch {}
-          return;
-        }
+      const response = await fetch('/api/kernel/state?fresh=1', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Odczyt jądra nie powiódł się (HTTP ${response.status}).`);
+      const snapshot: unknown = await response.json();
+      if (!isKernelSnapshot(snapshot)) {
+        throw new Error('Serwer nie zwrócił prawidłowego stanu DATA_STORE.');
       }
-      // Fallback direct state fetch if mission endpoint didn't return store (fresh=1 bypasses server cache)
-      const stateRes = await fetch('/api/kernel/state?fresh=1');
-      if (stateRes.ok) {
-        const stateData = await stateRes.json();
-        if (stateData?.store) {
-          const normalized = normalizeDataStore(stateData.store);
-          setDataStore(normalized);
-        }
-      }
-    } catch (e) {
-      console.error(e);
+      setDataStore(normalizeDataStore(snapshot.store));
+      setKernelSyncStatus('online');
+    } catch (error) {
+      setKernelSyncStatus('offline');
+      throw error;
     }
   };
 
-  // Immediate manual force sync (used by AgentCommsView Synchronizuj button)
   const handleForceSync = async () => {
-    try {
-      await handleSyncSystem();
-    } finally {
-      setIsAgentLoading(false);
-    }
+    await handleSyncSystem();
   };
 
   const handleSendProtocol = async (request: AgentProtocolRequest): Promise<AgentProtocolReply | undefined> => {
@@ -519,6 +520,7 @@ export default function App() {
           onReset={handleResetToDefault}
           onShowReport={() => setShowReportModal(true)}
           onSyncSystem={handleSyncSystem}
+          kernelSyncStatus={kernelSyncStatus}
         />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
