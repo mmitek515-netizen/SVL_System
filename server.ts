@@ -14,6 +14,7 @@ import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
 import { createAiSecurityToolkitRouter } from './src/lib/aiSecurityToolkit';
 import { createAiDesktopRouter } from './src/lib/aiDesktopRoutes';
 import { createGlobalLiveSync } from './src/lib/globalLiveSync';
+import { requireGitHubWriteToken } from './src/lib/githubWriteAuth';
 import { SharedSystemMemory, memoryContext, type MemoryScope } from './src/kernel/systemMemory';
 import { resolveVisionModel } from './src/kernel/visionModel';
 import { fetchOriginalAgentsStatus } from './src/kernel/originalAgentsStatus.mjs';
@@ -169,6 +170,9 @@ const SVL_MEMORY_AUTOSAVE = /^(on|1|true|yes)$/i.test((process.env.SVL_MEMORY_AU
 // Configure high body limit (50MB) for file uploads, images, logs, and kernel snapshots
 app.use(express.json({ limit: '96mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// Security boundary: all GitHub mutation endpoints need a separate operator bearer secret.
+// Disabled by default; the GitHub PAT alone never grants HTTP caller authorization.
+app.use(requireGitHubWriteToken);
 
 // SSE publishes invalidation only after backend mutations complete.
 const globalLiveSync = createGlobalLiveSync();
@@ -489,7 +493,8 @@ app.post('/api/github/export', async (req, res) => {
       await run(['remote', 'remove', 'origin']);
     } catch {}
     await run(['remote', 'add', 'origin', remoteUrl]);
-    await run(['push', '-u', 'origin', 'main', '--force']);
+    // Never overwrite origin/main when another agent or operator has made commits.
+    await run(['push', '-u', 'origin', 'main']);
 
     pushSystemLog('info', 'INFRA', `[GITHUB] System wyeksportowany do repozytorium ${username}/${safeRepo}.`);
     res.json({
