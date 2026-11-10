@@ -41,6 +41,7 @@ import { isChatSystemChange } from './kernel/chatChanges';
 import type { ChatSystemChange } from './kernel/chatChanges';
 
 const LOCAL_STORAGE_KEY = 'svl_kernel_datastore_v8_6_0_without_nlp';
+const HYPERSPACE_ENTERED_KEY = 'bastilla_svl_hyperspace_entered_v1';
 
 export default function App() {
   const [rawDataStore, setRawDataStore] = useState<DataStore>(() => {
@@ -68,6 +69,9 @@ export default function App() {
   }, []);
 
   const [activeTab, setActiveTab] = useState<TabId>(initialTabFromLocation);
+  const [hasEnteredHyperspace, setHasEnteredHyperspace] = useState(() => {
+    try { return localStorage.getItem(HYPERSPACE_ENTERED_KEY) === 'true'; } catch { return false; }
+  });
   const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [chatSystemChange, setChatSystemChange] = useState<ChatSystemChange | null>(null);
@@ -458,6 +462,41 @@ export default function App() {
       }
     }
   };
+
+  const enterHyperspace = () => {
+    try { localStorage.setItem(HYPERSPACE_ENTERED_KEY, 'true'); } catch {}
+    setHasEnteredHyperspace(true);
+  };
+
+  if (!hasEnteredHyperspace) {
+    return (
+      <ErrorBoundary>
+        <main className="hyperspace-screen relative isolate flex min-h-dvh w-full items-center justify-center overflow-hidden bg-[#030712] px-5 py-12 text-slate-100">
+          <div className="hyperspace-stars" aria-hidden="true" />
+          <div className="hyperspace-orbit" aria-hidden="true"><span /><i /></div>
+          <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center text-center">
+            <div className="mb-8 flex items-center gap-3 rounded-full border border-cyan-300/20 bg-slate-950/60 px-4 py-2 text-[11px] font-medium uppercase tracking-[0.28em] text-cyan-100/75 shadow-[0_0_36px_rgba(34,211,238,0.08)]">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)]" />
+              Świeży punkt startowy <span className="text-slate-600">/</span> SVL System
+            </div>
+            <div className="mb-5 grid h-20 w-20 place-items-center rounded-[1.7rem] border border-cyan-200/20 bg-cyan-300/[0.07] text-3xl font-light text-cyan-100 shadow-[0_0_55px_rgba(34,211,238,0.17),inset_0_0_30px_rgba(34,211,238,0.08)]">B</div>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.48em] text-cyan-200/65">Bastilla OS</p>
+            <h1 className="text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">SVL_System</h1>
+            <p className="mt-5 max-w-xl text-pretty text-sm leading-7 text-slate-400 sm:text-base">Nowy start systemu. Wybierz wejście, aby otworzyć pulpit Bastilla i dostępne moduły SVL.</p>
+            <button type="button" onClick={enterHyperspace} className="group mt-10 inline-flex min-h-14 items-center gap-4 rounded-full border border-cyan-200/40 bg-cyan-300/[0.09] px-8 text-sm font-semibold tracking-[0.18em] text-cyan-50 shadow-[0_0_42px_rgba(34,211,238,0.13)] transition duration-300 hover:border-cyan-100/80 hover:bg-cyan-200/[0.16] hover:shadow-[0_0_64px_rgba(34,211,238,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950">
+              <span>ENTER HYPERSPACE</span><span aria-hidden="true" className="text-lg text-cyan-200 transition-transform group-hover:translate-x-1">→</span>
+            </button>
+            <div className="mt-12 grid w-full max-w-xl grid-cols-1 gap-3 text-left sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Interfejs</p><p className="mt-1 text-xs text-slate-200">Bastilla Dashboard</p></div>
+              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Jądro</p><p className="mt-1 text-xs text-slate-200">SVL Kernel UI</p></div>
+              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Tryb startu</p><p className="mt-1 text-xs text-emerald-300">Lokalna aplikacja</p></div>
+            </div>
+            <p className="mt-8 text-[10px] uppercase tracking-[0.22em] text-slate-600">Repozytorium aplikacji · main</p>
+          </div>
+        </main>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>
