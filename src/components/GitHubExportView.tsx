@@ -15,6 +15,8 @@ export const GitHubExportView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [statusUnavailable, setStatusUnavailable] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     const response = await fetch('/api/triad/git/status');
@@ -23,17 +25,41 @@ export const GitHubExportView: React.FC = () => {
       throw new Error(data.error || `Nie można pobrać stanu Git (HTTP ${response.status}).`);
     }
     setGitStatus(data);
+    setStatusUnavailable(false);
+    setLastCheckedAt(new Date().toLocaleTimeString('pl-PL'));
   }, []);
 
   useEffect(() => {
-    void refreshStatus().catch((error: unknown) => {
-      setStatus('error');
-      setMessage(error instanceof Error ? error.message : String(error));
-    });
+    let active = true;
+    const check = async () => {
+      try {
+        await refreshStatus();
+      } catch (error) {
+        if (!active) return;
+        setGitStatus(null);
+        setStatusUnavailable(true);
+        setStatus('error');
+        setMessage(error instanceof Error ? error.message : String(error));
+      }
+    };
+    void check();
+    const interval = window.setInterval(() => void check(), 15000);
+    const onFocus = () => void check();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [refreshStatus]);
 
   const handleSync = async () => {
     if (loading) return;
+    if (!gitStatus || gitStatus.branch !== 'main') {
+      setStatus('error');
+      setMessage('Synchronizacja GitHub wymaga lokalnego repozytorium na gałęzi main. Podgląd AI Studio nie zapewnia automatycznie checkoutu Git.');
+      return;
+    }
     setLoading(true);
     setStatus('idle');
     setMessage('Sprawdzam zmiany aplikacji, zapisuję commit i wysyłam do origin...');
@@ -47,8 +73,8 @@ export const GitHubExportView: React.FC = () => {
         }),
       });
       const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || `Synchronizacja nie powiodła się (HTTP ${response.status}).`);
+      if (!response.ok || !data.success || data.pushed !== true) {
+        throw new Error(data.error || `Nie potwierdzono wysłania zmian do GitHub (HTTP ${response.status}).`);
       }
       setStatus('success');
       setMessage(data.sha
@@ -107,16 +133,19 @@ export const GitHubExportView: React.FC = () => {
               <div><dt className="text-slate-500">Do pobrania</dt><dd className="mt-1 font-bold">{gitStatus.behind} commitów</dd></div>
             </dl>
           ) : (
-            <p className="text-xs text-slate-400">Odczytuję status repozytorium...</p>
+            <p className="text-xs text-slate-400">{statusUnavailable
+              ? 'Brak lokalnego repozytorium Git lub połączenia z backendem. W Google AI Studio synchronizuj projekt z GitHub przez panel AI Studio.'
+              : 'Odczytuję status repozytorium...'}</p>
           )}
           <p className="text-[11px] leading-relaxed text-slate-400">
-            Automatyczna synchronizacja odczekuje na stabilizację plików, uruchamia testy, typecheck i build,
-            a potem wysyła wyłącznie kod aplikacji. Bieżące przy starcie zmiany i lokalne dane nie są wysyłane automatycznie.
+            Ten panel odczytuje lokalny stan Git, a nie potwierdza synchronizacji projektu w AI Studio.
+            Automatyczny commit/push wymaga osobno uruchomionego procesu z dostępem do Git i GitHub.
+            {lastCheckedAt ? ` Ostatni odczyt lokalny: ${lastCheckedAt}.` : ''}
           </p>
           <button
             type="button"
             onClick={() => void handleSync()}
-            disabled={loading}
+            disabled={loading || !gitStatus || gitStatus.branch !== 'main'}
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-900/20 transition-all hover:bg-cyan-500 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <UploadCloud className="h-5 w-5" />}
