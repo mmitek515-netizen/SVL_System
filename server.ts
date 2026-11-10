@@ -2692,6 +2692,9 @@ async function getPythonKernelState(forceRefresh = false) {
     }
     return cachedKernelState;
   } catch (err) {
+    // A forced refresh must never silently fall back to an old cached snapshot:
+    // otherwise the UI incorrectly reports a successful global sync.
+    if (forceRefresh) throw err;
     return cachedKernelState;
   }
 }
