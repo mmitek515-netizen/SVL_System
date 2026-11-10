@@ -7,6 +7,7 @@ export interface FleetRoutesOptions {
   file?: string;
   adminToken?: string;
   ingestToken?: string;
+  allowedSources?: string[];
 }
 const sameSecret = (given: string | undefined, expected: string | undefined): boolean => {
   if (!expected || expected.length < 32 || !given) return false;
@@ -19,6 +20,11 @@ export function createFleetRouter(options: FleetRoutesOptions = {}) {
   const file = options.file || process.env.FLEET_STORE_PATH || path.resolve('data/fleet-registry.json');
   const adminToken = options.adminToken ?? process.env.FLEET_ADMIN_TOKEN;
   const ingestToken = options.ingestToken ?? process.env.FLEET_INGEST_TOKEN;
+  if (adminToken && ingestToken && adminToken === ingestToken) {
+    throw new Error('FLEET_ADMIN_TOKEN and FLEET_INGEST_TOKEN must be different');
+  }
+  const allowedSources = new Set(options.allowedSources ??
+    (process.env.FLEET_ALLOWED_SOURCES || '').split(',').map(v => v.trim()).filter(Boolean));
   router.use((req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     const secret = /^Bearer (.+)$/i.exec(req.headers.authorization || '')?.[1];
@@ -82,8 +88,11 @@ export function createFleetRouter(options: FleetRoutesOptions = {}) {
     }
   });
   router.post('/telemetry', (req, res) => {
-    if (!ingestToken || ingestToken.length < 32) {
-      return res.status(503).json({ success: false, error: 'Telemetry ingestion not configured' });
+    if (!ingestToken || ingestToken.length < 32 || allowedSources.size === 0) {
+      return res.status(503).json({ success: false, error: 'Telemetry ingestion not configured: token and trusted source list required' });
+    }
+    if (typeof req.body?.sourceId !== 'string' || !allowedSources.has(req.body.sourceId)) {
+      return res.status(403).json({ success: false, error: 'Untrusted telemetry source ID' });
     }
     try {
       const db = readFleet(file);
