@@ -14,6 +14,7 @@ import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
 import { createAiSecurityToolkitRouter } from './src/lib/aiSecurityToolkit';
 import { createAiDesktopRouter } from './src/lib/aiDesktopRoutes';
 import { createGlobalLiveSync } from './src/lib/globalLiveSync';
+import { runChatInferenceBatch } from './src/kernel/chatInferenceBatch';
 import { requireGitHubWriteToken } from './src/lib/githubWriteAuth';
 import { SharedSystemMemory, memoryContext, type MemoryScope } from './src/kernel/systemMemory';
 import { resolveVisionModel } from './src/kernel/visionModel';
@@ -27,6 +28,7 @@ import {
   LlmChainError,
   configuredProviders,
   generateWithChain,
+  pickOllamaChatModel,
   type LlmChainConfig,
   type LlmTurn,
 } from './src/kernel/llmChain';
@@ -5088,6 +5090,39 @@ app.post('/api/triad/chat/new-session', async (_req, res) => {
   }
 });
 
+// Diagnostics for the actual chat-to-Ollama connection. A GitHub agent commit is not
+// evidence that this backend can reach the model installed on the Linux host.
+app.get('/api/triad/model-status', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const providers = configuredProviders(LLM_CHAIN_CONFIG);
+  if (!providers.includes('ollama')) {
+    return res.json({ success: true, provider: 'ollama', configured: false, reachable: false,
+      modelAvailable: false, error: 'Ollama jest wyłączona w LLM_PROVIDERS.' });
+  }
+  const base = (LLM_CHAIN_CONFIG.ollamaBaseUrl || DEFAULT_OLLAMA_BASE_URL).trim().replace(/\/+$/, '');
+  try {
+    const response = await fetch(base + '/api/tags', { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) throw new Error('Ollama API /api/tags: HTTP ' + response.status);
+    const data: any = await response.json();
+    const models = (Array.isArray(data?.models) ? data.models : [])
+      .filter((model: any) => typeof model?.name === 'string')
+      .map((model: any) => ({ name: model.name as string, size: Number(model.size) || 0 }));
+    const configured = (LLM_CHAIN_CONFIG.ollamaModel || 'auto').trim();
+    const model = !configured || configured.toLowerCase() === 'auto'
+      ? pickOllamaChatModel(models)
+      : configured;
+    const modelAvailable = Boolean(model && models.some((entry) =>
+      entry.name === model || entry.name === model + ':latest'));
+    return res.json({ success: true, provider: 'ollama', configured: true, reachable: true,
+      modelAvailable, model, installedModels: models.length, source: 'local-ollama-api-tags',
+      error: modelAvailable ? null : 'Ollama odpowiada, ale wybrany model czatu nie jest zainstalowany.' });
+  } catch (error: any) {
+    return res.json({ success: true, provider: 'ollama', configured: true, reachable: false,
+      modelAvailable: false, source: 'local-ollama-api-tags',
+      error: 'Backend nie może połączyć się z Ollamą: ' + String(error?.message || error).slice(0, 220) });
+  }
+});
+
 app.post('/api/triad/message', async (req, res) => {
   const message: unknown = req.body?.message;
   const attachmentValidation = validateChatAttachments(req.body?.attachments ?? []);
@@ -5324,10 +5359,17 @@ app.post('/api/triad/message', async (req, res) => {
           requested: OLLAMA_VISION_MODEL,
         })
       : null;
-    // Lokalna Ollama obsługuje agentów po kolei, więc limit rośnie z liczbą agentów.
-    const deadline = AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS * (usesOllama() ? targetAgents.length : 1));
+    // One local Ollama process should not receive four large generations in parallel.
+    // Closing/cancelling the browser request aborts the underlying model requests.
+    const ollamaOnly = llmProviders.length === 1 && llmProviders[0] === 'ollama';
+    const clientAbort = new AbortController();
+    res.once('close', () => { if (!res.writableEnded) clientAbort.abort(); });
+    const deadline = AbortSignal.any([
+      AbortSignal.timeout(LLM_CHAT_TIMEOUT_MS * (ollamaOnly ? targetAgents.length : 1)),
+      clientAbort.signal,
+    ]);
 
-    const results = await Promise.all(targetAgents.map(async (agent) => {
+    const inferAgent = async (agent: ChatAgentName) => {
       if (llmProviders.length > 0) {
         try {
           const relevantMemory = await sharedSystemMemory.search(
@@ -5374,10 +5416,14 @@ app.post('/api/triad/message', async (req, res) => {
         llm: false,
         error: undefined as string | undefined,
       };
-    }));
+    };
+    const results = await runChatInferenceBatch(
+      targetAgents.map((agent) => () => inferAgent(agent)),
+      { sequential: ollamaOnly, shouldStop: (result) => Boolean(result.error) },
+    );
 
     const failed = results.filter((result) => result.error);
-    if (failed.length > 0) {
+    if (failed.length > 0 || results.length !== targetAgents.length) {
       // Bez awaryjnego silnika nic nie zapisujemy do historii — operator widzi prawdziwy powód awarii.
       return res.status(502).json({
         success: false,
