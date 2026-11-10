@@ -3,9 +3,6 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { timingSafeEqual } from 'node:crypto';
 import { SharedSystemMemory, isMemoryScope, type MemoryScope } from '../kernel/systemMemory';
 
-const visionModel = (process.env.OLLAMA_VISION_MODEL || 'llama3.2-vision:11b').trim();
-const imageModel = (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-flare').trim();
-const ollamaUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');
 const imageSizes = ['1024x1024', '1536x1024', '1024x1536'];
 const imageMimeTypes = ['image/png', 'image/jpeg', 'image/webp'];
 
@@ -58,7 +55,7 @@ function scopesFor(value: unknown): MemoryScope[] {
   if (!isMemoryScope(value)) throw new Error('Nieprawidłowy zakres pamięci.');
   return [value];
 }
-async function checkOllama(): Promise<{ reachable: boolean; modelInstalled: boolean; error?: string }> {
+async function checkOllama(ollamaUrl: string, visionModel: string): Promise<{ reachable: boolean; modelInstalled: boolean; error?: string }> {
   try {
     const response = await fetch(ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(3500) });
     if (!response.ok) return { reachable: false, modelInstalled: false, error: 'HTTP ' + response.status };
@@ -72,6 +69,10 @@ async function checkOllama(): Promise<{ reachable: boolean; modelInstalled: bool
 }
 
 export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
+  // Instantiate after server.ts loads .env and .env.local.
+  const visionModel = (process.env.OLLAMA_VISION_MODEL || 'llama3.2-vision:11b').trim();
+  const imageModel = (process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2.5-flare').trim();
+  const ollamaUrl = (process.env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');
   const router = Router();
   router.use((req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -83,7 +84,7 @@ export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
 
   router.get('/status', async (_req, res) => {
     try {
-      const ollama = await checkOllama();
+      const ollama = await checkOllama(ollamaUrl, visionModel);
       const entries = await memory.count();
       res.json({
         success: true,
