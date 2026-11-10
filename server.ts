@@ -9,6 +9,7 @@ import fs from 'fs';
 import os from 'os';
 import { randomUUID, createHash } from 'crypto';
 import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
+import { createFleetRouter } from './src/lib/fleetRoutes';
 import type { ChatSystemChange } from './src/kernel/chatChanges';
 import { withoutNlpEngine } from './src/lib/withoutNlpEngine';
 import {
@@ -158,6 +159,9 @@ const KERNEL_STORE_PATH = path.resolve(process.env.SVL_KERNEL_STORE_PATH || '.sv
 // Configure high body limit (50MB) for file uploads, images, logs, and kernel snapshots
 app.use(express.json({ limit: '96mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Dedicated, authenticated registry; no mock assets or invented telemetry.
+app.use('/api/fleet', createFleetRouter());
 
 // Catch payload too large or invalid body before routing
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
