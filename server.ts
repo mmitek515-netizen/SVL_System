@@ -12,6 +12,7 @@ import { INITIAL_DATA_STORE } from './src/kernel/svlKernel';
 import { createFleetRouter } from './src/lib/fleetRoutes';
 import { createAiRuntimeRouter } from './src/lib/aiRuntimeRoutes';
 import { createAiSecurityToolkitRouter } from './src/lib/aiSecurityToolkit';
+import { createAiDesktopRouter } from './src/lib/aiDesktopRoutes';
 import { SharedSystemMemory, memoryContext, type MemoryScope } from './src/kernel/systemMemory';
 import { resolveVisionModel } from './src/kernel/visionModel';
 import { fetchOriginalAgentsStatus } from './src/kernel/originalAgentsStatus.mjs';
@@ -174,6 +175,7 @@ app.use('/api/fleet', createFleetRouter());
 app.use('/api/ai/runtime', createAiRuntimeRouter(sharedSystemMemory));
 // Tools are discovered from real executables; runs require an explicit secret.
 app.use('/api/ai/security', createAiSecurityToolkitRouter());
+app.use('/api/ai/desktop', createAiDesktopRouter());
 
 // Account status uses host-owned /etc/passwd, not model-generated values.
 // The sudo flag means a matching rule exists, not that the agent is executing.
