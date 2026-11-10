@@ -1,6 +1,9 @@
 /** Actual multimodal services: Ollama Vision, OpenAI image API, persisted shared memory. */
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { timingSafeEqual } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { SharedSystemMemory, isMemoryScope, type MemoryScope } from '../kernel/systemMemory';
 import { resolveVisionModel } from '../kernel/visionModel';
 
@@ -56,6 +59,43 @@ function scopesFor(value: unknown): MemoryScope[] {
   if (!isMemoryScope(value)) throw new Error('Nieprawidłowy zakres pamięci.');
   return [value];
 }
+
+/** Shared avatar registry on the host, outside the Git checkout. */
+const AVATAR_IDS = new Set(['Operator', 'Alex', 'Astyria', 'Aurelius', 'si_1']);
+const AVATAR_FILE = path.join(os.homedir(), '.bastillaos', 'avatars.json');
+function readAvatarRegistry(): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(AVATAR_FILE, 'utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([id, value]) => AVATAR_IDS.has(id) && typeof value === 'string'
+          && value.length <= 4_000_000 &&
+          (/^https:\/\//.test(value) || /^data:image\/(?:png|jpeg|webp);base64,/.test(value)))
+    ) as Record<string, string>;
+  } catch { return {}; }
+}
+function writeAvatarRegistry(avatars: Record<string, string>) {
+  const dir = path.dirname(AVATAR_FILE);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const temp = AVATAR_FILE + '.' + process.pid + '.tmp';
+  fs.writeFileSync(temp, JSON.stringify(avatars), { mode: 0o600 });
+  fs.renameSync(temp, AVATAR_FILE);
+}
+function validAvatarValue(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  if (value.startsWith('data:')) {
+    const match = /^data:image\/(?:png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+    if (!match || value.length > 4_000_000) return false;
+    return Buffer.from(match[1], 'base64').length <= 3_000_000;
+  }
+  if (value.length > 2000) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password;
+  } catch { return false; }
+}
+
 export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
   // Instantiate after server.ts loads .env and .env.local.
   const visionModel = (process.env.OLLAMA_VISION_MODEL || 'auto').trim();
@@ -68,6 +108,33 @@ export function createAiRuntimeRouter(memory: SharedSystemMemory): Router {
       return res.status(403).json({ success: false, error: 'Dostęp lokalny lub poprawny SVL_AI_ACCESS_TOKEN jest wymagany.' });
     }
     next();
+  });
+
+  router.get('/avatars', (_req, res) =>
+    res.json({ success: true, avatars: readAvatarRegistry() }));
+
+  router.post('/avatars', (req, res) => {
+    const { agent, image } = req.body ?? {};
+    if (typeof agent !== 'string' || !AVATAR_IDS.has(agent) || !validAvatarValue(image)) {
+      return res.status(400).json({ success: false, error: 'Wybierz znany profil i poprawny URL HTTPS lub obraz PNG/JPG/WEBP do 3 MB.' });
+    }
+    try {
+      const avatars = readAvatarRegistry();
+      avatars[agent] = image;
+      writeAvatarRegistry(avatars);
+      return res.json({ success: true, agent, saved: true });
+    } catch (error) { return handleError(res, error, 'avatars'); }
+  });
+
+  router.delete('/avatars/:agent', (req, res) => {
+    const agent = String(req.params.agent);
+    if (!AVATAR_IDS.has(agent)) return res.status(400).json({ success: false, error: 'Nieznany profil.' });
+    try {
+      const avatars = readAvatarRegistry();
+      delete avatars[agent];
+      writeAvatarRegistry(avatars);
+      return res.json({ success: true, agent, deleted: true });
+    } catch (error) { return handleError(res, error, 'avatars'); }
   });
 
   router.get('/status', async (_req, res) => {
