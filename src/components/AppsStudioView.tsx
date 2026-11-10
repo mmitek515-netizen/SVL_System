@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ModuleHeader, WorkspaceDialog } from './WorkspaceUI';
 import type { ChatSystemChange } from '../kernel/chatChanges';
 import {
   LayoutGrid,
@@ -87,7 +88,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
     {
       id: 'init-1',
       type: 'system',
-      text: '================================================================================\n   ASTYRIA APP FORGE & TERMINAL APP CREATOR | RING-0 SOVEREIGN WORKSTATION\n================================================================================\nWitaj w Studiu Aplikacji! Twórz, kompiluj i testuj oprogramowanie bezpośrednio z terminala.\nWpisz "help" lub "create-app <nazwa> <typ>", aby wygenerować nową aplikację.',
+      text: '================================================================================\n   ASTYRIA APP FORGE & TERMINAL APP CREATOR | Lokalnie WORKSTATION\n================================================================================\nWitaj w Studiu Aplikacji! Twórz, kompiluj i testuj oprogramowanie bezpośrednio z terminala.\nWpisz "help" lub "create-app <nazwa> <typ>", aby wygenerować nową aplikację.',
       timestamp: new Date().toLocaleTimeString('pl-PL')
     }
   ]);
@@ -480,69 +481,25 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
   };
 
   return (
-    <div className="flex-1 bg-slate-950 flex flex-col font-mono text-slate-200 overflow-hidden">
+    <div className="module-view flex-1 bg-slate-950 flex flex-col text-slate-200 overflow-hidden">
       {/* Toast Notification */}
       {notificationMsg && (
-        <div className="absolute top-16 right-6 z-50 bg-emerald-950 border border-emerald-500/80 text-emerald-300 px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-bounce">
+        <div className="absolute top-16 right-6 z-50 bg-slate-900 border border-slate-700 text-emerald-300 px-4 py-3 rounded-lg flex items-center gap-3">
           <Check className="w-5 h-5 text-emerald-400" />
-          <span className="text-xs font-bold">{notificationMsg}</span>
+          <span className="text-xs font-medium">{notificationMsg}</span>
         </div>
       )}
 
-      {/* Header Bar */}
-      <div className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shadow-lg shadow-emerald-500/10">
-            <LayoutGrid className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                Studio Aplikacji & Kreator Terminalowy
-              </h1>
-              <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold">
-                ASTYRIA FORGE v1.0
-              </span>
-              <span className="px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 text-[9px]">
-                RING-0 SOVEREIGN
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              Twórz, kompiluj i uruchamiaj aplikacje bezpośrednio z poziomu interaktywnego terminala obok Eksploratora Plików.
-            </p>
-          </div>
-        </div>
-
-        {/* Stats & Actions */}
-        <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-3 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-slate-400">APLIKACJE:</span>
-              <span className="font-bold text-slate-100">{totalApps}</span>
-            </div>
-            <span className="text-slate-700">|</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">PAMIĘĆ FS:</span>
-              <span className="font-bold text-cyan-400">{storageUsed}</span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-md text-xs transition active:scale-95 cursor-pointer shadow-lg shadow-emerald-600/20"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Nowa Aplikacja</span>
-          </button>
-        </div>
-      </div>
-
+      <ModuleHeader title="Aplikacje" meta={`${totalApps} aplikacji · ${storageUsed}`}>
+        <button type="button" onClick={()=>void fetchApps()} disabled={loading}><RefreshCw size={14}/>Odśwież</button>
+        <button type="button" onClick={()=>setShowCreateModal(true)} className="primary-action"><Plus size={14}/>Nowa aplikacja</button>
+      </ModuleHeader>
       {/* Sub-Navigation Tabs */}
-      <div className="bg-slate-900/80 border-b border-slate-800 px-4 flex items-center justify-between">
+      <div className="module-subnav border-b border-slate-700 p-2">
         <div className="flex items-center space-x-1 py-1">
           <button
             onClick={() => setActiveSubTab('library')}
+            aria-pressed={activeSubTab === 'library'}
             className={`flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-t-md transition border-b-2 cursor-pointer ${
               activeSubTab === 'library'
                 ? 'border-emerald-400 text-emerald-300 bg-slate-800/80'
@@ -550,11 +507,12 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Katalog Aplikacji ({apps.length})</span>
+            <span>Biblioteka</span>
           </button>
 
           <button
             onClick={() => setActiveSubTab('terminal')}
+            aria-pressed={activeSubTab === 'terminal'}
             className={`flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-t-md transition border-b-2 cursor-pointer ${
               activeSubTab === 'terminal'
                 ? 'border-emerald-400 text-emerald-300 bg-slate-800/80'
@@ -562,9 +520,9 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             }`}
           >
             <Terminal className="w-3.5 h-3.5" />
-            <span>Konsola Terminalowa [CLI]</span>
-            <span className="px-1.5 py-0.2 bg-emerald-950 border border-emerald-800/60 text-emerald-400 rounded text-[9px]">
-              INTERACTIVE
+            <span>Terminal</span>
+            <span className="hidden md:inline px-1.5 py-0.2 bg-slate-900 border border-slate-700 text-emerald-400 rounded text-[9px]">
+              CLI
             </span>
           </button>
 
@@ -573,6 +531,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
               setActiveSubTab('preview');
               setPreviewIframeKey(Date.now());
             }}
+            aria-pressed={activeSubTab === 'preview'}
             className={`flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-t-md transition border-b-2 cursor-pointer ${
               activeSubTab === 'preview'
                 ? 'border-emerald-400 text-emerald-300 bg-slate-800/80'
@@ -580,9 +539,9 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            <span>Podgląd na Żywo [Piaskownica]</span>
+            <span>Podgląd</span>
             {selectedApp && (
-              <span className="text-[10px] text-cyan-400 font-bold truncate max-w-[120px]">
+              <span className="hidden md:inline text-[10px] text-cyan-400 font-medium truncate max-w-[120px]">
                 ({selectedApp.id})
               </span>
             )}
@@ -593,6 +552,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
               setActiveSubTab('code');
               if (selectedAppId) fetchAppFiles(selectedAppId);
             }}
+            aria-pressed={activeSubTab === 'code'}
             className={`flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-t-md transition border-b-2 cursor-pointer ${
               activeSubTab === 'code'
                 ? 'border-emerald-400 text-emerald-300 bg-slate-800/80'
@@ -600,7 +560,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             }`}
           >
             <Code2 className="w-3.5 h-3.5" />
-            <span>Inspektor & Edytor Kodu</span>
+            <span>Kod</span>
           </button>
         </div>
 
@@ -614,7 +574,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
           className="hidden sm:flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 hover:underline cursor-pointer"
         >
           <FolderOpen className="w-3.5 h-3.5" />
-          <span>Eksplorator RING-0 &rarr;</span>
+          <span>Pliki &rarr;</span>
         </button>
       </div>
 
@@ -626,11 +586,11 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
         {activeSubTab === 'library' && (
           <div className="flex-1 flex flex-col p-4 overflow-y-auto space-y-4">
             {/* Quick Templates Scaffolding Toolbar */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+            <details className="module-disclosure"><summary>Szablony aplikacji</summary>
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
                   <Sparkles className="w-4 h-4 text-emerald-400" />
-                  <span>Szybki Start: Szablony Aplikacji Astyrii dla Taty</span>
+                  <span>Szablony</span>
                 </div>
                 <span className="text-[10px] text-slate-400">Kliknij szablon, aby utworzyć aplikację z poziomu terminala</span>
               </div>
@@ -698,7 +658,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                           CLI
                         </span>
                       </div>
-                      <div className="text-xs font-bold text-slate-200 group-hover:text-emerald-300 truncate">
+                      <div className="text-xs font-medium text-slate-200 group-hover:text-emerald-300 truncate">
                         {tmpl.name}
                       </div>
                       <div className="text-[10px] text-slate-500 mt-1 line-clamp-1">
@@ -708,7 +668,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                   );
                 })}
               </div>
-            </div>
+            </details>
 
             {/* Filter and Search Bar */}
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -742,7 +702,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                   placeholder="Szukaj aplikacji..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-slate-700"
                 />
               </div>
             </div>
@@ -754,7 +714,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                 <button
                   type="button"
                   onClick={() => void fetchApps()}
-                  className="shrink-0 rounded border border-rose-700 px-2 py-1 font-bold hover:bg-rose-900"
+                  className="shrink-0 rounded border border-rose-700 px-2 py-1 font-medium hover:bg-rose-900"
                 >
                   Spróbuj ponownie
                 </button>
@@ -766,11 +726,11 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                 Wczytywanie aplikacji…
               </div>
             ) : filteredApps.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-xl p-8">
+              <div className="h-64 flex flex-col items-center justify-center text-slate-600 border-2 border-dashed border-slate-800 rounded-lg p-8">
                 <LayoutGrid className="w-12 h-12 mb-3 opacity-20" />
-                <p className="text-xs uppercase tracking-widest text-slate-400">Brak aplikacji spełniających kryteria</p>
+                <p className="text-xs text-slate-400">Brak wyników</p>
                 <p className="text-[10px] mt-1 text-slate-500">
-                  Użyj przycisku "Nowa Aplikacja" lub wpisz w terminalu: <code className="text-emerald-400">create-app my-app html5-web</code>
+                  Użyj przycisku "Nowa aplikacja" lub wpisz w terminalu: <code className="text-emerald-400">create-app my-app html5-web</code>
                 </p>
               </div>
             ) : (
@@ -797,7 +757,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                               <BadgeIcon className="w-4 h-4 text-emerald-400" />
                             </div>
                             <div>
-                              <h3 className="text-xs font-bold text-slate-100 truncate max-w-[180px]">
+                              <h3 className="text-xs font-medium text-slate-100 truncate max-w-[180px]">
                                 {app.name}
                               </h3>
                               <div className="text-[10px] text-slate-500 font-mono">
@@ -811,9 +771,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                           </span>
                         </div>
 
-                        <p className="text-xs text-slate-400 line-clamp-2 my-2 leading-relaxed">
-                          {app.description}
-                        </p>
+<details className="my-2 text-xs text-slate-400"><summary>Opis</summary><p className="mt-2">{app.description}</p></details>
 
                         <div className="flex items-center gap-3 text-[10px] text-slate-500 py-2 border-y border-slate-800/60 my-2">
                           <span>Wersja: <strong className="text-slate-300">v{app.version}</strong></span>
@@ -829,7 +787,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => void handleLaunchApp(app.id)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600/20 border border-emerald-500/50 hover:bg-emerald-600 hover:text-slate-950 text-emerald-400 rounded-md text-[11px] font-bold transition active:scale-95 cursor-pointer"
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 border border-slate-700 hover:bg-slate-800 hover:text-slate-950 text-emerald-400 rounded-md text-[11px] font-medium transition active:scale-95 cursor-pointer"
                             title="Uruchom aplikację w podglądzie na żywo"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -850,7 +808,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
 
                           <button
                             onClick={() => handleExportApp(app.id)}
-                            className="p-1.5 bg-slate-950 border border-slate-800 hover:border-emerald-500/50 text-slate-400 hover:text-emerald-400 rounded-md text-[11px] transition cursor-pointer"
+                            className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-emerald-400 rounded-md text-[11px] transition cursor-pointer"
                             title="Eksportuj do Eksploratora RING-0 (.tar.gz)"
                           >
                             <Download className="w-3.5 h-3.5" />
@@ -862,7 +820,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                             onClick={() => {
                               void handleLaunchApp(app.id);
                             }}
-                            className="p-1.5 bg-slate-950 border border-slate-800 hover:border-cyan-500/50 text-slate-400 hover:text-cyan-400 rounded-md text-[11px] transition cursor-pointer"
+                            className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-cyan-400 rounded-md text-[11px] transition cursor-pointer"
                             title="Wykonaj w terminalu polecenie run"
                           >
                             <Play className="w-3.5 h-3.5" />
@@ -893,7 +851,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             {/* Quick Command Suggestions bar */}
             <div className="bg-slate-900 border border-slate-800 rounded-lg p-2.5 mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
                   <Terminal className="w-3.5 h-3.5 text-emerald-400" />
                   Szybkie Polecenia:
                 </span>
@@ -912,7 +870,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                     <button
                       key={i}
                       onClick={() => handleExecuteCommand(btn.cmd)}
-                      className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-emerald-400 hover:border-emerald-500 hover:bg-slate-800 transition active:scale-95 cursor-pointer font-mono"
+                      className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-emerald-400 hover:border-slate-700 hover:bg-slate-800 transition active:scale-95 cursor-pointer font-mono"
                     >
                       {btn.label}
                     </button>
@@ -929,7 +887,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             </div>
 
             {/* Terminal Output Stream */}
-            <div className="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs overflow-y-auto space-y-2 select-text shadow-inner">
+            <div className="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-4 font-mono text-xs overflow-y-auto space-y-2 select-text">
               {terminalLogs.map((log) => {
                 let colorClass = 'text-slate-300';
                 if (log.type === 'input') colorClass = 'text-emerald-400 font-bold';
@@ -947,7 +905,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                 );
               })}
               {isExecuting && (
-                <div className="text-cyan-400 flex items-center gap-2 animate-pulse">
+                <div className="text-cyan-400 flex items-center gap-2">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                   <span>Astyria wykonuje operację w jądrze aplikacji...</span>
                 </div>
@@ -956,8 +914,8 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             </div>
 
             {/* Command Prompt Input */}
-            <div className="mt-3 bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center gap-2 shadow-lg">
-              <span className="text-emerald-400 font-bold text-xs pl-2 whitespace-nowrap">
+            <div className="mt-3 bg-slate-900 border border-slate-800 rounded-lg p-2 flex items-center gap-2">
+              <span className="text-emerald-400 font-medium text-xs pl-2 whitespace-nowrap">
                 astyria@svl-app-forge:~/apps$
               </span>
               <input
@@ -972,7 +930,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
               <button
                 onClick={() => handleExecuteCommand()}
                 disabled={isExecuting || !terminalInput.trim()}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-slate-950 font-bold rounded text-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-800 disabled:opacity-40 text-slate-950 font-medium rounded text-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5"
               >
                 <span>Wykonaj</span>
                 <Send className="w-3 h-3" />
@@ -990,7 +948,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                   <span className="text-xs text-slate-400">Podgląd Aplikacji:</span>
                   <select
                     value={selectedAppId}
@@ -998,7 +956,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                       setSelectedAppId(e.target.value);
                       setPreviewIframeKey(Date.now());
                     }}
-                    className="bg-slate-950 border border-slate-800 text-xs text-emerald-300 font-bold rounded px-2.5 py-1 focus:outline-none focus:border-emerald-500"
+                    className="bg-slate-950 border border-slate-800 text-xs text-emerald-300 font-medium rounded px-2.5 py-1 focus:outline-none focus:border-slate-700"
                   >
                     {apps.map((a) => (
                       <option key={a.id} value={a.id}>
@@ -1050,7 +1008,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                   href={`/api/apps/preview/${selectedAppId}/`}
                   target="_blank"
                   rel="noreferrer"
-                  className="p-1.5 bg-slate-950 border border-slate-800 hover:border-cyan-500 text-cyan-400 rounded transition flex items-center gap-1 text-[11px]"
+                  className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-cyan-400 rounded transition flex items-center gap-1 text-[11px]"
                   title="Otwórz podgląd w nowym oknie"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -1091,7 +1049,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
             <div className="w-full md:w-64 bg-slate-900 border-r border-slate-800 p-3 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  <span className="text-xs font-medium text-slate-300">
                     Pliki Projektu
                   </span>
                   <select
@@ -1139,7 +1097,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
               <div className="bg-slate-900/90 border-b border-slate-800 px-4 py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FileCode className="w-4 h-4 text-emerald-400" />
-                  <span className="text-xs font-bold text-slate-200">{activeFileName}</span>
+                  <span className="text-xs font-medium text-slate-200">{activeFileName}</span>
                   <span className="text-[10px] text-slate-500">
                     (apps/{selectedAppId}/{activeFileName})
                   </span>
@@ -1149,22 +1107,23 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                   <button
                     onClick={handleSaveCode}
                     disabled={isSavingFile}
-                    className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-slate-950 font-bold rounded text-xs transition active:scale-95 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-800 disabled:opacity-50 text-slate-950 font-medium rounded text-xs transition active:scale-95 cursor-pointer"
                   >
                     {isSavingFile ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                     ) : saveSuccess ? (
                       <Check className="w-3.5 h-3.5 text-slate-950" />
                     ) : null}
-                    <span>{saveSuccess ? 'Zapisano!' : 'Zapisz Plik'}</span>
+                    <span>{saveSuccess ? 'Zapisano!' : 'Zapisz plik'}</span>
                   </button>
                 </div>
               </div>
 
               <textarea
+                aria-label="Kod aplikacji"
                 value={fileContent}
                 onChange={(e) => setFileContent(e.target.value)}
-                className="flex-1 w-full bg-slate-950 p-4 font-mono text-xs text-slate-200 focus:outline-none resize-none leading-relaxed border-0 selection:bg-emerald-500/30"
+                className="flex-1 w-full bg-slate-950 p-4 font-mono text-xs text-slate-200 focus:outline-none resize-none leading-relaxed border-0 selection:bg-slate-800"
                 spellCheck={false}
               />
             </div>
@@ -1174,15 +1133,15 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
 
       {/* MODAL: CREATE NEW APP */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-emerald-500/50 rounded-xl p-6 max-w-md w-full shadow-2xl">
+        <WorkspaceDialog title="Nowa aplikacja" onClose={()=>setShowCreateModal(false)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-lg p-6 max-w-md w-full">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <div className="p-1.5 rounded bg-slate-800 text-emerald-400 border border-slate-700">
                   <Plus className="w-4 h-4" />
                 </div>
-                <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                  Kreator Nowej Aplikacji
+                <h2 className="text-sm font-medium text-slate-100">
+                  Nowa aplikacja
                 </h2>
               </div>
               <button
@@ -1202,7 +1161,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                   placeholder="np. quantum-dashboard, retro-game"
                   value={newAppId}
                   onChange={(e) => setNewAppId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-slate-700 font-mono"
                 />
               </div>
 
@@ -1213,7 +1172,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                   placeholder="np. Kwantowy Panel Telemetrii"
                   value={newAppName}
                   onChange={(e) => setNewAppName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-slate-700"
                 />
               </div>
 
@@ -1222,7 +1181,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                 <select
                   value={newAppType}
                   onChange={(e) => setNewAppType(e.target.value as any)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-slate-700 font-mono"
                 >
                   <option value="html5-web">HTML5 Web & Canvas Visualizer</option>
                   <option value="cyber-game">Grywalna Gra Zręcznościowa 2D Canvas</option>
@@ -1240,7 +1199,7 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                   placeholder="Krótki opis przeznaczenia aplikacji..."
                   value={newAppDesc}
                   onChange={(e) => setNewAppDesc(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-slate-700"
                 />
               </div>
 
@@ -1255,31 +1214,18 @@ export const AppsStudioView: React.FC<AppsStudioViewProps> = ({
                 <button
                   type="submit"
                   disabled={isCreatingApp || !newAppId.trim()}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-slate-950 font-bold rounded-lg transition active:scale-95 cursor-pointer flex items-center gap-2"
+                  className="px-5 py-2 bg-slate-800 hover:bg-slate-800 disabled:opacity-50 text-slate-950 font-medium rounded-lg transition active:scale-95 cursor-pointer flex items-center gap-2"
                 >
                   {isCreatingApp && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Utwórz Aplikację</span>
+                  <span>Utwórz</span>
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </WorkspaceDialog>
       )}
 
-      {/* Footer Status Bar */}
-      <div className="bg-slate-900/60 border-t border-slate-800 px-4 py-2 flex items-center justify-between text-[10px] text-slate-500">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            STATUS: FABRYKA AKTYWNA (RING-0)
-          </span>
-          <span>SILNIK: NODE.JS / PYTHON / HTML5</span>
-          <span className="hidden sm:inline">KATALOG: /apps/</span>
-        </div>
-        <div className="flex items-center gap-2 italic text-emerald-400">
-          Misja Astyria: Wdrożenie Karty Aplikacji i Terminala
-        </div>
-      </div>
+      <footer className="module-meta border-t border-slate-700 px-4 py-2">{appsError?'API niezweryfikowane':loading?'Odczyt…':`${apps.length} aplikacji · /apps/`}</footer>
     </div>
   );
 };

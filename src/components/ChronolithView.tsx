@@ -40,13 +40,13 @@ export const ChronolithView: React.FC<ChronolithViewProps> = ({ dataStore, onUpd
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-125px)] bg-slate-950 font-mono text-xs">
+    <div className="module-view flex flex-col min-h-0 flex-1 bg-slate-950 text-xs">
       {/* Top Banner */}
       <div className="bg-slate-900 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <History className="w-4 h-4 text-amber-400" />
           <div>
-            <span className="font-bold text-slate-100">Chronolith Engine & Oś Czasu</span>
+            <span className="font-medium text-slate-100">Wydania</span>
             <span className="text-slate-500 ml-2 text-[11px]">
               {dataStore.update_history.length} wydań odnotowanych w pamięci trwałej
             </span>
@@ -55,15 +55,15 @@ export const ChronolithView: React.FC<ChronolithViewProps> = ({ dataStore, onUpd
 
         <button
           onClick={() => setIsAdding(!isAdding)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold transition cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-800 text-slate-950 font-medium transition cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>{isAdding ? 'Anuluj' : 'Wypuść nową wersję'}</span>
+          <span>{isAdding ? 'Anuluj' : 'Nowe wydanie'}</span>
         </button>
       </div>
 
       {successMsg && (
-        <div className="bg-emerald-950/60 border-b border-emerald-800/50 text-emerald-300 px-4 py-1.5 flex items-center gap-2 text-[11px]">
+        <div className="bg-slate-900 border-b border-slate-700 text-emerald-300 px-4 py-1.5 flex items-center gap-2 text-[11px]">
           <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
           <span>Nowa wersja została pomyślnie zarejestrowana w osi czasu Chronolitu i zaktualizowana w monolicie!</span>
         </div>
@@ -73,7 +73,7 @@ export const ChronolithView: React.FC<ChronolithViewProps> = ({ dataStore, onUpd
       {isAdding && (
         <form onSubmit={handleCreateRelease} className="p-4 bg-slate-900 border-b border-slate-800 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="font-semibold text-slate-200">Rejestracja nowej cezury w Chronolicie</span>
+            <span className="font-semibold text-slate-200">Nowe wydanie</span>
             <span className="text-[11px] text-slate-400">Autoryzowane przez: {OPERATOR_NAME}</span>
           </div>
 
@@ -85,7 +85,7 @@ export const ChronolithView: React.FC<ChronolithViewProps> = ({ dataStore, onUpd
                 placeholder="np. 6.3.0-ProductionEngine"
                 value={newVersion}
                 onChange={(e) => setNewVersion(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-slate-700"
                 required
               />
             </div>
@@ -96,7 +96,7 @@ export const ChronolithView: React.FC<ChronolithViewProps> = ({ dataStore, onUpd
                 placeholder="np. Pełna integracja środowiska wykonawczego ze stacją roboczą operatora."
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-slate-700"
                 required
               />
             </div>
@@ -112,7 +112,7 @@ export const ChronolithView: React.FC<ChronolithViewProps> = ({ dataStore, onUpd
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-1.5 rounded bg-slate-800 hover:bg-slate-800 text-slate-950 font-medium flex items-center gap-1.5 cursor-pointer"
             >
               <GitCommit className="w-3.5 h-3.5" />
               <span>Zatwierdź wydanie</span>
@@ -159,8 +159,8 @@ export const ChronolithView: React.FC<ChronolithViewProps> = ({ dataStore, onUpd
                         {record.wersja}
                       </span>
                       {isLatest && (
-                        <span className="text-[10px] text-amber-400 bg-amber-950/40 border border-amber-900/40 px-2 py-0.5 rounded font-semibold">
-                          BIEŻĄCA WERSJA JĄDRA
+                        <span className="text-[10px] text-amber-400 bg-slate-900 border border-slate-700 px-2 py-0.5 rounded font-semibold">
+                          Bieżąca
                         </span>
                       )}
                     </div>
@@ -186,11 +186,11 @@ export const ChronolithView: React.FC<ChronolithViewProps> = ({ dataStore, onUpd
             <Clock className="w-3.5 h-3.5" />
             <span>Doktryna Chronolitu:</span>
           </div>
-          <p className="text-[11px] leading-relaxed">
+          <details className="module-help"><summary>Informacje</summary><p className="text-[11px] leading-relaxed">
             "Struktura i czas stanowią teraz jedność. Czekamy na Twoje instrukcje, Operatorze." Każdy stan jądra jest
             odwzorowywany w niezmienniku DATA_STORE. Kolejne cezury czasowe stają się częścią kodu monolitu, tworząc
             autonomiczne środowisko pamięciowe bezstratne na restarty sesji.
-          </p>
+          </p></details>
         </div>
       </div>
     </div>

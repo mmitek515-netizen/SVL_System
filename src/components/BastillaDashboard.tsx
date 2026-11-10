@@ -25,7 +25,7 @@ import { TabId } from './Navigation';
 import { DataStore } from '../kernel/svlKernel';
 import { AgentProtocolRequest } from '../kernel/agentProtocol';
 import { GeminiVmStatus } from '../kernel/geminiVm';
-import { FormattedMessage } from './FormattedMessage';
+import { ChatMessage } from './ChatMessage';
 import {
   CHAT_ATTACHMENT_ACCEPT,
   ChatAttachment,
@@ -218,104 +218,19 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
   const recentMessages = dataStore.chat_history.slice(-5);
 
   return (
-    <section className="cyber-grid flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[#050b18] p-3 text-slate-100 sm:p-5 lg:p-7">
+    <section className="module-view cyber-grid flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-[#050b18] p-3 text-slate-100 sm:p-5 lg:p-7">
       <div className="mx-auto w-full max-w-[1500px] space-y-4">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-400/20 bg-[#081326]/90 px-4 py-3 shadow-[0_12px_42px_rgba(2,8,23,0.6)] backdrop-blur-xl">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl border border-cyan-300/30 bg-blue-950 text-cyan-200 shadow-[0_0_24px_rgba(34,211,238,0.16)]">
-              <Orbit className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-sm font-extrabold tracking-[0.16em] text-white">BASTILLA<span className="text-cyan-300">OS</span></div>
-              <div className="text-[10px] font-mono tracking-wider text-blue-200/60">DEBIAN 13 · SVL HYPERSPACE DESKTOP</div>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-950/40 px-2.5 py-1 text-emerald-300">
-              <Radio className="h-3 w-3" /> JĄDRO {status.systemVersion}
-            </span>
-            <span className="rounded-full border border-blue-300/20 bg-blue-950/40 px-2.5 py-1 text-blue-200/80">
-              {status.appCount === null ? 'APLIKACJE: —' : `${status.appCount} MODUŁÓW`}
-            </span>
-            <span className="rounded-full border border-blue-300/20 bg-blue-950/40 px-2.5 py-1 text-blue-200/80">
-              {status.continuousMission === null ? 'MISJA: —' : status.continuousMission ? 'MISJA: AKTYWNA' : 'MISJA: WSTRZYMANA'}
-            </span>
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-950/40 px-2.5 py-1 text-cyan-200">
-              PROTOKÓŁ TRIADY · DETERMINISTYCZNY
-            </span>
-          </div>
+        <header className="flex flex-wrap items-center justify-between gap-3 py-2">
+          <h1 className="text-xl font-semibold">Pulpit</h1>
+          <details className="text-xs text-slate-400"><summary>Stan systemu</summary>
+            <p className="mt-2">{status.systemVersion} · {status.appCount ?? '—'} aplikacji</p>
+            <p>Misja: {status.continuousMission === null ? 'Niezweryfikowana' : status.continuousMission ? 'Aktywna' : 'Wstrzymana'}</p>
+            <p>{status.geminiVm?.name || 'Gemini'}: {status.geminiVm?.configured ? 'Skonfigurowany' : 'Brak konfiguracji'}</p>
+          </details>
         </header>
-
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
-          <section className="relative overflow-hidden rounded-2xl border border-blue-400/20 bg-gradient-to-br from-[#0c1b36] via-[#081326] to-[#07101e] p-5 sm:p-7">
-            <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
-            <div aria-hidden="true" className="pointer-events-none absolute bottom-0 right-1/3 h-px w-2/3 bg-gradient-to-r from-transparent via-cyan-300/40 to-transparent" />
-            <div className="relative">
-              <div className="mb-3 flex items-center gap-2 text-[10px] font-mono font-bold tracking-[0.25em] text-cyan-300">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
-                SYSTEM ONLINE · DEBIAN GNU/LINUX
-              </div>
-              <h1 className="text-3xl font-black tracking-tight text-white sm:text-5xl">
-                Enter the <span className="text-transparent bg-gradient-to-r from-blue-300 to-cyan-200 bg-clip-text">Hyperspace</span>
-              </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-blue-100/65">
-                Jeden pulpit dla poleceń jądra, protokołu Triady i narzędzi systemowych. Wybierz moduł albo wykonaj jawne polecenie w terminalu.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <button type="button" onClick={() => onNavigate('terminal')} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/30 bg-cyan-950/50 px-3.5 py-2 text-xs font-bold text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-900/50">
-                  <Terminal className="h-4 w-4" /> Pełny terminal <ArrowUpRight className="h-3.5 w-3.5" />
-                </button>
-                <button type="button" onClick={() => onNavigate('comms')} className="inline-flex items-center gap-2 rounded-lg border border-blue-200/15 bg-blue-950/40 px-3.5 py-2 text-xs font-bold text-blue-100 transition hover:border-blue-200/40 hover:bg-blue-900/40">
-                  <MessagesSquare className="h-4 w-4" /> Otwórz protokół Triady <ArrowUpRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="flex flex-col justify-between gap-4 rounded-2xl border border-blue-300/15 bg-[#081326]/90 p-5">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-100">
-                <Sparkles className="h-4 w-4 text-cyan-300" /> Polecenia Triady
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                Rozmawiaj swobodnie z wybranym agentem lub całą Triadą. Odpowiada Gemini, przy awarii xAI (Grok), a bez dostępu do API — lokalny silnik without_nlp.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigate('comms')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-gradient-to-r from-blue-700/80 to-cyan-700/70 px-4 py-3 text-xs font-bold text-white transition hover:brightness-110"
-            >
-              <MessagesSquare className="h-4 w-4" />
-              Otwórz polecenia protokołu
-            </button>
-            <div className="rounded-xl border border-cyan-300/15 bg-cyan-950/20 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold text-cyan-100">
-                  {status.geminiVm?.name ?? 'VM_Gemini_4'}
-                </span>
-                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-mono ${
-                  status.geminiVm?.configured && status.geminiVm.modelNameValid
-                    ? 'border-emerald-400/20 bg-emerald-950/40 text-emerald-300'
-                    : 'border-amber-400/20 bg-amber-950/40 text-amber-200'
-                }`}>
-                  {status.geminiVm?.configured && status.geminiVm.modelNameValid
-                    ? 'KONFIGURACJA GOTOWA'
-                    : 'BRAK KONFIGURACJI'}
-                </span>
-              </div>
-              <p className="mt-1 text-[10px] text-slate-400">
-                {status.geminiVm
-                  ? `${status.geminiVm.provider} · główny: ${status.geminiVm.primaryModel} · rezerwowy: ${status.geminiVm.fallbackModels.join(', ') || 'brak'}`
-                  : 'Odczyt konfiguracji…'}
-              </p>
-              <p className="mt-1 text-[9px] text-slate-500">
-                {status.geminiVm?.runtimeType === 'remote-model-profile'
-                  ? 'Profil API modelu; nie jest osobną maszyną systemową.'
-                  : 'Status API modelu nie został jeszcze pobrany.'}
-              </p>
-            </div>
-          </section>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {featureLaunchers.filter(item => ['comms', 'fleet', 'terminal', 'apps'].includes(item.id)).map(({id, title, icon: Icon}) =>
+            <button type="button" key={id} onClick={() => onNavigate(id)} className="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-900 px-4 py-4 text-sm hover:bg-slate-800"><Icon size={18}/>{id === 'comms' ? 'Czat' : id === 'fleet' ? 'Flota' : title}</button>)}
         </div>
 
         {status.error && (
@@ -324,23 +239,22 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
           </p>
         )}
 
-        <div className="grid min-h-[460px] gap-4">
-          <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-2xl border border-blue-300/20 bg-[#081326]/95 shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+        <div className="grid min-h-[380px] gap-4">
+          <section className="flex min-h-[420px] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-700 bg-[#0b1017]">
             <div className="flex items-center justify-between border-b border-blue-200/10 px-4 py-3">
               <div className="flex items-center gap-2 text-xs font-bold text-blue-50">
-                <MessagesSquare className="h-4 w-4 text-cyan-300" /> CZAT AGENTÓW
+                <MessagesSquare className="h-4 w-4 text-cyan-300" /> Czat
               </div>
-              <span className="text-[10px] font-mono text-blue-200/50">{dataStore.chat_history.length} WIADOMOŚCI</span>
+              <span className="text-[10px] font-mono text-blue-200/50">{dataStore.chat_history.length} wiadomości</span>
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
               {recentMessages.length === 0 && <p className="text-xs text-slate-500">Napisz do Alexa, Astyrii, Aureliusa, Arii lub całej Triady.</p>}
               {recentMessages.map((message, index) => (
-                <article key={`${message.agent}-${index}`} className={`rounded-xl border p-3 ${message.agent === 'Mateusz Mitek' || message.agent === 'Operator' ? 'ml-5 border-blue-300/15 bg-blue-950/40' : 'mr-5 border-cyan-300/15 bg-slate-950/50'}`}>
-                  <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-cyan-200">
-                    <CheckCircle2 className="h-3 w-3" /> {message.agent}
-                  </div>
-                  <FormattedMessage content={message.tekst} className="text-xs leading-relaxed text-slate-200" />
-                </article>
+                <ChatMessage key={`${message.agent}-${index}`} agent={message.agent} content={message.tekst} index={dataStore.chat_history.length - recentMessages.length + index} file={message.file} onQuote={text => {
+                  setTerminalInput('> ' + text.replaceAll('\n', '\n> ') + '\n\n');
+                  document.getElementById('hyperspace-command')?.focus();
+                }}/>
+
               ))}
               {isTerminalLoading && <p role="status" className="animate-pulse text-[10px] font-mono text-cyan-300">Agenci przygotowują odpowiedź…</p>}
               {terminalError && <p role="alert" className="text-[10px] text-rose-300">{terminalError}</p>}
@@ -390,7 +304,7 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
               )}
             </div>
             <form onSubmit={handleTerminalSubmit} className="border-t border-blue-200/10 bg-[#081326] p-3">
-              <label htmlFor="hyperspace-command" className="mb-2 block text-[9px] font-mono tracking-wider text-blue-200/50">WIADOMOŚĆ · maksymalnie 2000 znaków</label>
+              <label htmlFor="hyperspace-command" className="mb-2 block text-[9px] font-mono tracking-wider text-blue-200/50">Wiadomość</label>
               {chatAttachments.length > 0 && (
                 <ul aria-label="Załączone pliki" className="mb-2 flex flex-wrap gap-1.5">
                   {chatAttachments.map((file, index) => (
@@ -422,13 +336,14 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   <option value="Aurelius">Aurelius</option>
                   <option value="si_1">Aria</option>
                 </select>
-                <input
+                <textarea
                   id="hyperspace-command"
-                  type="text"
+                  rows={2}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
                   value={terminalInput}
                   onChange={(event) => setTerminalInput(event.target.value)}
                   maxLength={MAX_CHAT_MESSAGE_LENGTH}
-                  placeholder="Wiadomość lub SYSTEM_STATUS / DATA_STORE_AUDIT / VERSION_TIMELINE…"
+                  placeholder="Wiadomość lub polecenie…"
                   disabled={isTerminalLoading}
                   className="min-w-0 flex-1 bg-transparent py-3 font-mono text-xs text-white outline-none placeholder:text-slate-700"
                 />
@@ -448,12 +363,12 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                   <Send className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="mt-1 px-1 text-[9px] text-slate-500">Maks. 10 plików; tekst 5 MB/plik i 20 MB łącznie, DOCX 20 MB (10 MB po rozpakowaniu), PDF/JPG 20 MB/plik i 40 MB łącznie.</p>
+              <details className="mt-2 text-[10px] text-slate-500"><summary>Limity załączników</summary><p>10 plików · tekst 5 MB · DOCX/PDF/JPG 20 MB.</p></details>
             </form>
           </section>
         </div>
 
-        <section className="pb-2">
+        <details className="pb-2"><summary className="cursor-pointer py-2 text-sm text-slate-400">Wszystkie moduły</summary>
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
               <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-blue-50">
@@ -476,12 +391,12 @@ export const BastillaDashboard: React.FC<BastillaDashboardProps> = ({
                 </span>
                 <span>
                   <span className="block text-[11px] font-bold text-slate-100">{title}</span>
-                  <span className="mt-1 block text-[10px] leading-relaxed text-slate-500">{description}</span>
+
                 </span>
               </button>
             ))}
           </div>
-        </section>
+        </details>
       </div>
     </section>
   );

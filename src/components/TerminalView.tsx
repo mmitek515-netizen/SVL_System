@@ -1,3 +1,4 @@
+import { ModuleHeader } from './WorkspaceUI';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { DataStore, OPERATOR_NAME, SYS_VERSION, generateTextReport, generatePythonMonolith } from '../kernel/svlKernel';
 import { SYSTEM_AGENTS } from '../kernel/agents';
@@ -216,18 +217,18 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
     <div className="bg-slate-900 border-t border-slate-800 flex flex-col shrink-0">
       {/* Live Mirror Detection Banner */}
       {mirrorCheck.isMirrored && (
-        <div className="bg-amber-950/80 border-b border-amber-800/60 px-3 py-1.5 flex items-center justify-between gap-2 text-[11px] text-amber-300">
+        <div className="bg-slate-900 border-b border-slate-700 px-3 py-1.5 flex items-center justify-between gap-2 text-[11px] text-amber-300">
           <div className="flex items-center gap-1.5 truncate">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
-            <span className="font-bold">Wykryto lustrzany wpis:</span>
+            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+            <span className="font-medium">Wykryto lustrzany wpis:</span>
             <span className="font-mono bg-slate-950/70 px-1.5 py-0.5 rounded text-amber-200 truncate">{cmdText}</span>
             <span>➔</span>
-            <span className="font-mono bg-emerald-950 px-1.5 py-0.5 rounded text-emerald-300 font-bold">{mirrorCheck.suggested}</span>
+            <span className="font-mono bg-slate-900 px-1.5 py-0.5 rounded text-emerald-300 font-medium">{mirrorCheck.suggested}</span>
           </div>
           <button
             type="button"
             onClick={handleManualInvert}
-            className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-[10px] cursor-pointer shrink-0 transition shadow flex items-center gap-1"
+            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-800 text-slate-950 font-medium text-[10px] cursor-pointer shrink-0 transition flex items-center gap-1"
           >
             <ArrowLeftRight className="w-3 h-3" />
             <span>Odwróć teraz</span>
@@ -244,7 +245,7 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
         className="p-1.5 sm:p-2.5 flex items-center gap-1.5 sm:gap-2 w-full overflow-hidden"
         style={{ direction: 'ltr', textAlign: 'left' }}
       >
-        <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0 text-[10px] sm:text-xs">
+        <span className="text-emerald-400 font-medium flex items-center gap-1 shrink-0 text-[10px] sm:text-xs">
           <span className="hidden sm:inline">root@svl-kernel:~#</span>
           <span className="sm:hidden">root:~#</span>
         </span>
@@ -252,6 +253,7 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
         {/* Input - maksymalnie poszerzony i elastyczny z zachowaniem wewnętrznych przycisków */}
         <div className="flex-1 min-w-0 relative flex items-center">
           <input
+            aria-label="Polecenie terminala"
             ref={inputRef}
             type="text"
             value={cmdText}
@@ -273,7 +275,7 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
               caretColor: '#34d399',
               userSelect: 'text'
             }}
-            className="w-full bg-slate-950/90 border border-slate-800 rounded px-2.5 pr-14 sm:pr-20 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono text-sm sm:text-xs h-9 sm:h-10 touch-manipulation text-left"
+            className="w-full bg-slate-950/90 border border-slate-800 rounded px-2.5 pr-14 sm:pr-20 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-slate-700 font-mono text-sm sm:text-xs h-9 sm:h-10 touch-manipulation text-left"
           />
 
           <div className="absolute right-1 sm:right-1.5 flex items-center gap-1">
@@ -323,7 +325,7 @@ const TerminalInputBar = React.memo(({ onExecute, history, antiMirrorActive, onT
         {/* Przycisk Wykonaj przesunięty w prawo, zoptymalizowany dla małych i dużych ekranów */}
         <button
           type="submit"
-          className="ml-auto h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-black transition flex items-center justify-center gap-1 cursor-pointer shrink-0 touch-manipulation text-xs shadow-md shadow-emerald-950/40"
+          className="ml-auto h-9 sm:h-10 px-2.5 sm:px-3.5 rounded-lg bg-slate-800 hover:bg-emerald-400 active:bg-slate-800 text-slate-950 font-medium transition flex items-center justify-center gap-1 cursor-pointer shrink-0 touch-manipulation text-xs"
           title="Wykonaj polecenie w terminalu"
         >
           <span className="hidden sm:inline">Wykonaj</span>
@@ -642,16 +644,21 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
     <div
       dir="ltr"
       style={{ direction: 'ltr', textAlign: 'left' }}
-      className="flex-1 min-h-0 min-w-0 flex flex-col bg-slate-950 font-mono text-xs relative overflow-hidden"
+      className="module-view flex-1 min-h-0 min-w-0 flex flex-col bg-slate-950 text-xs relative overflow-hidden"
     >
+      <ModuleHeader title="Terminal" meta="Konsola jądra">
+        <button type="button" onClick={()=>void handleExecute('help')}>Pomoc</button>
+        <button type="button" onClick={()=>void handleExecute('clear')}>Wyczyść</button>
+      </ModuleHeader>
+      <details className="terminal-shortcuts border-b border-slate-700 p-3"><summary>Skróty poleceń</summary>
       {/* Quick Action Ribbon */}
       <div className="bg-slate-900 border-b border-slate-800 px-2 sm:px-3 py-1.5 flex items-center justify-between gap-1.5 overflow-x-auto scrollbar-none text-[11px] shrink-0 w-full">
         <div className="flex items-center gap-1 sm:gap-1.5 text-slate-400 shrink-0">
           <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
           <span className="hidden xs:inline">Polecenia:</span>
           {dataStore.config?.root_privileges && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/80 border border-red-800/60 text-red-300 font-bold text-[10px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/80 border border-red-800/60 text-red-300 font-medium text-[10px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
               <span className="hidden sm:inline">
                 {dataStore.config?.operator_privilege_level ? 'ROOT: RING-−1 ABSOLUTE (OPERATOR)' : 'ROOT: RING-0 (TRIADA)'}
               </span>
@@ -697,12 +704,12 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
                 style={{ direction: 'ltr', textAlign: 'left', unicodeBidi: 'normal' }}
                 onChange={(e) => setNewCmdText(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddCmd()}
-                className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500 w-24 text-left"
+                className="bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-[10px] text-slate-200 focus:outline-none focus:border-slate-700 w-24 text-left"
                 autoFocus
               />
               <button
                 onClick={handleAddCmd}
-                className="px-1.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-[10px] cursor-pointer"
+                className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-800 text-slate-950 font-medium text-[10px] cursor-pointer"
               >
                 Dodaj
               </button>
@@ -716,7 +723,7 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
           ) : (
             <button
               onClick={() => setIsAddingCmd(true)}
-              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-900/40 text-[10px] cursor-pointer flex items-center gap-1 shrink-0"
+              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-700 text-[10px] cursor-pointer flex items-center gap-1 shrink-0"
               title="Dodaj własne szybkie polecenie"
             >
               +
@@ -733,11 +740,12 @@ Integralność tagów:  ZGODNA (<<<DATA_STORE_START>>> ... <<<DATA_STORE_END>>>)
         </div>
       </div>
 
+      </details>
       {/* Terminal Output Area */}
       <div
         dir="ltr"
         style={{ direction: 'ltr', textAlign: 'left' }}
-        className="flex-1 min-h-0 min-w-0 overflow-y-auto p-4 space-y-2 select-text"
+        className="terminal-output flex-1 min-h-0 min-w-0 overflow-y-auto p-4 space-y-2 select-text"
       >
         {logs.slice(-150).map((entry) => (
           <LogEntryItem key={entry.id} entry={entry} />

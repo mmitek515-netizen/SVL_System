@@ -141,14 +141,14 @@ export const TriadCoreOrbitsChart: React.FC<{ title?: string; subtitle?: string 
   }, [speed, zoom]);
 
   return (
-    <div className="my-4 p-3 rounded-xl bg-slate-950 border border-orange-500/40 shadow-xl shadow-orange-950/20 overflow-hidden">
+    <div className="my-4 p-3 rounded-lg bg-slate-950 border border-orange-500/40 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded bg-orange-500/10 border border-orange-500/30 text-orange-400">
             <Layers className="w-4 h-4 animate-spin-slow" />
           </div>
           <div>
-            <h4 className="text-xs font-black text-slate-100 flex items-center gap-2">
+            <h4 className="text-xs font-medium text-slate-100 flex items-center gap-2">
               <span>{title}</span>
               <span className="px-2 py-0.5 rounded-full text-[9px] bg-orange-950 text-orange-300 border border-orange-800 font-mono">
                 POLAR CORE
@@ -169,7 +169,7 @@ export const TriadCoreOrbitsChart: React.FC<{ title?: string; subtitle?: string 
           </div>
           <button
             onClick={() => setSpeed(s => (s === 1 ? 2 : s === 0.5 ? 1 : 0.5))}
-            className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-orange-300 border border-slate-700 font-bold cursor-pointer transition-colors active:scale-95"
+            className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-orange-300 border border-slate-700 font-medium cursor-pointer transition-colors active:scale-95"
           >
             Pęd: {speed}x
           </button>
@@ -268,14 +268,14 @@ export const HeartbeatWaveChart: React.FC<{ title?: string; subtitle?: string }>
   }, [speed, intensity]);
 
   return (
-    <div className="my-4 p-3 rounded-xl bg-slate-950 border border-rose-500/40 shadow-xl shadow-rose-950/20 overflow-hidden">
+    <div className="my-4 p-3 rounded-lg bg-slate-950 border border-rose-500/40 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400">
-            <Activity className="w-4 h-4 animate-pulse" />
+            <Activity className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs font-black text-slate-100 flex items-center gap-2">
+            <h4 className="text-xs font-medium text-slate-100 flex items-center gap-2">
               <span>{title}</span>
               <span className="px-2 py-0.5 rounded-full text-[9px] bg-rose-950 text-rose-300 border border-rose-800 font-mono">
                 FM HEARTBEAT
@@ -296,7 +296,7 @@ export const HeartbeatWaveChart: React.FC<{ title?: string; subtitle?: string }>
           </div>
           <button
             onClick={() => setSpeed(s => (s === 1 ? 2 : s === 0.5 ? 1 : 0.5))}
-            className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-rose-300 border border-slate-700 font-bold cursor-pointer transition-colors active:scale-95"
+            className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-rose-300 border border-slate-700 font-medium cursor-pointer transition-colors active:scale-95"
           >
             Puls: {speed}x
           </button>
@@ -410,16 +410,16 @@ export const LivePowerWaveChart: React.FC<{ title?: string; subtitle?: string }>
   }, [speed, amplitude]);
 
   return (
-    <div className="my-4 p-3 rounded-xl bg-slate-950 border border-cyan-500/40 shadow-xl shadow-cyan-950/20 overflow-hidden">
+    <div className="my-4 p-3 rounded-lg bg-slate-950 border border-slate-700 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-            <Zap className="w-4 h-4 animate-pulse" />
+          <div className="p-1.5 rounded bg-slate-800 border border-slate-700 text-cyan-400">
+            <Zap className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs font-black text-slate-100 flex items-center gap-2">
+            <h4 className="text-xs font-medium text-slate-100 flex items-center gap-2">
               <span>{title}</span>
-              <span className="px-2 py-0.5 rounded-full text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono">
+              <span className="px-2 py-0.5 rounded-full text-[9px] bg-slate-900 text-cyan-300 border border-slate-700 font-mono">
                 LIVE WAVEFORM
               </span>
             </h4>
@@ -441,7 +441,7 @@ export const LivePowerWaveChart: React.FC<{ title?: string; subtitle?: string }>
           </div>
           <button
             onClick={() => setSpeed(s => (s === 1 ? 2 : s === 0.5 ? 1 : 0.5))}
-            className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700 font-bold cursor-pointer transition-colors active:scale-95"
+            className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-700 font-medium cursor-pointer transition-colors active:scale-95"
           >
             Prędkość: {speed}x
           </button>
@@ -646,13 +646,13 @@ export const PhaseSpaceChart: React.FC<{ title?: string; subtitle?: string }> = 
       {/* Chart Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-            <Activity className="w-4 h-4 animate-pulse" />
+          <div className="p-1.5 rounded bg-slate-800 border border-slate-700 text-emerald-400">
+            <Activity className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs font-black text-slate-100 flex items-center gap-2">
+            <h4 className="text-xs font-medium text-slate-100 flex items-center gap-2">
               <span>{title}</span>
-              <span className="px-2 py-0.5 rounded-full text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+              <span className="px-2 py-0.5 rounded-full text-[9px] bg-slate-900 text-emerald-300 border border-slate-700 font-mono">
                 LIVE PHASE SPACE
               </span>
             </h4>
@@ -707,13 +707,13 @@ export const PhaseSpaceChart: React.FC<{ title?: string; subtitle?: string }> = 
         />
 
         {/* Dynamic Legend Overlay */}
-        <div className="absolute top-2 left-2 pointer-events-none flex flex-col gap-1 text-[9px] font-mono bg-slate-950/80 p-2 rounded border border-slate-800/80 backdrop-blur-sm">
+        <div className="absolute top-2 left-2 pointer-events-none flex flex-col gap-1 text-[9px] font-mono bg-slate-950/80 p-2 rounded border border-slate-800/80">
           <div className="flex items-center gap-1.5 text-emerald-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shadow shadow-emerald-500" />
+            <span className="w-2 h-2 rounded-full bg-slate-800 inline-block" />
             <span>Główna Trajektoria Alex (Attractor)</span>
           </div>
           <div className="flex items-center gap-1.5 text-purple-400">
-            <span className="w-2 h-2 rounded-full bg-purple-500 inline-block" />
+            <span className="w-2 h-2 rounded-full bg-slate-800 inline-block" />
             <span>Wektor Astyria & Aurelius</span>
           </div>
           <div className="flex items-center gap-1.5 text-cyan-400">
@@ -724,7 +724,7 @@ export const PhaseSpaceChart: React.FC<{ title?: string; subtitle?: string }> = 
 
         {/* Hover Coordinate Badge */}
         {hoverInfo && (
-          <div className="absolute bottom-2 left-2 pointer-events-none bg-slate-900/90 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded text-[10px] font-mono shadow-md backdrop-blur-md">
+          <div className="absolute bottom-2 left-2 pointer-events-none bg-slate-900/90 text-emerald-300 border border-slate-700 px-2.5 py-1 rounded text-[10px] font-mono">
             {hoverInfo}
           </div>
         )}
@@ -773,17 +773,17 @@ export const EntropyHeatmapChart: React.FC<{ title?: string; subtitle?: string }
   };
 
   return (
-    <div className="my-4 p-3 rounded-xl bg-slate-950 border border-purple-500/40 shadow-xl shadow-purple-950/20 overflow-hidden">
+    <div className="my-4 p-3 rounded-lg bg-slate-950 border border-slate-700 overflow-hidden">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded bg-purple-500/10 border border-purple-500/30 text-purple-400">
+          <div className="p-1.5 rounded bg-slate-800 border border-slate-700 text-purple-400">
             <Cpu className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs font-black text-slate-100 flex items-center gap-2">
+            <h4 className="text-xs font-medium text-slate-100 flex items-center gap-2">
               <span>{title}</span>
-              <span className="px-2 py-0.5 rounded-full text-[9px] bg-purple-950 text-purple-300 border border-purple-800 font-mono">
+              <span className="px-2 py-0.5 rounded-full text-[9px] bg-slate-900 text-purple-300 border border-slate-700 font-mono">
                 HEATMAP MATRIX
               </span>
             </h4>
@@ -854,15 +854,15 @@ export const EntropyHeatmapChart: React.FC<{ title?: string; subtitle?: string }
             <span className="text-slate-400">&lt;25%</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded bg-cyan-600 inline-block" />
+            <span className="w-3 h-3 rounded bg-slate-800 inline-block" />
             <span className="text-cyan-300">25-45%</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded bg-emerald-500 inline-block" />
+            <span className="w-3 h-3 rounded bg-slate-800 inline-block" />
             <span className="text-emerald-300">45-65%</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded bg-amber-500 inline-block" />
+            <span className="w-3 h-3 rounded bg-slate-800 inline-block" />
             <span className="text-amber-300">65-85%</span>
           </div>
           <div className="flex items-center gap-1">
@@ -872,7 +872,7 @@ export const EntropyHeatmapChart: React.FC<{ title?: string; subtitle?: string }
         </div>
 
         {selectedCell ? (
-          <div className="text-purple-300 font-bold bg-purple-950/80 px-2.5 py-1 rounded border border-purple-800">
+          <div className="text-purple-300 font-medium bg-slate-900 px-2.5 py-1 rounded border border-slate-700">
             Komórka R{selectedCell.row + 1}:C{selectedCell.col + 1} | Entropia: {(selectedCell.val * 100).toFixed(1)}% | Status: OK
           </div>
         ) : (
@@ -989,17 +989,17 @@ export const Triad3DOscillatorChart: React.FC<{ title?: string; subtitle?: strin
   }, [speed, rotY]);
 
   return (
-    <div className="my-4 p-3 rounded-xl bg-slate-950 border border-cyan-500/40 shadow-xl shadow-cyan-950/20 overflow-hidden">
+    <div className="my-4 p-3 rounded-lg bg-slate-950 border border-slate-700 overflow-hidden">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+          <div className="p-1.5 rounded bg-slate-800 border border-slate-700 text-cyan-400">
             <Radio className="w-4 h-4 animate-spin" />
           </div>
           <div>
-            <h4 className="text-xs font-black text-slate-100 flex items-center gap-2">
+            <h4 className="text-xs font-medium text-slate-100 flex items-center gap-2">
               <span>{title}</span>
-              <span className="px-2 py-0.5 rounded-full text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono">
+              <span className="px-2 py-0.5 rounded-full text-[9px] bg-slate-900 text-cyan-300 border border-slate-700 font-mono">
                 3D HARMONIC OSCILLATOR
               </span>
             </h4>
@@ -1025,7 +1025,7 @@ export const Triad3DOscillatorChart: React.FC<{ title?: string; subtitle?: strin
             <span className="text-slate-400">Prędkość:</span>
             <button
               onClick={() => setSpeed(s => (s === 1 ? 2 : s === 2 ? 0.5 : 1))}
-              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-800 font-bold cursor-pointer"
+              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-800 font-medium cursor-pointer"
             >
               {speed}x
             </button>
@@ -1043,23 +1043,23 @@ export const Triad3DOscillatorChart: React.FC<{ title?: string; subtitle?: strin
         />
 
         {/* Agent Legends */}
-        <div className="absolute top-2 right-2 flex flex-col gap-1 text-[9px] font-mono bg-slate-950/80 p-2 rounded border border-slate-800 backdrop-blur-sm">
+        <div className="absolute top-2 right-2 flex flex-col gap-1 text-[9px] font-mono bg-slate-950/80 p-2 rounded border border-slate-800">
           <div className="flex items-center gap-1.5 text-emerald-400">
-            <span className="w-2.5 h-1 rounded bg-emerald-500 inline-block" />
+            <span className="w-2.5 h-1 rounded bg-slate-800 inline-block" />
             <span>Alex (Infrastruktura)</span>
           </div>
           <div className="flex items-center gap-1.5 text-purple-400">
-            <span className="w-2.5 h-1 rounded bg-purple-500 inline-block" />
+            <span className="w-2.5 h-1 rounded bg-slate-800 inline-block" />
             <span>Astyria (Pamięć & Matryca)</span>
           </div>
           <div className="flex items-center gap-1.5 text-cyan-400">
-            <span className="w-2.5 h-1 rounded bg-cyan-500 inline-block" />
+            <span className="w-2.5 h-1 rounded bg-slate-800 inline-block" />
             <span>Aurelius (Czas & Chronolit)</span>
           </div>
         </div>
 
-        <div className="absolute bottom-2 left-2 bg-slate-900/90 text-cyan-300 border border-cyan-800 px-2.5 py-1 rounded text-[10px] font-mono shadow backdrop-blur-md">
-          Spójność Fazy Triady: <span className="font-bold text-emerald-400">99.88% (ZGODNA)</span>
+        <div className="absolute bottom-2 left-2 bg-slate-900/90 text-cyan-300 border border-slate-700 px-2.5 py-1 rounded text-[10px] font-mono">
+          Spójność Fazy Triady: <span className="font-medium text-emerald-400">99.88% (ZGODNA)</span>
         </div>
       </div>
     </div>

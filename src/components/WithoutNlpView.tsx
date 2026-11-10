@@ -15,7 +15,8 @@ import {
   Layers,
 } from 'lucide-react';
 import { withoutNlpEngine, WithoutNlpAnalysis, WithoutNlpMetrics } from '../lib/withoutNlpEngine';
-import { FormattedMessage } from './FormattedMessage';
+import { ChatMessage } from './ChatMessage';
+import { Disclosure, ModuleHeader } from './WorkspaceUI';
 import type { AgentProtocolReply, AgentProtocolRequest } from '../kernel/agentProtocol';
 
 interface WithoutNlpViewProps {
@@ -329,134 +330,61 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
   }, [isRunning, omega, amplitude, waveMode, harmonicsCount]);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] bg-slate-950 text-slate-100 font-mono p-4 gap-4 overflow-y-auto">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-emerald-950/80 via-slate-900 to-indigo-950/80 border border-emerald-500/40 rounded-xl p-5 shadow-2xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-emerald-500/15 border border-emerald-400/40 rounded-xl text-emerald-400">
-              <Sigma className="w-8 h-8" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-lg md:text-xl font-bold tracking-tight text-white">
-                  PROJEKT: without_nlp — Deterministyczny Silnik Harmoniczny Eulera & Fouriera
-                </h1>
-                <span className="px-2.5 py-0.5 text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-full font-bold">
-                  0 NLP • DETERMINISTYCZNE OBLICZENIA
-                </span>
-                <span className="px-2 py-0.5 text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 rounded-full">
-                  {metrics.version}
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 mt-1">
-                Ten moduł koduje wejściowy sygnał i oblicza jego parametry fazowe oraz widmo Fouriera. Nie interpretuje poleceń w języku naturalnym.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setAudioEnabled(!audioEnabled)}
-              className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition ${
-                audioEnabled
-                  ? 'bg-emerald-600 text-slate-950 shadow-lg shadow-emerald-950/50'
-                  : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-              }`}
-            >
-              {audioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-              <span>{audioEnabled ? 'Dźwięk Fouriera: ON' : 'Włącz Dźwięk Fouriera'}</span>
-            </button>
-            <button
-              onClick={() => setIsRunning(!isRunning)}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
-            >
-              {isRunning ? <Pause className="w-4 h-4 text-amber-400" /> : <Play className="w-4 h-4 text-emerald-400" />}
-              <span>{isRunning ? 'Pauza' : 'Wznów'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Formula Callout Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-          <div className="bg-slate-950/90 border border-emerald-500/30 rounded-lg p-3">
-            <div className="text-[10px] text-emerald-400 font-bold uppercase mb-1">
-              1. Równanie Eulera (Płaszczyzna Zespolona)
-            </div>
-            <FormattedMessage content="$$e^{i\omega t} = \cos(\omega t) + i\sin(\omega t)$$" className="text-xs" />
-          </div>
-          <div className="bg-slate-950/90 border border-cyan-500/30 rounded-lg p-3">
-            <div className="text-[10px] text-cyan-400 font-bold uppercase mb-1">
-              2. Kąt Fazowy Wektora
-            </div>
-            <FormattedMessage
-              content="$$\theta(\omega) = \text{arctg}\left[\frac{\sin\theta(\omega)}{\cos\theta(\omega)}\right]$$"
-              className="text-xs"
-            />
-          </div>
-          <div className="bg-slate-950/90 border border-indigo-500/30 rounded-lg p-3">
-            <div className="text-[10px] text-indigo-400 font-bold uppercase mb-1">
-              3. Tryb przetwarzania
-            </div>
-            <div className="text-xs text-emerald-300 font-bold mt-1">
-              Bez NLP: AKTYWNY W TYM SILNIKU
-            </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              Błąd rekonstrukcji Fouriera: <strong className="text-white">0.0000%</strong> | Czas: <strong className="text-emerald-400">{metrics.avgLatencyMs} ms</strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="module-view flex flex-col min-h-0 flex-1 bg-slate-950 text-slate-100 p-4 gap-4 overflow-y-auto">
+      <ModuleHeader title="Analiza sygnału" meta="Lokalne obliczenia">
+        <button type="button" aria-pressed={audioEnabled} onClick={()=>setAudioEnabled(!audioEnabled)}>{audioEnabled?<Volume2 size={14}/>:<VolumeX size={14}/>}Dźwięk</button>
+        <button type="button" aria-pressed={!isRunning} onClick={()=>setIsRunning(!isRunning)}>{isRunning?<Pause size={14}/>:<Play size={14}/>} {isRunning?'Pauza':'Wznów'}</button>
+      </ModuleHeader>
+      <Disclosure title="Model obliczeń"><p>eⁱωᵗ = cos(ωt) + i sin(ωt) · θ = atan2(Im, Re)</p><p>Sygnał jest kodowany i analizowany lokalnie. Parametry sterują wykresem i syntezą dźwięku.</p></Disclosure>
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1">
         {/* Left 7 Cols: Interactive Complex Phasor Canvas & Direct Signal Synthesizer */}
         <div className="lg:col-span-7 flex flex-col gap-4">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-3 flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs font-bold text-slate-200 uppercase">
-                  Wizualizator Fazora Zespolonego & Epicykli Fouriera (Na Żywo)
+                <span className="text-xs font-medium text-slate-200">
+                  Fazor i przebieg
                 </span>
               </div>
-              <span className="text-[10px] text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800/60">
-                60 FPS • DETERMINISTIC
+              <span className="text-[10px] text-emerald-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-700">
+                Podgląd obliczeń
               </span>
             </div>
 
             <div className="relative w-full h-64 md:h-72 rounded-lg overflow-hidden border border-slate-800 bg-slate-950">
-              <canvas ref={canvasRef} className="w-full h-full block" />
+              <canvas ref={canvasRef} aria-label="Wykres fazora i przebiegu sterowany parametrami" className="w-full h-full block" />
             </div>
 
             {/* Live Telemetry Strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
               <div>
                 <span className="text-slate-400 block text-[10px]">CZAS t:</span>
-                <span className="font-bold text-emerald-400">{liveTime.toFixed(2)} s</span>
+                <span className="font-medium text-emerald-400">{liveTime.toFixed(2)} s</span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px]">KĄT ωt (mod 2π):</span>
-                <span className="font-bold text-cyan-400">{liveAngle.toFixed(2)} rad</span>
+                <span className="font-medium text-cyan-400">{liveAngle.toFixed(2)} rad</span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px]">RZUT Re = cos(ωt):</span>
-                <span className="font-bold text-emerald-300">{liveCos.toFixed(3)}</span>
+                <span className="font-medium text-emerald-300">{liveCos.toFixed(3)}</span>
               </div>
               <div>
                 <span className="text-slate-400 block text-[10px]">RZUT Im = sin(ωt):</span>
-                <span className="font-bold text-indigo-400">{liveSin.toFixed(3)}</span>
+                <span className="font-medium text-indigo-400">{liveSin.toFixed(3)}</span>
               </div>
             </div>
           </div>
 
           {/* Direct Signal Encoder & Triad Response Box */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-400" />
-                <h2 className="text-xs font-bold text-slate-200 uppercase">
-                  Deterministyczny Koder Widmowy Fouriera (Zero-NLP)
+                <h2 className="text-xs font-medium text-slate-200">
+                  Analizuj sygnał
                 </h2>
               </div>
               <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
@@ -468,6 +396,7 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
                       setAgentReply(null);
                       setProtocolError(null);
                     }}
+                    aria-pressed={selectedAgent === agent}
                     disabled={isSendingProtocol}
                     className={`px-2.5 py-1 text-xs rounded transition cursor-pointer ${
                       selectedAgent === agent
@@ -492,13 +421,14 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
                 }}
                 maxLength={256}
                 onKeyDown={(e) => e.key === 'Enter' && void sendSignalToAgent()}
-                placeholder="Wpisz dane sygnału do analizy (nie polecenie tekstowe)..."
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                aria-label="Sygnał do analizy"
+                placeholder="Sygnał…"
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-slate-700"
               />
               <button
                 onClick={() => void sendSignalToAgent()}
                 disabled={isSendingProtocol}
-                className="bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs px-4 py-2 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition disabled:cursor-wait disabled:opacity-60"
+                className="bg-slate-800 hover:bg-slate-800 text-slate-950 text-xs px-4 py-2 rounded-lg font-medium flex items-center gap-1.5 cursor-pointer transition disabled:cursor-wait disabled:opacity-60"
               >
                 <Zap className="w-4 h-4" />
                 <span>{isSendingProtocol ? `Wysyłanie do ${selectedAgent}...` : `Wyślij do ${selectedAgent}`}</span>
@@ -508,11 +438,11 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
             <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-slate-400">
-                  Składowe widmowe Fouriera ($c_k$):{' '}
+                  Współczynniki:{' '}
                   <strong className="text-cyan-400">{analysis.encodedCoefficients.length} fazorów</strong>
                 </span>
-                <span className="text-emerald-400 font-bold">
-                  Energia Parsevala E = {analysis.spectralEnergy} | Błąd: 0.0000%
+                <span className="text-emerald-400 font-medium">
+                  Energia Parsevala E = {analysis.spectralEnergy}
                 </span>
               </div>
               <div className="text-[11px] text-slate-300 bg-slate-900 p-2 rounded border border-slate-800 overflow-x-auto">
@@ -533,8 +463,8 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
             )}
 
             {agentReply && (
-              <div className="bg-slate-950 border border-cyan-500/30 rounded-xl p-3.5 space-y-2">
-                <div className="flex items-center gap-2 text-xs text-cyan-300 font-bold border-b border-slate-800 pb-1.5">
+              <div className="bg-slate-950 border border-slate-700 rounded-lg p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-xs text-cyan-300 font-medium border-b border-slate-800 pb-1.5">
                   <Bot className="w-4 h-4" />
                   <span>Odpowiedź agenta {agentReply.agent}</span>
                 </div>
@@ -545,12 +475,12 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
             )}
 
             {synthesizedReply && (
-              <div className="bg-slate-950 border border-emerald-500/30 rounded-xl p-3.5 space-y-2">
-                <div className="flex items-center gap-2 text-xs text-emerald-400 font-bold border-b border-slate-800 pb-1.5">
+              <div className="bg-slate-950 border border-slate-700 rounded-lg p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium border-b border-slate-800 pb-1.5">
                   <Bot className="w-4 h-4" />
-                  <span>Raport obliczeń lokalnych (without_nlp):</span>
+                  <span>Wynik lokalny</span>
                 </div>
-                <FormattedMessage content={synthesizedReply} className="text-xs" />
+                <ChatMessage agent="Silnik lokalny" content={synthesizedReply} index={0}/>
               </div>
             )}
           </div>
@@ -558,21 +488,21 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
 
         {/* Right 5 Cols: Oscillator Parameters & Harmonics Table */}
         <div className="lg:col-span-5 flex flex-col gap-4">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
                 <Cpu className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-xs font-bold text-slate-200 uppercase">
-                  Parametry Oscylatora Harmonicznego
+                <h3 className="text-xs font-medium text-slate-200">
+                  Parametry
                 </h3>
               </div>
-              <span className="text-[10px] text-cyan-400 font-bold">RING-0 DIRECT</span>
+              <span className="text-[10px] text-cyan-400 font-medium">Sterowanie</span>
             </div>
 
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-400">Częstotliwość kątowa ω:</span>
-                <span className="text-emerald-400 font-bold">{omega.toFixed(1)} rad/s</span>
+                <span className="text-emerald-400 font-medium">{omega.toFixed(1)} rad/s</span>
               </div>
               <input
                 type="range"
@@ -588,7 +518,7 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-400">Amplituda wektora A:</span>
-                <span className="text-cyan-400 font-bold">{amplitude.toFixed(2)}</span>
+                <span className="text-cyan-400 font-medium">{amplitude.toFixed(2)}</span>
               </div>
               <input
                 type="range"
@@ -606,7 +536,7 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
               <select
                 value={waveMode}
                 onChange={(e) => setWaveMode(e.target.value as any)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-slate-700"
               >
                 <option value="pure">Pojedynczy Fazor (Czysty Cosinus Eulera)</option>
                 <option value="square">Szereg Fouriera: Fala Prostokątna (Epicykle)</option>
@@ -619,7 +549,7 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <span className="text-slate-400">Liczba harmonicznych N (Epicykli):</span>
-                  <span className="text-indigo-400 font-bold">{harmonicsCount}</span>
+                  <span className="text-indigo-400 font-medium">{harmonicsCount}</span>
                 </div>
                 <input
                   type="range"
@@ -635,12 +565,12 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
           </div>
 
           {/* Spectral Harmonics Breakdown */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 flex-1">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-4 flex flex-col gap-3 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-xs font-bold text-slate-200 uppercase">
-                  Widmo Składowych Harmonicznych (c_n · e^(i·n·ω·t))
+                <h3 className="text-xs font-medium text-slate-200">
+                  Widmo harmonicznych
                 </h3>
               </div>
               <span className="text-[10px] text-slate-400">{analysis.harmonics.length} głównych składowych</span>
@@ -653,7 +583,7 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
                   className="bg-slate-950 border border-slate-800/80 rounded-lg p-2.5 flex items-center justify-between text-[11px]"
                 >
                   <div>
-                    <span className="text-emerald-400 font-bold">n = {h.n}</span>
+                    <span className="text-emerald-400 font-medium">n = {h.n}</span>
                     <span className="text-slate-400 ml-2">ω_{h.n} = {h.frequency} rad/s</span>
                   </div>
                   <div className="text-right font-mono">
@@ -664,14 +594,14 @@ export const WithoutNlpView: React.FC<WithoutNlpViewProps> = ({ onSendProtocol }
               ))}
             </div>
 
-            <div className="mt-auto bg-slate-950 border border-emerald-500/30 rounded-lg p-3 text-[11px] text-slate-300 space-y-1">
-              <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+            <div className="mt-auto bg-slate-950 border border-slate-700 rounded-lg p-3 text-[11px] text-slate-300 space-y-1">
+              <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
                 <ShieldCheck className="w-4 h-4" />
                 <span>Potwierdzenie Wdrożenia without_nlp:</span>
               </div>
-              <p className="text-slate-400 leading-relaxed">
+              <details className="module-help"><summary>Informacje</summary><p className="text-slate-400 leading-relaxed">
                 Moduł wykonuje deterministyczne obliczenia sygnału, bez interpretacji tekstowych poleceń. Komunikacja agentów korzysta z jawnych typowanych akcji.
-              </p>
+              </p></details>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, Database, RefreshCw, Satellite, ShieldCheck, Search, Plus, Map, List, LocateFixed } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, AlertTriangle, Database, RefreshCw, Satellite, ShieldCheck, Search, Plus, Map, List, LocateFixed, Download, ArrowUpDown } from 'lucide-react';
 
 type Kind = 'ship' | 'station' | 'outpost' | 'relay';
 type Position = { coordinateFrame: string; xAu: number; yAu: number; zAu: number };
@@ -30,7 +30,7 @@ export const FleetView: React.FC = () => {
   const [kind, setKind] = useState<Kind>('ship');
   const [missionPlan, setMissionPlan] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [view, setView] = useState<View>('map');
+  const [view, setView] = useState<View>('list');
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
   const [zoom, setZoom] = useState(1);
@@ -38,12 +38,22 @@ export const FleetView: React.FC = () => {
   const [offsetY, setOffsetY] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
 
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [kindFilter, setKindFilter] = useState<Kind | 'all'>('all');
+  const [sort, setSort] = useState<'name' | 'recent'>('name');
+  const requestRef = useRef<AbortController | null>(null);
+  const sessionRef = useRef(0);
+  const freshPosition = (v: Vessel) => v.position !== null && v.connection === 'recent-authenticated-report';
+
   const refresh = useCallback(async () => {
     if (!token) { setSnapshot(null); return; }
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
     setLoading(true);
     try {
       const response = await fetch('/api/fleet', {
-        cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
+        signal: controller.signal, cache: 'no-store', headers: { Authorization: 'Bearer ' + token },
       });
       const data: unknown = await response.json();
       if (!response.ok || !data || typeof data !== 'object' ||
@@ -53,30 +63,34 @@ export const FleetView: React.FC = () => {
           ? (data as { error: string }).error : 'Nie można pobrać rejestru';
         throw new Error(msg + ' (HTTP ' + response.status + ')');
       }
+      if (controller.signal.aborted) return;
       setSnapshot(data as Snapshot);
       setError(null);
     } catch (e) {
+      if (controller.signal.aborted) return;
       setSnapshot(null);
       setError(e instanceof Error ? e.message : 'Brak połączenia z Flotą');
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
     if (!token) return;
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 15000);
+    const interval = autoRefresh ? window.setInterval(() => void refresh(), 15000) : null;
     window.addEventListener('focus', refresh);
     return () => {
-      window.clearInterval(interval);
+      if (interval) window.clearInterval(interval);
+      requestRef.current?.abort();
       window.removeEventListener('focus', refresh);
     };
-  }, [refresh, token]);
+  }, [refresh, token, autoRefresh]);
 
   const register = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!token || !name.trim() || saving) return;
+    const session = sessionRef.current;
     setSaving(true);
     try {
       const response = await fetch('/api/fleet/ships', {
@@ -86,36 +100,35 @@ export const FleetView: React.FC = () => {
       });
       const data = await response.json();
       if (!response.ok || data.success !== true) throw new Error(data.error || 'Błąd zapisu');
+      if (session !== sessionRef.current) return;
       setName(''); setMissionPlan(''); setFormOpen(false); setSelectedId(data.id);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Nie udało się zarejestrować obiektu');
+      if (session === sessionRef.current) setError(e instanceof Error ? e.message : 'Nie udało się zarejestrować obiektu');
     } finally { setSaving(false); }
   };
 
-  const fresh = useMemo(() => snapshot?.vessels.filter(v => v.position !== null &&
-    v.connection === 'recent-authenticated-report') ?? [], [snapshot]);
+  const fresh = useMemo(() => snapshot?.vessels.filter(freshPosition) ?? [], [snapshot]);
   const visible = useMemo(() => (snapshot?.vessels ?? []).filter(v =>
-    (filter === 'all' || (filter === 'fresh' ? v.position !== null : v.position === null)) &&
-    (v.name.toLocaleLowerCase('pl-PL').includes(search.toLocaleLowerCase('pl-PL')) ||
-      v.id.toLowerCase().includes(search.toLowerCase()))
-  ), [snapshot, filter, search]);
-  const visiblePoints = visible.filter(v => v.position !== null);
+    (filter === 'all' || (filter === 'fresh' ? freshPosition(v) : !freshPosition(v))) &&
+    (kindFilter === 'all' || v.kind === kindFilter) &&
+    (v.name + ' ' + v.id + ' ' + v.missionPlan).toLocaleLowerCase('pl-PL').includes(search.toLocaleLowerCase('pl-PL'))
+  ).sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name, 'pl') :
+    (Date.parse(b.lastObservationAt || '') || 0) - (Date.parse(a.lastObservationAt || '') || 0)), [snapshot, filter, search, kindFilter, sort]);
+  const visiblePoints = visible.filter(v => freshPosition(v) && v.position?.coordinateFrame === 'heliocentric_ecliptic_J2000');
   const scale = Math.max(1, ...fresh.map(v => Math.max(Math.abs(v.position!.xAu),
     Math.abs(v.position!.yAu)))) * 1.2;
-  const x = (n: number) => 250 + offsetX + (n / scale) * 195 * zoom;
-  const y = (n: number) => 250 + offsetY - (n / scale) * 195 * zoom;
   const selected = snapshot?.vessels.find(v => v.id === selectedId) ?? null;
 
-  return <section className="min-h-0 flex-1 overflow-y-auto bg-slate-950 p-3 text-slate-100 md:p-6">
+  return <section className="module-view min-h-0 flex-1 overflow-y-auto bg-slate-950 p-3 text-slate-100 md:p-6">
     <div className="mx-auto max-w-6xl space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-cyan-100">
-            <Satellite className="h-5 w-5" /> Flota i statki kosmiczne
+            <Satellite className="h-5 w-5" /> Flota
           </h1>
           <p className="mt-1 text-xs text-slate-400">
-            Interaktywne dane rejestrowe · bez wymyślonych statków, pozycji, tras ani ETA
+            Rejestr · telemetria · misje
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -125,22 +138,22 @@ export const FleetView: React.FC = () => {
           </button>
           <button type="button" onClick={() => setFormOpen(v => !v)} disabled={!token}
             className="flex items-center gap-2 rounded bg-cyan-800 px-3 py-2 text-xs font-bold disabled:opacity-40">
-            <Plus className="h-4 w-4" /> Projekt obiektu
+            <Plus className="h-4 w-4" /> Dodaj obiekt
           </button>
         </div>
       </header>
 
       <div className="rounded-xl border border-slate-700 bg-slate-900/90 p-3">
-        <form onSubmit={e => { e.preventDefault(); setToken(tokenInput.trim()); setSnapshot(null); setSelectedId(null); }}
+        <form onSubmit={e => { e.preventDefault(); requestRef.current?.abort(); sessionRef.current++; setSnapshot(null); setSelectedId(null); setError(null); if (tokenInput.trim() === token) void refresh(); else setToken(tokenInput.trim()); }}
           className="flex flex-wrap items-end gap-2">
           <label className="min-w-0 flex-1 text-xs text-slate-300">
-            Autoryzacja operatora (token pozostaje tylko w pamięci tej karty)
+            Token operatora
             <input type="password" autoComplete="off" value={tokenInput} onChange={e => setTokenInput(e.target.value)}
-              placeholder="Token FLEET_ADMIN_TOKEN" className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 outline-none focus:border-cyan-400"/>
+              placeholder="Token dostępu" className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2 outline-none focus:border-cyan-400"/>
           </label>
           <button type="submit" disabled={!tokenInput.trim()}
             className="rounded border border-cyan-700 px-3 py-2 text-xs text-cyan-100 disabled:opacity-40">Połącz</button>
-          <button type="button" onClick={() => {setToken(''); setTokenInput(''); setSnapshot(null); setError(null);}}
+          <button type="button" onClick={() => {requestRef.current?.abort(); sessionRef.current++; setToken(''); setTokenInput(''); setSnapshot(null); setError(null); setSelectedId(null); setFormOpen(false); setLoading(false);}}
             className="rounded border border-slate-700 px-3 py-2 text-xs text-slate-300">Odłącz</button>
         </form>
         {error && <div role="alert" className="mt-2 flex items-center gap-2 text-xs text-rose-300">
@@ -148,12 +161,12 @@ export const FleetView: React.FC = () => {
         </div>}
         <p className="mt-2 text-[11px] text-slate-500">
           {snapshot ? 'API połączone · ostatni odczyt ' + fmtDate(snapshot.timestamp) :
-            'Brak potwierdzonego połączenia z API Floty.'}
+            'API offline / niezweryfikowane'}
         </p>
       </div>
 
       {formOpen && <form onSubmit={register} className="grid gap-3 rounded-xl border border-cyan-800 bg-slate-900 p-4 md:grid-cols-2">
-        <div className="md:col-span-2 text-sm font-semibold">Nowy projekt obiektu — nie oznacza istniejącego statku</div>
+        <div className="md:col-span-2 text-sm font-semibold">Nowy wpis w rejestrze</div>
         <label className="text-xs">Nazwa
           <input required maxLength={120} value={name} onChange={e => setName(e.target.value)}
             className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" />
@@ -168,12 +181,17 @@ export const FleetView: React.FC = () => {
           <textarea rows={2} maxLength={1000} value={missionPlan} onChange={e => setMissionPlan(e.target.value)}
             className="mt-1 w-full rounded border border-slate-700 bg-slate-950 p-2" />
         </label>
+        <button type="button" onClick={() => setFormOpen(false)} className="rounded border border-slate-700 px-4 py-2 text-xs">Anuluj</button>
         <button type="submit" disabled={!token || saving || !name.trim()}
           className="rounded bg-cyan-800 px-4 py-2 text-xs font-bold disabled:opacity-40">
           {saving ? 'Zapisuję…' : 'Zapisz do rejestru'}
         </button>
       </form>}
 
+      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)}/>Auto · 15 s</label>
+        <span className="ml-auto">Token tylko w pamięci karty</span>
+      </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           ['Zarejestrowane', snapshot?.vessels.length],
@@ -189,7 +207,7 @@ export const FleetView: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
         <div className="flex items-center gap-2 rounded border border-slate-700 bg-slate-950 px-2">
           <Search className="h-4 w-4 text-slate-500" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Szukaj statku / ID"
+          <input aria-label="Szukaj obiektu" value={search} onChange={e => setSearch(e.target.value)} placeholder="Szukaj obiektu…"
             className="min-w-0 bg-transparent py-2 text-xs outline-none" />
         </div>
         <div className="flex gap-1">
@@ -215,6 +233,17 @@ export const FleetView: React.FC = () => {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <select aria-label="Typ obiektu" value={kindFilter} onChange={e => setKindFilter(e.target.value as typeof kindFilter)} className="rounded border border-slate-700 bg-slate-900 p-2">
+          <option value="all">Wszystkie typy</option>{Object.entries(kindLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+        <ArrowUpDown size={14}/><select aria-label="Sortowanie" value={sort} onChange={e => setSort(e.target.value as typeof sort)} className="rounded border border-slate-700 bg-slate-900 p-2"><option value="name">Nazwa A–Z</option><option value="recent">Ostatni raport</option></select>
+        <span className="text-slate-400">{visible.length} wyników</span>
+        <button type="button" disabled={!snapshot} onClick={() => {
+          const url = URL.createObjectURL(new Blob([JSON.stringify({ timestamp: snapshot?.timestamp, vessels: visible }, null, 2)], {type:'application/json'}));
+          const link = document.createElement('a'); link.href = url; link.download = 'flota.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }} className="ml-auto flex items-center gap-2 rounded border border-slate-700 px-3 py-2"><Download size={14}/>Eksport</button>
+      </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(290px,1fr)]">
         <div className="rounded-xl border border-cyan-900 bg-[#081629] p-4">
           {view === 'map' ? <>
@@ -228,7 +257,7 @@ export const FleetView: React.FC = () => {
               </button>
             </div>
             <svg viewBox="0 0 500 500" className="mx-auto mt-2 w-full max-w-[560px]"
-              role="img" aria-label="Interaktywna mapa faktycznie zgłoszonych pozycji XY">
+              role="group" aria-label="Interaktywna mapa faktycznie zgłoszonych pozycji XY">
               <rect width="500" height="500" rx="12" fill="#071020"/>
               <g transform={'translate(' + (offsetX + 250) + ' ' + (offsetY + 250) + ') scale(' + zoom + ') translate(-250 -250)'}>
                 {[80, 160, 240].map(r => <circle key={r} cx="250" cy="250" r={r}
@@ -237,8 +266,8 @@ export const FleetView: React.FC = () => {
                 <circle cx="250" cy="250" r="7" fill="#facc15"/>
                 <text x="262" y="242" fill="#fde68a" fontSize="11">Słońce</text>
                 {visiblePoints.map(v => <g key={v.id} tabIndex={0} role="button"
-                  aria-label={'Wybierz ' + v.name}
-                  onKeyDown={e => {if (e.key === 'Enter' || e.key === ' ') setSelectedId(v.id);}}
+                  aria-label={'Wybierz ' + v.name} aria-pressed={selectedId === v.id}
+                  onKeyDown={e => {if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(v.id); }}}
                   onClick={() => setSelectedId(v.id)} style={{cursor:'pointer'}}>
                   <circle cx={250 + v.position!.xAu / scale * 195} cy={250 - v.position!.yAu / scale * 195}
                     r={selectedId === v.id ? 9 : 6} fill={selectedId === v.id ? '#facc15' : '#22d3ee'}
@@ -268,36 +297,37 @@ export const FleetView: React.FC = () => {
             </div>
             {snapshot && visiblePoints.length === 0 &&
               <p className="mt-3 rounded border border-amber-900 bg-amber-950/20 p-3 text-xs text-amber-200">
-                Brak świeżych raportów współrzędnych. Żadne pozycje statków nie są generowane.
+                Brak pozycji J2000.
               </p>}
           </> : <>
             <h2 className="mb-3 flex items-center gap-2 text-sm font-bold"><Database className="h-4 w-4"/> Rejestr obiektów</h2>
             <div className="space-y-2">
               {visible.map(v => <button key={v.id} type="button" onClick={() => setSelectedId(v.id)}
-                className={'flex w-full items-center justify-between gap-3 rounded border p-3 text-left text-xs ' +
+                aria-pressed={selectedId === v.id} className={'flex w-full items-center justify-between gap-3 rounded border p-3 text-left text-xs ' +
                   (selectedId === v.id ? 'border-cyan-500 bg-cyan-950/50' : 'border-slate-800 bg-slate-900')}>
                 <span><strong>{v.name}</strong><span className="ml-2 text-slate-400">{kindLabels[v.kind]}</span></span>
-                <span className={v.position ? 'text-cyan-300' : 'text-amber-300'}>
-                  {v.position ? 'Raport aktualny' : 'Niezweryfikowane'}
+                <span className={freshPosition(v) ? 'text-cyan-300' : 'text-amber-300'}>
+                  {freshPosition(v) ? 'Raport aktualny' : 'Niezweryfikowane'}
                 </span>
               </button>)}
-              {snapshot && visible.length === 0 && <p className="p-3 text-xs text-slate-500">Brak obiektów odpowiadających filtrowi.</p>}
+              {visible.length === 0 && <div className="chat-empty"><Satellite size={26}/><p>{!snapshot ? 'Połącz rejestr floty.' : snapshot.vessels.length === 0 ? 'Rejestr jest pusty.' : 'Brak wyników.'}</p>
+                {snapshot && <button type="button" onClick={() => { if (snapshot.vessels.length === 0) setFormOpen(true); else { setSearch(''); setFilter('all'); setKindFilter('all'); } }}>{snapshot.vessels.length === 0 ? 'Dodaj obiekt' : 'Wyczyść filtry'}</button>}</div>}
             </div>
           </>}
         </div>
 
         <aside className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
           <h2 className="flex items-center gap-2 text-sm font-bold text-cyan-100">
-            <ShieldCheck className="h-4 w-4"/> Szczegóły wybranego obiektu
+            <ShieldCheck className="h-4 w-4"/> Szczegóły
           </h2>
-          {!selected ? <p className="text-xs text-slate-400">Wybierz obiekt na mapie lub z listy. Brak danych nie oznacza awarii statku.</p> :
+          {!selected ? <p className="text-xs text-slate-400">Wybierz obiekt.</p> :
             <div className="space-y-3 text-xs">
               <div><strong className="text-base text-white">{selected.name}</strong>
                 <p className="text-slate-500">{selected.id}</p></div>
               <div className="rounded border border-slate-800 p-2">Typ: {kindLabels[selected.kind]}</div>
               <div className="rounded border border-slate-800 p-2">
-                Status: <strong className={selected.position ? 'text-cyan-300' : 'text-amber-300'}>
-                  {selected.position ? 'Świeży raport z autoryzowanego źródła' : 'Brak zweryfikowanej pozycji'}
+                Status: <strong className={freshPosition(selected) ? 'text-cyan-300' : 'text-amber-300'}>
+                  {freshPosition(selected) ? 'Raport aktualny' : 'Niezweryfikowane'}
                 </strong>
               </div>
               <div className="rounded border border-slate-800 p-2">
@@ -309,22 +339,19 @@ export const FleetView: React.FC = () => {
                 Y: {selected.position ? finite(selected.position.yAu) : '—'}<br/>
                 Z: {selected.position ? finite(selected.position.zAu) : '—'}
               </div>
-              <div className="rounded border border-slate-800 p-2">
+              <details className="rounded border border-slate-800 p-2"><summary>Źródło raportu</summary>
                 Ostatnia obserwacja: {fmtDate(selected.lastObservationAt)}<br/>
                 Źródło: {selected.provenance?.sourceId || 'Brak'}<br/>
                 Raport: {selected.provenance?.sourceRef || 'Brak'}<br/>
                 IP raportowany: {selected.provenance?.reportedWanIp || 'Brak'}
-              </div>
+              </details>
               <p className="text-[11px] text-amber-300">
-                Autoryzowany raport nie jest niezależnym dowodem fizycznego istnienia pojazdu.
+                Źródło: raport uwierzytelniony.
               </p>
             </div>}
         </aside>
       </div>
-      <p className="text-[11px] text-slate-500">
-        Bez wpisanych źródeł rejestr zaczyna się pusty. Mapa jest interaktywna, ale nie wykonuje symulacji
-        lotów, trajektorii ani pozycji planet. Przechowywanie danych wymaga trwałego wolumenu backendu.
-      </p>
+
     </div>
   </section>;
 };

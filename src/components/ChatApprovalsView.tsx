@@ -1,3 +1,4 @@
+import { ModuleHeader } from './WorkspaceUI';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Check, ClipboardCheck, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import { DataStore, normalizeDataStore } from '../kernel/svlKernel';
@@ -19,6 +20,7 @@ interface ChatApprovalsViewProps {
 }
 
 export const ChatApprovalsView: React.FC<ChatApprovalsViewProps> = ({ onUpdateDataStore, onChatChange }) => {
+  const [query, setQuery] = useState('');
   const [approvals, setApprovals] = useState<ChatApproval[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -77,50 +79,30 @@ export const ChatApprovalsView: React.FC<ChatApprovalsViewProps> = ({ onUpdateDa
   };
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-slate-950 text-slate-100 cyber-grid">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 bg-slate-950/85 px-5 py-5 sm:px-8">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-amber-400/25 bg-amber-950/40 text-amber-300">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold text-slate-100">Akceptacje czatu</h1>
-            <p className="mt-1 text-xs text-slate-400">Propozycje wymagające Twojej decyzji · wygasają po 15 minutach</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => void loadApprovals()}
-          disabled={loading}
-          aria-label="Odśwież propozycje"
-          title="Odśwież propozycje"
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-700 px-3 text-xs font-medium text-slate-300 transition hover:border-cyan-500/50 hover:text-cyan-100 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Odśwież
-        </button>
-      </header>
+    <section className="module-view flex min-h-0 flex-1 flex-col overflow-y-auto bg-slate-950 text-slate-100 cyber-grid">
+      <ModuleHeader title="Akceptacje" meta="Propozycje · ważne 15 min"><button type="button" onClick={()=>void loadApprovals()} disabled={loading}><RefreshCw size={14}/>Odśwież</button></ModuleHeader>
 
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-5 sm:px-8">
         {error && <div role="alert" className="rounded-md border border-rose-500/30 bg-rose-950/30 px-4 py-3 text-sm text-rose-200">{error}</div>}
-        {notice && <div role="status" className="rounded-md border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">{notice}</div>}
+        {notice && <div role="status" className="rounded-md border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-emerald-200">{notice}</div>}
 
         {!loading && approvals.length === 0 && !error && (
           <div className="flex min-h-56 flex-col items-center justify-center border border-dashed border-slate-700/80 px-5 text-center">
             <ClipboardCheck className="h-8 w-8 text-slate-500" />
-            <h2 className="mt-3 text-sm font-semibold text-slate-200">Brak oczekujących propozycji</h2>
+            <h2 className="mt-3 text-sm font-semibold text-slate-200">Brak propozycji</h2>
             <p className="mt-1 text-xs text-slate-500">Gdy czat poprosi o zgodę, pojawi się tutaj podgląd operacji.</p>
           </div>
         )}
 
-        {approvals.map((approval) => (
-          <article key={approval.id} className="overflow-hidden rounded-md border border-amber-400/20 bg-slate-900/80">
+        <input aria-label="Szukaj propozycji" placeholder="Opis lub autor…" value={query} onChange={e=>setQuery(e.target.value)}/>
+        {approvals.filter(item=>(item.description+' '+item.agent).toLocaleLowerCase('pl').includes(query.toLocaleLowerCase('pl'))).map((approval) => (
+          <article key={approval.id} className="overflow-hidden rounded-md border border-slate-700 bg-slate-900/80">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-800 px-4 py-4 sm:px-5">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-100">{approval.description}</p>
                 <p className="mt-1 break-all font-mono text-[10px] text-slate-500">ID {approval.id}</p>
               </div>
-              <span className="shrink-0 rounded-sm border border-amber-300/20 bg-amber-950/40 px-2 py-1 text-[10px] font-medium text-amber-200">
+              <span className="shrink-0 rounded-sm border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] font-medium text-amber-200">
                 OCZEKUJE
               </span>
             </div>
@@ -151,10 +133,10 @@ export const ChatApprovalsView: React.FC<ChatApprovalsViewProps> = ({ onUpdateDa
                 type="button"
                 onClick={() => void decide(approval, 'approve')}
                 disabled={busyId !== null}
-                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-emerald-400/35 bg-emerald-950/35 px-3 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-900/50 disabled:opacity-50"
+                className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-emerald-100 transition hover:bg-slate-900 disabled:opacity-50"
               >
                 <Check className="h-4 w-4" />
-                {busyId === approval.id ? 'Przetwarzanie…' : 'Zatwierdź i wykonaj'}
+                {busyId === approval.id ? 'Przetwarzanie…' : 'Zatwierdź'}
               </button>
             </div>
           </article>

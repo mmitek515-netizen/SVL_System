@@ -12,7 +12,6 @@ import { AgentCommsView } from './components/AgentCommsView';
 import { ChatApprovalsView } from './components/ChatApprovalsView';
 import { MonolithView } from './components/MonolithView';
 import { DataStoreView } from './components/DataStoreView';
-import { ChronolithView } from './components/ChronolithView';
 import { DiagnosticsView } from './components/DiagnosticsView';
 import { ReportModal } from './components/ReportModal';
 import { TaskProcessMatrix } from './components/TaskProcessMatrix';
@@ -21,11 +20,11 @@ import { TemporalMatrix } from './components/TemporalMatrix';
 import { AstyriaMissionView } from './components/AstyriaMissionView';
 import { TriadVisualization } from './components/TriadVisualization';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { SystemHealthDock } from './components/SystemHealthDock';
 import { FileExplorer } from './components/FileExplorer';
 import { AppsStudioView } from './components/AppsStudioView';
 import { WithoutNlpView } from './components/WithoutNlpView';
 import { GitHubExportView } from './components/GitHubExportView';
+import { HyperComView } from './components/HyperComView';
 import { FleetView } from './components/FleetView';
 import { BastillaDashboard } from './components/BastillaDashboard';
 import {
@@ -494,26 +493,10 @@ export default function App() {
     return (
       <ErrorBoundary>
         <main className="hyperspace-screen relative isolate flex min-h-dvh w-full items-center justify-center overflow-hidden bg-[#030712] px-5 py-12 text-slate-100">
-          <div className="hyperspace-stars" aria-hidden="true" />
-          <div className="hyperspace-orbit" aria-hidden="true"><span /><i /></div>
-          <div className="relative z-10 mx-auto flex w-full max-w-3xl flex-col items-center text-center">
-            <div className="mb-8 flex items-center gap-3 rounded-full border border-cyan-300/20 bg-slate-950/60 px-4 py-2 text-[11px] font-medium uppercase tracking-[0.28em] text-cyan-100/75 shadow-[0_0_36px_rgba(34,211,238,0.08)]">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)]" />
-              Świeży punkt startowy <span className="text-slate-600">/</span> SVL System
-            </div>
-            <div className="mb-5 grid h-20 w-20 place-items-center rounded-[1.7rem] border border-cyan-200/20 bg-cyan-300/[0.07] text-3xl font-light text-cyan-100 shadow-[0_0_55px_rgba(34,211,238,0.17),inset_0_0_30px_rgba(34,211,238,0.08)]">B</div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.48em] text-cyan-200/65">Bastilla OS</p>
-            <h1 className="text-balance text-4xl font-semibold tracking-[-0.055em] sm:text-6xl">SVL_System</h1>
-            <p className="mt-5 max-w-xl text-pretty text-sm leading-7 text-slate-400 sm:text-base">Nowy start systemu. Wybierz wejście, aby otworzyć pulpit Bastilla i dostępne moduły SVL.</p>
-            <button type="button" onClick={enterHyperspace} className="group mt-10 inline-flex min-h-14 items-center gap-4 rounded-full border border-cyan-200/40 bg-cyan-300/[0.09] px-8 text-sm font-semibold tracking-[0.18em] text-cyan-50 shadow-[0_0_42px_rgba(34,211,238,0.13)] transition duration-300 hover:border-cyan-100/80 hover:bg-cyan-200/[0.16] hover:shadow-[0_0_64px_rgba(34,211,238,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-4 focus-visible:ring-offset-slate-950">
-              <span>ENTER HYPERSPACE</span><span aria-hidden="true" className="text-lg text-cyan-200 transition-transform group-hover:translate-x-1">→</span>
-            </button>
-            <div className="mt-12 grid w-full max-w-xl grid-cols-1 gap-3 text-left sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Interfejs</p><p className="mt-1 text-xs text-slate-200">Bastilla Dashboard</p></div>
-              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Jądro</p><p className="mt-1 text-xs text-slate-200">SVL Kernel UI</p></div>
-              <div className="rounded-2xl border border-white/[0.08] bg-slate-950/55 px-4 py-3"><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Tryb startu</p><p className="mt-1 text-xs text-emerald-300">Lokalna aplikacja</p></div>
-            </div>
-            <p className="mt-8 text-[10px] uppercase tracking-[0.22em] text-slate-600">Repozytorium aplikacji · main</p>
+          <div className="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-8">
+            <h1 className="text-2xl font-semibold">SVL_System</h1>
+            <p className="mt-2 text-sm text-slate-400">Bastilla OS</p>
+            <button type="button" onClick={enterHyperspace} className="mt-8 w-full rounded-md bg-cyan-800 px-5 py-3 text-sm hover:bg-cyan-700">Otwórz obszar roboczy →</button>
           </div>
         </main>
       </ErrorBoundary>
@@ -522,7 +505,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex min-h-dvh min-w-0 max-w-full flex-col overflow-x-hidden bg-[#050b18] font-sans text-slate-100 selection:bg-cyan-400/30 selection:text-cyan-100">
+      <div className="workspace-shell flex min-w-0 max-w-full flex-col bg-[#090d13] font-sans text-slate-100 selection:bg-cyan-400/30 selection:text-cyan-100">
         <Header
           dataStore={dataStore}
           onReset={handleResetToDefault}
@@ -618,11 +601,11 @@ export default function App() {
           )}
 
           {activeTab === 'diagnostics' && (
-            <DiagnosticsView dataStore={dataStore} />
+            <DiagnosticsView dataStore={dataStore} onUpdateDataStore={setDataStore} />
           )}
 
           {activeTab === 'visualizer' && (
-            <TriadVisualization />
+            <TriadVisualization dataStore={dataStore} />
           )}
 
           {activeTab === 'file_explorer' && (
@@ -638,27 +621,7 @@ export default function App() {
 
           {activeTab === 'fleet' && <FleetView />}
 
-          {activeTab === 'hyper_com' && (
-            <section className="flex min-h-0 flex-1 flex-col bg-slate-950">
-              <header className="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-2">
-                <h1 className="text-xs font-semibold text-cyan-200">HyperCom — konsola transmisji</h1>
-                <a
-                  href="/api/apps/preview/hyper_com_module/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-cyan-300 hover:text-cyan-100"
-                >
-                  Otwórz osobno
-                </a>
-              </header>
-              <iframe
-                src="/api/apps/preview/hyper_com_module/"
-                title="HyperCom — konsola transmisji"
-                className="min-h-0 w-full flex-1 border-0"
-                sandbox="allow-scripts allow-forms allow-same-origin allow-modals"
-              />
-            </section>
-          )}
+          {activeTab === 'hyper_com' && <HyperComView />}
 
           {activeTab === 'without_nlp' && (
             <WithoutNlpView onSendProtocol={handleSendProtocol} />
@@ -676,7 +639,7 @@ export default function App() {
           dataStore={dataStore}
         />
 
-        <SystemHealthDock />
+
       </div>
     </ErrorBoundary>
   );

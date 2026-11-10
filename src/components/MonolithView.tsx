@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ModuleHeader } from './WorkspaceUI';
 import { DataStore, generatePythonMonolith, parsePythonMonolith, SYS_VERSION, OPERATOR_NAME } from '../kernel/svlKernel';
 import { Copy, Download, Upload, Check, AlertTriangle, FileCode2, RefreshCw } from 'lucide-react';
 
@@ -8,6 +9,8 @@ interface MonolithViewProps {
 }
 
 export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetDataStore }) => {
+  const [query, setQuery] = useState('');
+  const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
@@ -31,8 +34,7 @@ export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetData
   const byteSize = new Blob([fullCode]).size;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(fullCode);
-    setCopied(true);
+    navigator.clipboard.writeText(fullCode).then(()=>setCopied(true)).catch(()=>setImportError('Błąd kopiowania.'));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -57,22 +59,22 @@ export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetData
       return;
     }
 
-    onSetDataStore(result.dataStore);
     try {
       const res = await fetch('/api/kernel/save-store', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store: result.dataStore }),
       });
-      if (res.ok) {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      {
         const data = await res.json();
         if (data?.state?.store) {
           onSetDataStore(data.state.store);
         }
       }
-    } catch {}
+    } catch (error) { setImportError(error instanceof Error ? error.message : 'Błąd zapisu'); return; }
 
-    setImportSuccess('Stan jądra został pomyślnie zsynchronizowany i trwale zapisany na dysku!');
+    setImportSuccess('Zapisano import.');
     setTimeout(() => {
       setIsImporting(false);
       setImportText('');
@@ -81,46 +83,13 @@ export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetData
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-slate-950 font-mono text-xs overflow-hidden">
-      {/* Top Action Bar */}
-      <div className="bg-slate-900 border-b border-slate-800 px-2.5 sm:px-4 py-2 sm:py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-3">
-          <FileCode2 className="w-4 h-4 text-emerald-400" />
-          <div>
-            <span className="font-bold text-slate-100">SVL Monolith Script (.py)</span>
-            <span className="text-slate-500 ml-2 text-[11px]">
-              {linesCount} linii · {byteSize} bajtów
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsImporting(!isImporting)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition cursor-pointer"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>{isImporting ? 'Ukryj wklejanie' : 'Wklej / Wczytaj kod'}</span>
-          </button>
-
-          <button
-            onClick={handleCopy}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold transition cursor-pointer shadow-sm"
-          >
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? 'Skopiowano cały skrypt!' : 'Kopiuj cały monolit'}</span>
-          </button>
-
-          <button
-            onClick={handleDownload}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Pobierz .py</span>
-          </button>
-        </div>
-      </div>
-
+    <div className="module-view flex-1 min-h-0 flex flex-col bg-slate-950 text-xs overflow-hidden">
+      <ModuleHeader title="Python" meta={`${linesCount} linii · ${byteSize} B`}>
+        <button type="button" aria-expanded={isImporting} onClick={()=>setIsImporting(!isImporting)}><Upload size={14}/>{isImporting?'Anuluj import':'Importuj'}</button>
+        <button type="button" onClick={handleCopy}><Copy size={14}/>{copied?'Skopiowano':'Kopiuj'}</button>
+        <button type="button" onClick={handleDownload}><Download size={14}/>Pobierz</button>
+      </ModuleHeader>
+      <div className="module-actions p-3"><input aria-label="Szukaj w kodzie Python" placeholder="Filtruj linie…" value={query} onChange={e=>setQuery(e.target.value)}/><label className="flex items-center gap-2"><input type="checkbox" checked={wrap} onChange={e=>setWrap(e.target.checked)}/>Zawijaj linie</label></div>
       {/* Import Drawer (if open) */}
       {isImporting && (
         <div className="p-4 bg-slate-900 border-b border-slate-800 space-y-3">
@@ -134,22 +103,23 @@ export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetData
           </div>
 
           <textarea
+            aria-label="Import kodu Python"
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
-            placeholder="Wklej tutaj treść pliku Pythona (lub blok JSON)..."
+            placeholder="Kod lub JSON…"
             rows={5}
-            className="w-full bg-slate-950 border border-slate-800 rounded p-2.5 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono text-xs"
+            className="w-full bg-slate-950 border border-slate-800 rounded p-2.5 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-slate-700 font-mono text-xs"
           />
 
           {importError && (
-            <div className="flex items-center gap-2 text-rose-400 bg-rose-950/40 p-2 rounded border border-rose-900/40 text-[11px]">
+            <div role="alert" className="flex items-center gap-2 text-rose-400 bg-rose-950/40 p-2 rounded border border-rose-900/40 text-[11px]">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
               <span>{importError}</span>
             </div>
           )}
 
           {importSuccess && (
-            <div className="flex items-center gap-2 text-emerald-400 bg-emerald-950/40 p-2 rounded border border-emerald-900/40 text-[11px]">
+            <div role="status" className="flex items-center gap-2 text-emerald-400 bg-slate-900 p-2 rounded border border-slate-700 text-[11px]">
               <Check className="w-3.5 h-3.5 shrink-0" />
               <span>{importSuccess}</span>
             </div>
@@ -167,10 +137,10 @@ export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetData
             </button>
             <button
               onClick={handleRunImport}
-              className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-1.5 rounded bg-slate-800 hover:bg-slate-800 text-slate-950 font-medium flex items-center gap-1.5 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>Zweryfikuj i zsynchronizuj</span>
+              <span>Zapisz import</span>
             </button>
           </div>
         </div>
@@ -178,8 +148,9 @@ export const MonolithView: React.FC<MonolithViewProps> = ({ dataStore, onSetData
 
       {/* Code Viewer */}
       <div className="flex-1 overflow-y-auto p-4 bg-slate-950 select-text">
-        <pre className="text-slate-300 leading-relaxed font-mono whitespace-pre text-xs">
+        <pre className={`text-slate-300 leading-relaxed font-mono text-xs ${wrap?"whitespace-pre-wrap":"whitespace-pre"}`}>
           {fullCode.split('\n').map((line, idx) => {
+            if (query && !line.toLocaleLowerCase('pl').includes(query.toLocaleLowerCase('pl'))) return null;
             const lineNum = idx + 1;
             const isTag = line.includes('<<<DATA_STORE_START>>>') || line.includes('<<<DATA_STORE_END>>>');
             const isHeader = line.startsWith('# ==') || line.startsWith('# SVL KERNEL');

@@ -206,20 +206,20 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
   const progressPercent = Math.min(100, Math.round((elapsedSeconds / totalInitialSeconds) * 100));
 
   return (
-    <div className="my-4 rounded-xl bg-slate-950 border border-emerald-500/40 shadow-xl shadow-emerald-950/30 overflow-hidden font-mono text-xs">
+    <div className="my-4 rounded-lg bg-slate-950 border border-slate-700 overflow-hidden font-mono text-xs">
       {/* Top Banner */}
-      <div className="p-3.5 bg-gradient-to-r from-emerald-950/80 via-slate-900 to-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+      <div className="p-3.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 bg-slate-900">
         <div className="flex items-center gap-2.5">
           <div className={`p-2 rounded-lg border ${isFullyCompleted ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' : 'bg-emerald-950 text-emerald-400 border-emerald-800'}`}>
             {isFullyCompleted ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             ) : (
-              <Activity className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <Activity className="w-4 h-4 text-emerald-400" />
             )}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-100 text-xs">{defaultTitle}</span>
+              <span className="font-medium text-slate-100 text-xs">{defaultTitle}</span>
               <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
                 isFullyCompleted
                   ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
@@ -240,7 +240,7 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
         <div className="flex items-center gap-3 bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800 text-right">
           <Clock className="w-4 h-4 text-emerald-400 animate-spin" />
           <div>
-            <div className="text-emerald-300 font-bold text-sm tracking-wider font-mono">
+            <div className="text-emerald-300 font-medium text-sm font-mono">
               {formatTime(totalSecondsRemaining)}
             </div>
             <div className="text-[9px] text-slate-500">
@@ -258,7 +258,7 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
         </div>
         <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800 p-0.5">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-400 transition-all duration-500 shadow-sm shadow-emerald-500"
+            className="h-full rounded-full transition-all duration-500 bg-slate-900"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -301,12 +301,12 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
                 </div>
 
                 <div>
-                  <div className="font-bold text-xs flex items-center gap-2">
+                  <div className="font-medium text-xs flex items-center gap-2">
                     <span className={isDone ? 'line-through text-slate-400' : isCurrent ? 'text-emerald-300' : 'text-slate-400'}>
                       {stage.title}
                     </span>
                     {isCurrent && (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-slate-900 text-emerald-300 border border-slate-700 font-mono">
                         W TRAKCIE (ETAP {stage.id})
                       </span>
                     )}
@@ -320,7 +320,7 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
               </div>
 
               <div className="text-right shrink-0">
-                <span className="text-[10px] font-mono font-bold text-slate-400">
+                <span className="text-[10px] font-mono font-medium text-slate-400">
                   {stage.durationSeconds}s
                 </span>
               </div>
@@ -333,14 +333,14 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
       {showLogs && (
         <div className="p-3 bg-slate-950 border-t border-slate-800 font-mono text-[11px] space-y-2">
           <div className="flex items-center justify-between border-b border-slate-900 pb-2">
-            <span className="text-slate-300 font-bold flex items-center gap-1.5">
+            <span className="text-slate-300 font-medium flex items-center gap-1.5">
               <Terminal className="w-3.5 h-3.5 text-emerald-400" />
               <span>Dziennik Logów i Samonaprawy Alexa (Infra Ring-0)</span>
             </span>
             <button
               onClick={handleTriggerRepair}
               disabled={isRepairing}
-              className="px-2 py-0.5 rounded bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-800 transition cursor-pointer text-[10px] flex items-center gap-1 font-bold disabled:opacity-50"
+              className="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-900 text-emerald-300 border border-slate-700 transition cursor-pointer text-[10px] flex items-center gap-1 font-medium disabled:opacity-50"
             >
               <RefreshCw className={`w-3 h-3 text-emerald-400 ${isRepairing ? 'animate-spin' : ''}`} />
               <span>{isRepairing ? 'Skanowanie...' : 'Szybki Skan Alexa'}</span>
@@ -348,7 +348,7 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
           </div>
 
           {repairMsg && (
-            <div className="p-2 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-[10px]">
+            <div className="p-2 rounded bg-slate-900 border border-slate-700 text-emerald-300 text-[10px]">
               {repairMsg}
             </div>
           )}
@@ -389,7 +389,7 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
           <button
             onClick={handleFastForwardNextStage}
             disabled={isFullyCompleted}
-            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition cursor-pointer text-[10px] flex items-center gap-1 disabled:opacity-40 font-bold"
+            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition cursor-pointer text-[10px] flex items-center gap-1 disabled:opacity-40 font-medium"
             title="Przejdź natychmiast do następnego etapu"
           >
             <FastForward className="w-3 h-3 text-cyan-400" />
@@ -412,7 +412,7 @@ export const MissionTrackerCard: React.FC<MissionTrackerCardProps> = ({
         <button
           onClick={handleCompleteAll}
           disabled={isFullyCompleted}
-          className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-slate-950 font-black text-[10px] transition cursor-pointer flex items-center gap-1 shadow"
+          className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-800 disabled:opacity-50 text-slate-950 font-medium text-[10px] transition cursor-pointer flex items-center gap-1"
         >
           <CheckCircle2 className="w-3.5 h-3.5 fill-slate-950" />
           <span>Finalizuj całą misję</span>

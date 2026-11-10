@@ -2,7 +2,7 @@ import React from 'react';
 
 export const TechnicalBlueprintSVG: React.FC<{ style?: string }> = ({ style }) => {
   return (
-    <div className="my-4 p-3 md:p-6 rounded-xl bg-slate-950 border border-cyan-500/20 shadow-2xl overflow-hidden flex flex-col items-center backdrop-blur-md">
+    <div className="my-4 p-3 md:p-6 rounded-lg bg-slate-950 border border-slate-700 overflow-hidden flex flex-col items-center">
       <div className="w-full max-w-[320px] md:max-w-[450px] aspect-square relative">
         <svg viewBox="0 0 400 400" className="w-full h-full">
           {/* Background Grid */}
@@ -15,7 +15,7 @@ export const TechnicalBlueprintSVG: React.FC<{ style?: string }> = ({ style }) =
           
           {/* Neural Core Circles */}
           <circle cx="200" cy="200" r="60" fill="none" stroke="#06b6d4" strokeWidth="2" strokeDasharray="5,5" className="animate-spin-slow origin-center" style={{ transformOrigin: '200px 200px' }} />
-          <circle cx="200" cy="200" r="40" fill="none" stroke="#FFD700" strokeWidth="3" className="animate-pulse" />
+          <circle cx="200" cy="200" r="40" fill="none" stroke="#FFD700" strokeWidth="3" className="" />
           
           {/* Connector Lines */}
           <line x1="200" y1="200" x2="100" y2="100" stroke="#10b981" strokeWidth="1.5" />
@@ -23,28 +23,28 @@ export const TechnicalBlueprintSVG: React.FC<{ style?: string }> = ({ style }) =
           <line x1="200" y1="200" x2="200" y2="320" stroke="#06b6d4" strokeWidth="1.5" />
           
           {/* Agent Nodes */}
-          <g className="animate-bounce-slow">
+          <g className="">
             <rect x="70" y="70" width="60" height="30" rx="4" fill="#06131a" stroke="#10b981" strokeWidth="1" />
             <text x="100" y="90" textAnchor="middle" fill="#10b981" fontSize="10" fontFamily="monospace">ALEX</text>
           </g>
           
-          <g style={{ animationDelay: '0.5s' }} className="animate-bounce-slow">
+          <g style={{ animationDelay: '0.5s' }} className="">
             <rect x="270" y="70" width="60" height="30" rx="4" fill="#06131a" stroke="#a855f7" strokeWidth="1" />
             <text x="300" y="90" textAnchor="middle" fill="#a855f7" fontSize="10" fontFamily="monospace">ASTYRIA</text>
           </g>
           
-          <g style={{ animationDelay: '1s' }} className="animate-bounce-slow">
+          <g style={{ animationDelay: '1s' }} className="">
             <rect x="170" y="320" width="60" height="30" rx="4" fill="#06131a" stroke="#06b6d4" strokeWidth="1" />
             <text x="200" y="340" textAnchor="middle" fill="#06b6d4" fontSize="10" fontFamily="monospace">AURELIUS</text>
           </g>
           
           {/* Floating Data Bits */}
-          <circle cx="150" cy="150" r="2" fill="#fff" className="animate-ping" />
-          <circle cx="250" cy="250" r="2" fill="#fff" style={{ animationDelay: '1s' }} className="animate-ping" />
+          <circle cx="150" cy="150" r="2" fill="#fff" className="" />
+          <circle cx="250" cy="250" r="2" fill="#fff" style={{ animationDelay: '1s' }} className="" />
         </svg>
       </div>
       <div className="mt-4 text-center">
-        <div className="text-cyan-400 font-bold text-xs uppercase tracking-widest">SVL-BLUEPRINT-RENDER-V1</div>
+        <div className="text-cyan-400 font-medium text-xs">SVL-BLUEPRINT-RENDER-V1</div>
         <div className="text-slate-500 text-[10px] mt-1 italic">Style: {style || 'Default Architectural'}</div>
       </div>
     </div>
